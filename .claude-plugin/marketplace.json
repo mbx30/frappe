@@ -1,0 +1,109 @@
+{
+  "name": "print-job-intake",
+  "version": "1.0.0",
+  "description": "Morning print job intake automation for print shops. Sweeps Gmail for new orders, calculates promised dates from live queue depth, logs jobs to a Notion tracker, and drafts client confirmation replies.",
+  "author": {
+    "name": "Go Postal SD",
+    "url": "https://github.com/mbx30/printy"
+  },
+  "license": "MIT",
+  "categories": ["productivity", "automation", "print", "operations"],
+  "keywords": ["print shop", "notion", "gmail", "intake", "job tracking", "order management"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mbx30/printy",
+    "directory": "print-shop-triage/print-job-intake"
+  },
+  "skills": [
+    {
+      "id": "morning-intake",
+      "name": "Morning Intake",
+      "description": "Sweeps Gmail via screen control, stars confirmed print job emails, calculates Promised date from queue depth, and logs each job to Notion.",
+      "trigger_phrases": [
+        "run morning intake",
+        "start my morning routine",
+        "collect print jobs",
+        "check for new orders",
+        "run intake",
+        "let's do morning intake"
+      ],
+      "required_capabilities": ["computer_use"],
+      "required_mcp_servers": ["Notion"]
+    },
+    {
+      "id": "gmail-intake",
+      "name": "Gmail Intake",
+      "description": "API-based alternative to morning-intake. Same workflow but driven by Gmail MCP tools instead of screen control. Includes client reply drafting. Intended for handoff use cases where computer use is unavailable.",
+      "trigger_phrases": [
+        "run morning intake",
+        "collect print jobs",
+        "check for new orders"
+      ],
+      "required_capabilities": [],
+      "required_mcp_servers": ["Gmail", "Notion"]
+    },
+    {
+      "id": "log-print-job",
+      "name": "Log Print Job",
+      "description": "Manually log a single print job from pasted email text or spoken specs. Works with any AI — falls back to formatted output if Notion MCP is unavailable.",
+      "trigger_phrases": [
+        "log this job",
+        "add this to the tracker",
+        "create a print job",
+        "add a job",
+        "new print job from"
+      ],
+      "required_capabilities": [],
+      "required_mcp_servers": ["Notion"]
+    }
+  ],
+  "required_mcp_servers": ["Notion"],
+  "optional_mcp_servers": ["Gmail"],
+  "required_capabilities": [],
+  "optional_capabilities": ["computer_use"],
+  "configuration": {
+    "description": "On first use each skill checks memory for the following values. If any are missing it will ask before proceeding.",
+    "fields": [
+      {
+        "key": "user_name",
+        "label": "Your name",
+        "description": "Used for email reply sign-offs and confirmation messages.",
+        "required": true,
+        "source": "memory"
+      },
+      {
+        "key": "company_name",
+        "label": "Company / shop name",
+        "description": "Used in Notion client records and intake summaries.",
+        "required": true,
+        "source": "memory"
+      },
+      {
+        "key": "gmail_account",
+        "label": "Gmail account address",
+        "description": "The inbox to sweep for print job emails.",
+        "required": true,
+        "source": "memory"
+      },
+      {
+        "key": "notion_print_jobs_db",
+        "label": "Notion Print Jobs database ID",
+        "description": "The Notion database where print job rows are created.",
+        "required": true,
+        "default": "32c9cb079ddb807eba29dd54fee53aac",
+        "source": "memory"
+      },
+      {
+        "key": "notion_clients_db",
+        "label": "Notion Clients database ID",
+        "description": "The Notion database used for client relation lookups.",
+        "required": true,
+        "default": "2ee9cb079ddb809d81f2fa9a9c2a35d3",
+        "source": "memory"
+      }
+    ]
+  },
+  "compatibility": {
+    "min_plugin_api": "1.0"
+  }
+}
