@@ -1,39 +1,4 @@
-:root {
-  --bg: #ffffff;
-  --bg-secondary: #f5f5f5;
-  --bg-tertiary: #e8e8e8;
-  --text: #1a1a1a;
-  --text-secondary: #666;
-  --border: #d4d4d4;
-  --border-light: #e8e8e8;
-  --accent: #2563eb;
-  --accent-hover: #1d4ed8;
-  --danger: #dc2626;
-  --sidebar-width: 240px;
-  --toolbar-height: 48px;
-  --tab-height: 36px;
-
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-  font-size: 14px;
-  line-height: 1.5;
-  color: var(--text);
-  background: var(--bg);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #1a1a2e;
-    --bg-secondary: #16213e;
-    --bg-tertiary: #0f3460;
-    --text: #e8e8e8;
-    --text-secondary: #a0a0a0;
-    --border: #2a2a4a;
-    --border-light: #2a2a4a;
-    --accent: #3b82f6;
-    --accent-hover: #60a5fa;
-    --danger: #ef4444;
-  }
-}
+@import "design-system/styles.css";
 
 * {
   box-sizing: border-box;
@@ -55,34 +20,4 @@ button {
   cursor: pointer;
   font-family: inherit;
   font-size: inherit;
-}
-
-.btn {
-  padding: 6px 14px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--text);
-  font-size: 13px;
-  font-weight: 500;
-  transition: background 0.15s;
-}
-
-.btn:hover {
-  background: var(--bg-secondary);
-}
-
-.btn-sm {
-  padding: 4px 10px;
-  font-size: 12px;
-}
-
-.btn-primary {
-  background: var(--accent);
-  color: white;
-  border-color: var(--accent);
-}
-
-.btn-primary:hover {
-  background: var(--accent-hover);
 }

@@ -1,0 +1,187 @@
+/* ============================================================
+   FRAPPE — COLOR TOKENS
+   Brand violet + neutral grays + semantic. Light & dark themes.
+   Base palette (raw values) then semantic aliases that flip
+   between themes. Consume the *semantic* tokens in product UI.
+   ============================================================ */
+
+:root {
+  /* ---- Brand violet (anchored on logo #863bff / #7e14ff) ---- */
+  --violet-50:  #f4f0ff;
+  --violet-100: #ece3ff;
+  --violet-200: #dccdff;
+  --violet-300: #c3a9ff;
+  --violet-400: #a578ff;
+  --violet-500: #863bff; /* brand */
+  --violet-600: #7a1fff;
+  --violet-700: #6913e0;
+  --violet-800: #5715b3;
+  --violet-900: #481690;
+  --violet-950: #2c0a5e;
+
+  /* ---- Accent blue (logo highlight #47bfff) ---- */
+  --blue-300: #8fd6ff;
+  --blue-400: #47bfff;
+  --blue-500: #1ea7f0;
+  --blue-600: #0d86c9;
+
+  /* ---- Neutrals (faint cool cast to harmonize w/ violet) ---- */
+  --neutral-0:   #ffffff;
+  --neutral-50:  #f7f7f9;
+  --neutral-100: #f0f0f3;
+  --neutral-200: #e3e3e9;
+  --neutral-300: #cdcdd6;
+  --neutral-400: #a0a0ae;
+  --neutral-500: #73737f;
+  --neutral-600: #55555f;
+  --neutral-700: #3e3e47;
+  --neutral-800: #27272e;
+  --neutral-850: #1d1d23;
+  --neutral-900: #17171c;
+  --neutral-950: #0d0d10;
+
+  /* ---- Semantic hues (status / feedback) ---- */
+  --green-100: #d8f5e3;
+  --green-500: #16a34a;
+  --green-600: #138a3f;
+  --green-700: #0f7035;
+
+  --amber-100: #fdeccc;
+  --amber-500: #e08c00;
+  --amber-600: #c47700;
+
+  --red-100:   #fbdedd;
+  --red-500:   #dc2626;
+  --red-600:   #c11f1f;
+
+  --sky-100:   #d6eeff;
+  --sky-500:   #1ea7f0;
+  --sky-600:   #0d86c9;
+}
+
+/* ============================================================
+   LIGHT THEME (default)
+   ============================================================ */
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+
+  /* Backgrounds & surfaces */
+  --bg-base:        var(--neutral-50);   /* app canvas */
+  --bg-subtle:      var(--neutral-100);  /* recessed areas, rails */
+  --surface-card:   var(--neutral-0);    /* cards, panels, rows */
+  --surface-raised: var(--neutral-0);    /* menus, popovers */
+  --surface-overlay: rgba(13, 13, 16, 0.45); /* modal scrim */
+  --surface-hover:  var(--neutral-100);
+  --surface-active: var(--neutral-200);
+  --surface-inset:  var(--neutral-50);   /* inputs, wells */
+
+  /* Borders */
+  --border-subtle:  #ededf1;
+  --border-default: var(--neutral-200);
+  --border-strong:  var(--neutral-300);
+
+  /* Text */
+  --text-primary:   var(--neutral-900);
+  --text-secondary: var(--neutral-600);
+  --text-tertiary:  var(--neutral-500);
+  --text-disabled:  var(--neutral-400);
+  --text-on-brand:  #ffffff;
+  --text-link:      var(--violet-600);
+
+  /* Brand */
+  --brand:          var(--violet-500);
+  --brand-hover:    var(--violet-600);
+  --brand-active:   var(--violet-700);
+  --brand-subtle:   var(--violet-50);    /* tinted fills */
+  --brand-subtle-hover: var(--violet-100);
+  --brand-border:   var(--violet-200);
+  --brand-text:     var(--violet-700);   /* brand text on light */
+
+  /* Focus */
+  --focus-ring:     rgba(134, 59, 255, 0.45);
+
+  /* Status — fill / text / border triples */
+  --success:        var(--green-600);
+  --success-subtle: var(--green-100);
+  --success-text:   var(--green-700);
+
+  --warning:        var(--amber-600);
+  --warning-subtle: var(--amber-100);
+  --warning-text:   #8a5400;
+
+  --danger:         var(--red-500);
+  --danger-subtle:  var(--red-100);
+  --danger-text:    var(--red-600);
+
+  --info:           var(--sky-600);
+  --info-subtle:    var(--sky-100);
+  --info-text:      #0a6ba3;
+
+  /* Shadows (cool, low-spread) */
+  --shadow-xs: 0 1px 2px rgba(16, 16, 24, 0.06);
+  --shadow-sm: 0 1px 3px rgba(16, 16, 24, 0.08), 0 1px 2px rgba(16, 16, 24, 0.04);
+  --shadow-md: 0 4px 12px rgba(16, 16, 24, 0.10), 0 2px 4px rgba(16, 16, 24, 0.05);
+  --shadow-lg: 0 12px 32px rgba(16, 16, 24, 0.14), 0 4px 8px rgba(16, 16, 24, 0.06);
+  --shadow-brand: 0 4px 14px rgba(134, 59, 255, 0.30);
+}
+
+/* ============================================================
+   DARK THEME
+   ============================================================ */
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg-base:        var(--neutral-950);
+  --bg-subtle:      #08080b;
+  --surface-card:   var(--neutral-900);
+  --surface-raised: var(--neutral-850);
+  --surface-overlay: rgba(0, 0, 0, 0.62);
+  --surface-hover:  var(--neutral-850);
+  --surface-active: var(--neutral-800);
+  --surface-inset:  #101015;
+
+  --border-subtle:  #1f1f26;
+  --border-default: #2a2a33;
+  --border-strong:  #3a3a45;
+
+  --text-primary:   #f3f3f6;
+  --text-secondary: #a8a8b5;
+  --text-tertiary:  #76767f;
+  --text-disabled:  #54545d;
+  --text-on-brand:  #ffffff;
+  --text-link:      var(--violet-300);
+
+  --brand:          var(--violet-500);
+  --brand-hover:    var(--violet-400);
+  --brand-active:   var(--violet-300);
+  --brand-subtle:   rgba(134, 59, 255, 0.16);
+  --brand-subtle-hover: rgba(134, 59, 255, 0.26);
+  --brand-border:   rgba(134, 59, 255, 0.40);
+  --brand-text:     var(--violet-300);
+
+  --focus-ring:     rgba(165, 120, 255, 0.55);
+
+  --success:        #34c46b;
+  --success-subtle: rgba(34, 197, 94, 0.16);
+  --success-text:   #5fdc8c;
+
+  --warning:        #f0a525;
+  --warning-subtle: rgba(224, 140, 0, 0.18);
+  --warning-text:   #f5bd5c;
+
+  --danger:         #f0564f;
+  --danger-subtle:  rgba(220, 38, 38, 0.18);
+  --danger-text:    #f78a85;
+
+  --info:           var(--blue-400);
+  --info-subtle:    rgba(71, 191, 255, 0.16);
+  --info-text:      var(--blue-300);
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.40);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.50), 0 1px 2px rgba(0, 0, 0, 0.40);
+  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.55), 0 2px 4px rgba(0, 0, 0, 0.40);
+  --shadow-lg: 0 14px 38px rgba(0, 0, 0, 0.65), 0 4px 10px rgba(0, 0, 0, 0.50);
+  --shadow-brand: 0 4px 16px rgba(134, 59, 255, 0.45);
+}
+

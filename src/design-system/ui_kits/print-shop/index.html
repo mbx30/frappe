@@ -1,0 +1,121 @@
+<!-- @dsCard group="Print Shop" viewport="1400x880" name="Frappe App — full workspace" subtitle="Interactive print-shop MIS: sign-in, dashboard, orders, production, job ticket, invoicing" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frappe — Print Shop</title>
+<link rel="icon" href="../../assets/frappe-logo.svg">
+<link rel="stylesheet" href="../../styles.css">
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: var(--bg-base); color: var(--text-primary); font-family: var(--font-sans); }
+  * { box-sizing: border-box; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 999px; border: 2px solid var(--bg-base); }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.js"></script>
+<script src="../../_ds_bundle.js"></script>
+
+<script src="data.js"></script>
+<script type="text/babel" src="shared.jsx"></script>
+<script type="text/babel" src="AppShell.jsx"></script>
+<script type="text/babel" src="Welcome.jsx"></script>
+<script type="text/babel" src="Dashboard.jsx"></script>
+<script type="text/babel" src="Orders.jsx"></script>
+<script type="text/babel" src="Production.jsx"></script>
+<script type="text/babel" src="JobTicket.jsx"></script>
+<script type="text/babel" src="Invoicing.jsx"></script>
+
+<script type="text/babel" data-presets="react">
+  const { useState } = React;
+  const { Dialog, Button, Input, Select, Checkbox, Toast, ToastViewport } = window.FrappeDesignSystem_75694f;
+  const { Ic } = window.FK;
+
+  function App() {
+    const [signedIn, setSignedIn] = useState(false);
+    const [view, setView] = useState('dashboard');
+    const [order, setOrder] = useState(null);     // open job ticket
+    const [theme, setTheme] = useState('light');
+    const [newOpen, setNewOpen] = useState(false);
+    const [toast, setToast] = useState(null);
+
+    React.useEffect(() => { document.documentElement.setAttribute('data-theme', theme); }, [theme]);
+    const toggleTheme = () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
+
+    const openOrder = (o) => setOrder(o);
+    const back = () => setOrder(null);
+    const go = (v) => { setOrder(null); setView(v); };
+
+    const fireToast = (t) => { setToast(t); setTimeout(() => setToast(null), 3200); };
+
+    if (!signedIn) return <window.Welcome onEnter={() => setSignedIn(true)} />;
+
+    let screen;
+    if (order) {
+      screen = <window.JobTicket order={order} onBack={back} />;
+    } else if (view === 'dashboard') {
+      screen = <window.Dashboard onOpenOrder={openOrder} />;
+    } else if (view === 'orders') {
+      screen = <window.Orders onOpenOrder={openOrder} onNewOrder={() => setNewOpen(true)} />;
+    } else if (view === 'production') {
+      screen = <window.Production onOpenOrder={openOrder} />;
+    } else if (view === 'invoicing') {
+      screen = <window.Invoicing />;
+    } else {
+      screen = <Placeholder view={view} />;
+    }
+
+    return (
+      <window.AppShell view={view} setView={go} theme={theme} toggleTheme={toggleTheme}>
+        {screen}
+
+        <Dialog
+          open={newOpen}
+          onClose={() => setNewOpen(false)}
+          title="New order"
+          description="Create a job and drop it into the queue."
+          footer={<>
+            <Button variant="secondary" onClick={() => setNewOpen(false)}>Cancel</Button>
+            <Button variant="primary" iconLeft={<Ic n="Plus" size={15} />} onClick={() => { setNewOpen(false); fireToast({ tone: 'success', title: 'Order created', message: 'Job added to the queue.' }); }}>Create order</Button>
+          </>}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '13px' }}>
+            <Input label="Customer" placeholder="Acme Co." />
+            <Input label="Job name" placeholder="500 matte business cards" />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <Input label="Quantity" mono placeholder="500" />
+              <Select label="Paper stock" options={['16pt Matte', '14pt Gloss', '100lb Uncoated', '13oz Vinyl']} />
+            </div>
+            <Checkbox label="Rush job (+8% surcharge)" />
+          </div>
+        </Dialog>
+
+        <ToastViewport placement="bottom-right">
+          {toast && <Toast tone={toast.tone} title={toast.title} message={toast.message} onClose={() => setToast(null)} />}
+        </ToastViewport>
+      </window.AppShell>
+    );
+  }
+
+  function Placeholder({ view }) {
+    const labels = { inventory: 'Inventory', customers: 'Customers' };
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: '12px', textAlign: 'center' }}>
+        <span style={{ color: 'var(--text-disabled)' }}><Ic n="Hammer" size={36} /></span>
+        <div style={{ font: 'var(--font-h3)', color: 'var(--text-primary)' }}>{labels[view] || view} is on the roadmap</div>
+        <div style={{ font: 'var(--font-body)', color: 'var(--text-secondary)', maxWidth: '360px' }}>This surface isn’t built in the kit yet. See the Frappe roadmap (GitHub issues) for what’s planned.</div>
+      </div>
+    );
+  }
+
+  ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

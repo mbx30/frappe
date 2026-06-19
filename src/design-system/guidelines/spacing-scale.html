@@ -1,0 +1,25 @@
+<!-- @dsCard group="Spacing" viewport="700x150" name="Spacing Scale" subtitle="4px base grid — space-1 through space-24" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin: 0; background: var(--surface-card); font-family: var(--font-sans); padding: 22px 24px; color: var(--text-primary); }
+  .scale { display: flex; align-items: flex-end; gap: 16px; }
+  .item { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .bar { background: var(--brand); border-radius: var(--radius-xs); width: 18px; }
+  .lab { font-family: var(--font-mono); font-size: 10px; color: var(--text-tertiary); }
+  .px { font-size: 10px; color: var(--text-secondary); font-weight: 600; }
+</style>
+</head>
+<body>
+  <div class="scale" id="s"></div>
+  <script>
+    const items = [['1','2'],['2','4'],['3','6'],['4','8'],['6','12'],['8','16'],['10','20'],['12','24'],['16','32'],['20','40'],['24','48']];
+    document.getElementById('s').innerHTML = items.map(([n,px])=>
+      `<div class="item"><span class="px">${px}</span><div class="bar" style="height:${px}px"></div><span class="lab">${n}</span></div>`
+    ).join('');
+  </script>
+</body>
+</html>

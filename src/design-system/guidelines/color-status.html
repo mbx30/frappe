@@ -1,0 +1,36 @@
+<!-- @dsCard group="Colors" viewport="700x160" name="Status / Semantic" subtitle="Job & feedback states: success, warning, danger, info" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin: 0; background: var(--bg-base); font-family: var(--font-sans); padding: 20px; color: var(--text-primary); }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .cell { border: 1px solid var(--border-default); border-radius: var(--radius-md); overflow: hidden; background: var(--surface-card); }
+  .cap { height: 44px; display: flex; align-items: center; gap: 8px; padding: 0 12px; color: #fff; font-weight: 600; font-size: 13px; }
+  .badge { margin: 10px 12px; display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: var(--radius-full); font-size: 12px; font-weight: 600; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; }
+</style>
+</head>
+<body>
+  <div class="grid">
+    <div class="cell">
+      <div class="cap" style="background:var(--success)">Success</div>
+      <span class="badge" style="background:var(--success-subtle);color:var(--success-text)"><span class="dot" style="background:var(--success)"></span>Shipped</span>
+    </div>
+    <div class="cell">
+      <div class="cap" style="background:var(--warning)">Warning</div>
+      <span class="badge" style="background:var(--warning-subtle);color:var(--warning-text)"><span class="dot" style="background:var(--warning)"></span>Awaiting art</span>
+    </div>
+    <div class="cell">
+      <div class="cap" style="background:var(--danger)">Danger</div>
+      <span class="badge" style="background:var(--danger-subtle);color:var(--danger-text)"><span class="dot" style="background:var(--danger)"></span>Overdue</span>
+    </div>
+    <div class="cell">
+      <div class="cap" style="background:var(--info)">Info</div>
+      <span class="badge" style="background:var(--info-subtle);color:var(--info-text)"><span class="dot" style="background:var(--info)"></span>In review</span>
+    </div>
+  </div>
+</body>
+</html>

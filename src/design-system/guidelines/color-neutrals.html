@@ -1,0 +1,29 @@
+<!-- @dsCard group="Colors" viewport="700x150" name="Neutrals" subtitle="Cool-cast gray ramp for surfaces, borders & text" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin: 0; background: var(--bg-base); font-family: var(--font-sans); padding: 20px; }
+  .row { display: flex; gap: 0; border-radius: var(--radius-md); overflow: hidden; box-shadow: var(--shadow-sm); border: 1px solid var(--border-default); }
+  .sw { flex: 1; height: 92px; display: flex; flex-direction: column; justify-content: flex-end; padding: 8px; box-sizing: border-box; }
+  .n { font: var(--font-caption); font-weight: 600; }
+  .h { font-family: var(--font-mono); font-size: 10px; opacity: 0.8; }
+</style>
+</head>
+<body>
+  <div class="row" id="row"></div>
+  <script>
+    const steps = [
+      ['0','#ffffff','#17171c'],['50','#f7f7f9','#17171c'],['100','#f0f0f3','#17171c'],
+      ['200','#e3e3e9','#17171c'],['300','#cdcdd6','#17171c'],['400','#a0a0ae','#fff'],
+      ['500','#73737f','#fff'],['600','#55555f','#fff'],['700','#3e3e47','#fff'],
+      ['800','#27272e','#fff'],['900','#17171c','#fff'],['950','#0d0d10','#fff']
+    ];
+    document.getElementById('row').innerHTML = steps.map(([n,c,t])=>
+      `<div class="sw" style="background:${c};color:${t}"><span class="n">${n}</span><span class="h">${c}</span></div>`
+    ).join('');
+  </script>
+</body>
+</html>

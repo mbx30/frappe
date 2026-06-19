@@ -1,0 +1,41 @@
+<!-- @dsCard group="Spacing" viewport="700x160" name="Radii & Elevation" subtitle="Corner radii and the cool-shadow elevation ramp" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin: 0; background: var(--bg-base); font-family: var(--font-sans); padding: 22px 24px; color: var(--text-primary); }
+  .group { display: flex; gap: 28px; align-items: center; }
+  .col { display: flex; gap: 14px; }
+  .box { width: 64px; height: 64px; background: var(--surface-card); border: 1px solid var(--border-default); display: flex; align-items: flex-end; justify-content: center; padding-bottom: 6px; box-sizing: border-box; }
+  .lab { font-family: var(--font-mono); font-size: 9px; color: var(--text-tertiary); }
+  .sep { width: 1px; align-self: stretch; background: var(--border-default); }
+  .title { font-size: 10px; letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-tertiary); font-weight: 600; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+  <div class="group">
+    <div>
+      <div class="title">Radius</div>
+      <div class="col">
+        <div class="box" style="border-radius:var(--radius-sm)"><span class="lab">sm</span></div>
+        <div class="box" style="border-radius:var(--radius-md)"><span class="lab">md</span></div>
+        <div class="box" style="border-radius:var(--radius-lg)"><span class="lab">lg</span></div>
+        <div class="box" style="border-radius:var(--radius-xl)"><span class="lab">xl</span></div>
+        <div class="box" style="border-radius:var(--radius-full)"><span class="lab">full</span></div>
+      </div>
+    </div>
+    <div class="sep"></div>
+    <div>
+      <div class="title">Elevation</div>
+      <div class="col">
+        <div class="box" style="border-radius:var(--radius-md);box-shadow:var(--shadow-xs);border:none"><span class="lab">xs</span></div>
+        <div class="box" style="border-radius:var(--radius-md);box-shadow:var(--shadow-sm);border:none"><span class="lab">sm</span></div>
+        <div class="box" style="border-radius:var(--radius-md);box-shadow:var(--shadow-md);border:none"><span class="lab">md</span></div>
+        <div class="box" style="border-radius:var(--radius-md);box-shadow:var(--shadow-lg);border:none"><span class="lab">lg</span></div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

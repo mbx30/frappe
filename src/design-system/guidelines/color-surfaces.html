@@ -1,0 +1,30 @@
+<!-- @dsCard group="Colors" viewport="700x150" name="Surfaces — Light & Dark" subtitle="Semantic background, surface & border tokens, both themes" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin: 0; font-family: var(--font-sans); padding: 20px; background: #d8d8e0; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .pane { border-radius: var(--radius-lg); padding: 16px; }
+  .panel-bg { background: var(--bg-base); border: 1px solid var(--border-default); }
+  .card { background: var(--surface-card); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 12px; box-shadow: var(--shadow-sm); margin-bottom: 10px; }
+  .t1 { color: var(--text-primary); font-weight: 600; font-size: 14px; }
+  .t2 { color: var(--text-secondary); font-size: 12px; margin-top: 3px; }
+  .lab { font-size: 10px; letter-spacing: var(--tracking-caps); text-transform: uppercase; font-weight: 600; color: var(--text-tertiary); margin-bottom: 8px; }
+</style>
+</head>
+<body>
+  <div class="pair">
+    <div class="pane panel-bg" data-theme="light">
+      <div class="lab">Light</div>
+      <div class="card"><div class="t1">Order #1042</div><div class="t2">Surface card on base canvas</div></div>
+    </div>
+    <div class="pane panel-bg" data-theme="dark">
+      <div class="lab">Dark</div>
+      <div class="card"><div class="t1">Order #1042</div><div class="t2">Surface card on base canvas</div></div>
+    </div>
+  </div>
+</body>
+</html>
