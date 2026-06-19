@@ -16,6 +16,21 @@ pub fn run() {
             let app_handle = app.handle();
             let app_dir: PathBuf = app_handle.path().app_data_dir().expect("failed to get app data dir");
             let database = Database::new(app_dir).expect("failed to initialize database");
+
+            // Verify database integrity on startup
+            let verification_result = database.verify_integrity();
+            if !verification_result.is_valid {
+                eprintln!("Database verification failed:");
+                for error in &verification_result.errors {
+                    eprintln!("  ERROR: {}", error);
+                }
+            }
+            if !verification_result.warnings.is_empty() {
+                for warning in &verification_result.warnings {
+                    eprintln!("  WARNING: {}", warning);
+                }
+            }
+
             app_handle.manage(database);
             if cfg!(debug_assertions) {
                 app_handle.plugin(
@@ -41,6 +56,9 @@ pub fn run() {
             commands::import_google_sheet,
             commands::import_notion_database,
             commands::preview_import,
+            commands::verify_database,
+            commands::get_business_info,
+            commands::save_business_info,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

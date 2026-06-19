@@ -52,3 +52,10 @@ export interface GridRow {
   __row_index: number
   [key: string]: unknown
 }
+
+export interface BusinessInfo {
+  business_name: string | null
+  industry: string | null
+  company_size: string | null
+  completed_onboarding: boolean
+}

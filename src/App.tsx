@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
-import type { Workbook, WorkbookData, SheetData } from './types'
+import type { Workbook, WorkbookData, SheetData, BusinessInfo } from './types'
 import WorkbookList from './components/WorkbookList'
 import Spreadsheet from './components/Spreadsheet'
 import Toolbar from './components/Toolbar'
 import CloudImportDialog from './components/CloudImportDialog'
+import Welcome from './components/Welcome'
+import BusinessOnboarding from './components/BusinessOnboarding'
 import './App.css'
 
 function App() {
@@ -14,6 +16,26 @@ function App() {
   const [activeWorkbook, setActiveWorkbook] = useState<WorkbookData | null>(null)
   const [activeSheetIdx, setActiveSheetIdx] = useState(0)
   const [showCloudImport, setShowCloudImport] = useState(false)
+  const [businessInfo, setBusinessInfo] = useState<BusinessInfo | null>(null)
+  const [onboardingStep, setOnboardingStep] = useState<'welcome' | 'business' | 'complete' | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+
+  const checkOnboarding = useCallback(async () => {
+    try {
+      const info = await invoke<BusinessInfo | null>('get_business_info')
+      setBusinessInfo(info)
+      if (!info?.completed_onboarding) {
+        setOnboardingStep('welcome')
+      } else {
+        setOnboardingStep('complete')
+      }
+    } catch (e) {
+      console.error('Failed to check onboarding:', e)
+      setOnboardingStep('welcome')
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
 
   const loadWorkbooks = useCallback(async () => {
     const list = await invoke<Workbook[]>('list_workbooks')
@@ -26,7 +48,15 @@ function App() {
     setActiveSheetIdx(0)
   }, [])
 
-  useEffect(() => { loadWorkbooks() }, [loadWorkbooks])
+  useEffect(() => {
+    checkOnboarding()
+  }, [checkOnboarding])
+
+  useEffect(() => {
+    if (onboardingStep === 'complete') {
+      loadWorkbooks()
+    }
+  }, [onboardingStep, loadWorkbooks])
 
   useEffect(() => {
     if (activeId) loadWorkbook(activeId)
@@ -103,6 +133,25 @@ function App() {
   const handleCloudImport = async (command: string, args: Record<string, unknown>) => {
     await invoke<SheetData>(command, args)
     if (activeWorkbook) loadWorkbook(activeWorkbook.workbook.id)
+  }
+
+  if (isLoading) {
+    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>Loading...</div>
+  }
+
+  if (onboardingStep === 'welcome') {
+    return (
+      <Welcome onImportComplete={() => setOnboardingStep('business')} />
+    )
+  }
+
+  if (onboardingStep === 'business') {
+    return (
+      <BusinessOnboarding onComplete={() => {
+        setOnboardingStep('complete')
+        checkOnboarding()
+      }} />
+    )
   }
 
   return (

@@ -2,8 +2,8 @@ use std::path::PathBuf;
 
 use tauri::State;
 
-use crate::db::Database;
-use crate::models::*;
+use crate::db::{Database, VerificationResult};
+use crate::models::{*, BusinessInfo};
 use crate::cloud_import;
 
 #[tauri::command]
@@ -119,4 +119,19 @@ pub fn preview_import(path: String) -> Result<crate::models::ImportResult, Strin
         }
         _ => Err("Unsupported file format. Use CSV or Excel files.".to_string()),
     }
+}
+
+#[tauri::command]
+pub fn verify_database(db: State<'_, Database>) -> VerificationResult {
+    db.verify_integrity()
+}
+
+#[tauri::command]
+pub fn get_business_info(db: State<'_, Database>) -> Result<Option<BusinessInfo>, String> {
+    db.get_business_info().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn save_business_info(db: State<'_, Database>, business_name: String, industry: String, company_size: String) -> Result<(), String> {
+    db.save_business_info(&business_name, &industry, &company_size).map_err(|e| e.to_string())
 }

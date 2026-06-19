@@ -1,0 +1,74 @@
+/* ============================================================
+   FRAPPE — TYPOGRAPHY TOKENS
+   Geist for UI, Geist Mono for numeric/tabular data (job #s,
+   quantities, prices). A print-shop MIS lives in numbers, so
+   tabular figures are first-class.
+   ============================================================ */
+
+:root {
+  /* Families */
+  --font-sans: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+
+  /* Type scale (px-based, 1.0 = 16px root). Compact, data-dense. */
+  --text-2xs:  11px;
+  --text-xs:   12px;
+  --text-sm:   13px;
+  --text-md:   14px;   /* base UI size */
+  --text-base: 15px;
+  --text-lg:   17px;
+  --text-xl:   20px;
+  --text-2xl:  24px;
+  --text-3xl:  30px;
+  --text-4xl:  38px;
+  --text-5xl:  48px;
+
+  /* Weights (Geist) */
+  --weight-regular:  400;
+  --weight-medium:   500;
+  --weight-semibold: 600;
+  --weight-bold:     700;
+
+  /* Line heights */
+  --leading-none:    1;
+  --leading-tight:   1.2;
+  --leading-snug:    1.35;
+  --leading-normal:  1.5;
+  --leading-relaxed: 1.65;
+
+  /* Letter spacing */
+  --tracking-tighter: -0.02em;
+  --tracking-tight:   -0.011em;
+  --tracking-normal:  0;
+  --tracking-wide:    0.02em;
+  --tracking-caps:    0.06em;  /* uppercase labels */
+
+  /* ---- Semantic text roles ---- */
+  --font-display:    var(--weight-bold) var(--text-4xl)/var(--leading-tight) var(--font-sans);
+  --font-h1:         var(--weight-semibold) var(--text-3xl)/var(--leading-tight) var(--font-sans);
+  --font-h2:         var(--weight-semibold) var(--text-2xl)/var(--leading-snug) var(--font-sans);
+  --font-h3:         var(--weight-semibold) var(--text-xl)/var(--leading-snug) var(--font-sans);
+  --font-title:      var(--weight-semibold) var(--text-lg)/var(--leading-snug) var(--font-sans);
+  --font-body:       var(--weight-regular) var(--text-md)/var(--leading-normal) var(--font-sans);
+  --font-body-strong: var(--weight-medium) var(--text-md)/var(--leading-normal) var(--font-sans);
+  --font-label:      var(--weight-medium) var(--text-sm)/var(--leading-snug) var(--font-sans);
+  --font-caption:    var(--weight-regular) var(--text-xs)/var(--leading-snug) var(--font-sans);
+  --font-mono-data:  var(--weight-medium) var(--text-md)/var(--leading-normal) var(--font-mono);
+}
+
+/* Document defaults */
+html {
+  font-family: var(--font-sans);
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "cv01", "ss01";
+}
+
+/* Numbers should always align in tables & money fields */
+.tabular,
+[data-tabular] {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}

@@ -56,3 +56,11 @@ pub struct ImportResult {
     pub columns: Vec<String>,
     pub sheet_name: String,
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct BusinessInfo {
+    pub business_name: Option<String>,
+    pub industry: Option<String>,
+    pub company_size: Option<String>,
+    pub completed_onboarding: bool,
+}
