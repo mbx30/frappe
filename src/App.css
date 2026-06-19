@@ -217,21 +217,21 @@
   color: var(--text);
 }
 
-.printy-grid {
+.frappe-grid {
   flex: 1;
   border: none !important;
 }
 
-.printy-grid .rdg-header-row {
+.frappe-grid .rdg-header-row {
   background: var(--bg-secondary);
   font-weight: 600;
 }
 
-.printy-grid .rdg-row {
+.frappe-grid .rdg-row {
   border-bottom: 1px solid var(--border-light);
 }
 
-.printy-grid .rdg-cell {
+.frappe-grid .rdg-cell {
   border-right: 1px solid var(--border-light);
   padding: 4px 8px;
 }

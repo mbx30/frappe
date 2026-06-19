@@ -11,7 +11,7 @@ pub struct Database {
 impl Database {
     pub fn new(app_dir: PathBuf) -> Result<Self> {
         std::fs::create_dir_all(&app_dir).ok();
-        let db_path = app_dir.join("printy.db");
+        let db_path = app_dir.join("frappe.db");
         let conn = Connection::open(db_path)?;
         conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
         let db = Database { conn: Mutex::new(conn) };

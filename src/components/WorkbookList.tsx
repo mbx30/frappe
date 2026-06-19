@@ -12,7 +12,7 @@ export default function WorkbookList({ workbooks, activeId, onSelect, onCreate, 
   return (
     <div className="sidebar">
       <div className="sidebar-header">
-        <h3>Printy</h3>
+        <h3>Frappe</h3>
         <button className="btn btn-sm" onClick={onCreate}>+ New</button>
       </div>
       <div className="sidebar-list">

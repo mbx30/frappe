@@ -146,7 +146,7 @@ function App() {
           </>
         ) : (
           <div className="empty-state">
-            <h2>Printy</h2>
+            <h2>Frappe</h2>
             <p>Create a new workbook or select one to get started.</p>
             <button className="btn btn-primary" onClick={handleCreate}>Create Workbook</button>
           </div>
