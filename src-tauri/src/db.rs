@@ -4,6 +4,13 @@ use std::sync::Mutex;
 
 use crate::models::*;
 
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct VerificationResult {
+    pub is_valid: bool,
+    pub errors: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
 pub struct Database {
     pub conn: Mutex<Connection>,
 }
@@ -267,5 +274,124 @@ impl Database {
             }
         }
         Ok(())
+    }
+
+    pub fn verify_integrity(&self) -> VerificationResult {
+        let conn = match self.conn.lock() {
+            Ok(c) => c,
+            Err(_) => {
+                return VerificationResult {
+                    is_valid: false,
+                    errors: vec!["Failed to acquire database lock".to_string()],
+                    warnings: vec![],
+                }
+            }
+        };
+
+        let mut result = VerificationResult {
+            is_valid: true,
+            errors: vec![],
+            warnings: vec![],
+        };
+
+        // Check foreign key constraint violations
+        if let Ok(count) = conn.query_row("SELECT COUNT(*) FROM pragma_foreign_key_check()", [], |row| row.get::<_, i64>(0)) {
+            if count > 0 {
+                result.is_valid = false;
+                result.errors.push(format!("Found {} foreign key constraint violations", count));
+            }
+        }
+
+        // Check for orphaned sheet_columns (columns referencing non-existent sheets)
+        if let Ok(count) = conn.query_row(
+            "SELECT COUNT(*) FROM sheet_columns WHERE sheet_id NOT IN (SELECT id FROM sheets)",
+            [],
+            |row| row.get::<_, i64>(0),
+        ) {
+            if count > 0 {
+                result.is_valid = false;
+                result.errors.push(format!("Found {} orphaned sheet_columns records", count));
+            }
+        }
+
+        // Check for orphaned cell_data (cells referencing non-existent sheets or columns)
+        if let Ok(count) = conn.query_row(
+            "SELECT COUNT(*) FROM cell_data WHERE sheet_id NOT IN (SELECT id FROM sheets)",
+            [],
+            |row| row.get::<_, i64>(0),
+        ) {
+            if count > 0 {
+                result.is_valid = false;
+                result.errors.push(format!("Found {} cell_data records with invalid sheet_id", count));
+            }
+        }
+
+        if let Ok(count) = conn.query_row(
+            "SELECT COUNT(*) FROM cell_data WHERE column_id NOT IN (SELECT id FROM sheet_columns)",
+            [],
+            |row| row.get::<_, i64>(0),
+        ) {
+            if count > 0 {
+                result.is_valid = false;
+                result.errors.push(format!("Found {} cell_data records with invalid column_id", count));
+            }
+        }
+
+        // Check for orphaned sheets (sheets referencing non-existent workbooks)
+        if let Ok(count) = conn.query_row(
+            "SELECT COUNT(*) FROM sheets WHERE workbook_id NOT IN (SELECT id FROM workbooks)",
+            [],
+            |row| row.get::<_, i64>(0),
+        ) {
+            if count > 0 {
+                result.is_valid = false;
+                result.errors.push(format!("Found {} orphaned sheets records", count));
+            }
+        }
+
+        // Verify required tables exist
+        let required_tables = vec!["workbooks", "sheets", "sheet_columns", "cell_data"];
+        for table_name in required_tables {
+            if let Ok(count) = conn.query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",
+                params![table_name],
+                |row| row.get::<_, i64>(0),
+            ) {
+                if count == 0 {
+                    result.is_valid = false;
+                    result.errors.push(format!("Required table '{}' does not exist", table_name));
+                }
+            }
+        }
+
+        // Verify required indexes exist
+        let required_indexes = vec!["idx_cell_data_sheet", "idx_cell_data_column"];
+        for index_name in required_indexes {
+            if let Ok(count) = conn.query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name=?1",
+                params![index_name],
+                |row| row.get::<_, i64>(0),
+            ) {
+                if count == 0 {
+                    result.warnings.push(format!("Expected index '{}' does not exist", index_name));
+                }
+            }
+        }
+
+        // Run PRAGMA integrity_check
+        if let Ok(mut stmt) = conn.prepare("PRAGMA integrity_check") {
+            if let Ok(mut rows) = stmt.query([]) {
+                while let Ok(Some(row)) = rows.next() {
+                    if let Ok(message) = row.get::<_, String>(0) {
+                        if message != "ok" {
+                            result.is_valid = false;
+                            result.errors.push(format!("Integrity check: {}", message));
+                        }
+                    }
+                }
+            }
+        }
+
+        result
     }
 }
