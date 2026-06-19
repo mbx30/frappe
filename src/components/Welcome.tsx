@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 import type { SheetData } from '../types'
+import { Button } from '../design-system'
 import './Welcome.css'
 
 interface WelcomeProps {
@@ -51,51 +52,61 @@ export default function Welcome({ onImportComplete }: WelcomeProps) {
           <p>Choose how you'd like to begin:</p>
 
           <div className="import-options">
-            <button
-              className="import-btn google-btn"
+            <Button
+              variant="secondary"
+              fullWidth
               onClick={handleGoogleSignIn}
               disabled={isLoading}
+              iconLeft={
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                  <path d="M10 0C4.48 0 0 4.48 0 10s4.48 10 10 10 10-4.48 10-10S15.52 0 10 0z" fill="currentColor"/>
+                </svg>
+              }
             >
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <path d="M10 0C4.48 0 0 4.48 0 10s4.48 10 10 10 10-4.48 10-10S15.52 0 10 0z" fill="currentColor"/>
-              </svg>
               Sign in with Google
-            </button>
+            </Button>
 
-            <button
-              className="import-btn notion-btn"
+            <Button
+              variant="secondary"
+              fullWidth
               onClick={handleNotionSignIn}
               disabled={isLoading}
+              iconLeft={
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                  <path d="M10 0C4.48 0 0 4.48 0 10s4.48 10 10 10 10-4.48 10-10S15.52 0 10 0z" fill="currentColor"/>
+                </svg>
+              }
             >
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <path d="M10 0C4.48 0 0 4.48 0 10s4.48 10 10 10 10-4.48 10-10S15.52 0 10 0z" fill="currentColor"/>
-              </svg>
               Sign in with Notion
-            </button>
+            </Button>
 
-            <button
-              className="import-btn file-btn"
+            <Button
+              variant="secondary"
+              fullWidth
               onClick={handleFileImport}
               disabled={isLoading}
+              iconLeft={
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="17 8 12 3 7 8"></polyline>
+                  <line x1="12" y1="3" x2="12" y2="15"></line>
+                </svg>
+              }
             >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                <polyline points="17 8 12 3 7 8"></polyline>
-                <line x1="12" y1="3" x2="12" y2="15"></line>
-              </svg>
               {isLoading ? 'Importing...' : 'Import from File'}
-            </button>
+            </Button>
           </div>
 
           <div className="divider">or</div>
 
-          <button
-            className="btn btn-primary"
+          <Button
+            variant="primary"
+            fullWidth
             onClick={() => invoke('create_workbook', { name: `Workbook 1` }).then(onImportComplete)}
             disabled={isLoading}
           >
             Start with Empty Workbook
-          </button>
+          </Button>
         </div>
       </div>
     </div>
