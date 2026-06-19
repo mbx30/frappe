@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { Button, Input, Select } from '../design-system'
 import './BusinessOnboarding.css'
 
 interface BusinessOnboardingProps {
@@ -45,7 +46,7 @@ export default function BusinessOnboarding({ onComplete }: BusinessOnboardingPro
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label htmlFor="businessName">Business Name</label>
-            <input
+            <Input
               id="businessName"
               type="text"
               value={businessName}
@@ -57,58 +58,62 @@ export default function BusinessOnboarding({ onComplete }: BusinessOnboardingPro
 
           <div className="form-group">
             <label htmlFor="industry">Industry</label>
-            <select
+            <Select
               id="industry"
               value={industry}
               onChange={(e) => setIndustry(e.target.value)}
               disabled={isLoading}
-            >
-              <option value="">Select an industry</option>
-              <option value="commercial">Commercial Printing</option>
-              <option value="packaging">Packaging</option>
-              <option value="promotional">Promotional Products</option>
-              <option value="signage">Signage & Graphics</option>
-              <option value="textile">Textile Printing</option>
-              <option value="direct_mail">Direct Mail</option>
-              <option value="wide_format">Wide Format</option>
-              <option value="other">Other</option>
-            </select>
+              options={[
+                { value: '', label: 'Select an industry' },
+                { value: 'commercial', label: 'Commercial Printing' },
+                { value: 'packaging', label: 'Packaging' },
+                { value: 'promotional', label: 'Promotional Products' },
+                { value: 'signage', label: 'Signage & Graphics' },
+                { value: 'textile', label: 'Textile Printing' },
+                { value: 'direct_mail', label: 'Direct Mail' },
+                { value: 'wide_format', label: 'Wide Format' },
+                { value: 'other', label: 'Other' },
+              ]}
+            />
           </div>
 
           <div className="form-group">
             <label htmlFor="companySize">Company Size</label>
-            <select
+            <Select
               id="companySize"
               value={companySize}
               onChange={(e) => setCompanySize(e.target.value)}
               disabled={isLoading}
-            >
-              <option value="">Select a size</option>
-              <option value="1">Just me (1 person)</option>
-              <option value="2-5">Small (2-5 people)</option>
-              <option value="6-20">Medium (6-20 people)</option>
-              <option value="20+">Large (20+ people)</option>
-            </select>
+              options={[
+                { value: '', label: 'Select a size' },
+                { value: '1', label: 'Just me (1 person)' },
+                { value: '2-5', label: 'Small (2-5 people)' },
+                { value: '6-20', label: 'Medium (6-20 people)' },
+                { value: '20+', label: 'Large (20+ people)' },
+              ]}
+            />
           </div>
 
           {error && <div className="error-message">{error}</div>}
 
           <div className="form-actions">
-            <button
+            <Button
+              variant="primary"
+              fullWidth
               type="submit"
-              className="btn btn-primary"
               disabled={isLoading}
             >
               {isLoading ? 'Saving...' : 'Get Started'}
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="secondary"
+              fullWidth
               type="button"
-              className="btn btn-secondary"
               onClick={handleSkip}
               disabled={isLoading}
             >
               Skip for now
-            </button>
+            </Button>
           </div>
         </form>
       </div>
