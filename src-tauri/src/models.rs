@@ -100,3 +100,38 @@ pub struct InvoiceData {
     pub invoice: Invoice,
     pub line_items: Vec<InvoiceLineItem>,
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Order {
+    pub id: i64,
+    pub order_number: String,
+    pub client_id: Option<i64>,
+    pub status: String, // prepress, production, delivery, completed
+    pub priority: String, // low, normal, high, urgent
+    pub due_date: String,
+    pub description: String,
+    pub artwork_notes: String,
+    pub artwork_url: Option<String>,
+    pub artwork_approved: bool,
+    pub deposit_requested: bool,
+    pub deposit_amount: f64,
+    pub total_value: f64,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct OrderStatusHistory {
+    pub id: i64,
+    pub order_id: i64,
+    pub previous_status: String,
+    pub new_status: String,
+    pub notes: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct OrderData {
+    pub order: Order,
+    pub status_history: Vec<OrderStatusHistory>,
+}

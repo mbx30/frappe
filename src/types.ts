@@ -92,3 +92,35 @@ export interface InvoiceData {
   invoice: Invoice
   line_items: InvoiceLineItem[]
 }
+
+export interface Order {
+  id: number
+  order_number: string
+  client_id: number | null
+  status: 'prepress' | 'production' | 'delivery' | 'completed'
+  priority: 'low' | 'normal' | 'high' | 'urgent'
+  due_date: string
+  description: string
+  artwork_notes: string
+  artwork_url: string | null
+  artwork_approved: boolean
+  deposit_requested: boolean
+  deposit_amount: number
+  total_value: number
+  created_at: string
+  updated_at: string
+}
+
+export interface OrderStatusHistory {
+  id: number
+  order_id: number
+  previous_status: string
+  new_status: string
+  notes: string
+  created_at: string
+}
+
+export interface OrderData {
+  order: Order
+  status_history: OrderStatusHistory[]
+}
