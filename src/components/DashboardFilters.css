@@ -1,0 +1,21 @@
+.filters-bar {
+  display: flex;
+  gap: var(--space-3);
+  margin-bottom: var(--space-6);
+  padding: var(--space-4);
+  background: var(--surface-card);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-default);
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.filters-bar input,
+.filters-bar select {
+  flex: 0 1 auto;
+  min-width: 200px;
+}
+
+.filters-bar button {
+  flex-shrink: 0;
+}
