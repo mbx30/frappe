@@ -69,6 +69,11 @@ pub fn run() {
             commands::get_order,
             commands::update_order_status,
             commands::update_order,
+            commands::create_estimate,
+            commands::list_estimates,
+            commands::get_estimate,
+            commands::add_estimate_line_item,
+            commands::update_estimate,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

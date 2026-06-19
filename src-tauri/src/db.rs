@@ -126,7 +126,37 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_orders_number ON orders(order_number);
             CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
             CREATE INDEX IF NOT EXISTS idx_orders_due_date ON orders(due_date);
-            CREATE INDEX IF NOT EXISTS idx_order_history ON order_status_history(order_id);"
+            CREATE INDEX IF NOT EXISTS idx_order_history ON order_status_history(order_id);
+            CREATE TABLE IF NOT EXISTS estimates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                estimate_number TEXT NOT NULL UNIQUE,
+                client_id INTEGER,
+                status TEXT NOT NULL DEFAULT 'draft',
+                valid_until TEXT NOT NULL,
+                subtotal REAL NOT NULL DEFAULT 0,
+                tax_rate REAL NOT NULL DEFAULT 0,
+                tax_amount REAL NOT NULL DEFAULT 0,
+                total REAL NOT NULL DEFAULT 0,
+                currency TEXT DEFAULT 'USD',
+                notes TEXT DEFAULT '',
+                artwork_requirements TEXT DEFAULT '',
+                converted_order_id INTEGER,
+                created_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now'))
+            );
+            CREATE TABLE IF NOT EXISTS estimate_line_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                estimate_id INTEGER NOT NULL REFERENCES estimates(id) ON DELETE CASCADE,
+                description TEXT NOT NULL,
+                category TEXT NOT NULL DEFAULT 'materials',
+                quantity REAL NOT NULL DEFAULT 1,
+                unit_price REAL NOT NULL DEFAULT 0,
+                sort_order INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE INDEX IF NOT EXISTS idx_estimates_number ON estimates(estimate_number);
+            CREATE INDEX IF NOT EXISTS idx_estimates_status ON estimates(status);
+            CREATE INDEX IF NOT EXISTS idx_estimates_valid_until ON estimates(valid_until);
+            CREATE INDEX IF NOT EXISTS idx_estimate_items ON estimate_line_items(estimate_id);"
         )?;
         Ok(())
     }
@@ -638,6 +668,134 @@ impl Database {
         conn.execute(
             "UPDATE orders SET priority = ?1, description = ?2, artwork_notes = ?3, artwork_approved = ?4, deposit_requested = ?5, deposit_amount = ?6, total_value = ?7, updated_at = datetime('now') WHERE id = ?8",
             params![priority, description, artwork_notes, artwork_approved as i32, deposit_requested as i32, deposit_amount, total_value, id],
+        )?;
+        Ok(())
+    }
+
+    pub fn create_estimate(&self, estimate_number: &str, valid_until: &str) -> Result<Estimate> {
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        conn.execute(
+            "INSERT INTO estimates (estimate_number, valid_until, status) VALUES (?1, ?2, 'draft')",
+            params![estimate_number, valid_until],
+        )?;
+        let id = conn.last_insert_rowid();
+        Ok(Estimate {
+            id,
+            estimate_number: estimate_number.to_string(),
+            client_id: None,
+            status: "draft".to_string(),
+            valid_until: valid_until.to_string(),
+            subtotal: 0.0,
+            tax_rate: 0.0,
+            tax_amount: 0.0,
+            total: 0.0,
+            currency: "USD".to_string(),
+            notes: String::new(),
+            artwork_requirements: String::new(),
+            converted_order_id: None,
+            created_at: chrono::Utc::now().to_rfc3339(),
+            updated_at: chrono::Utc::now().to_rfc3339(),
+        })
+    }
+
+    pub fn list_estimates(&self) -> Result<Vec<Estimate>> {
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let mut stmt = conn.prepare(
+            "SELECT id, estimate_number, client_id, status, valid_until, subtotal, tax_rate, tax_amount, total, currency, notes, artwork_requirements, converted_order_id, created_at, updated_at FROM estimates ORDER BY created_at DESC"
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(Estimate {
+                id: row.get(0)?,
+                estimate_number: row.get(1)?,
+                client_id: row.get(2)?,
+                status: row.get(3)?,
+                valid_until: row.get(4)?,
+                subtotal: row.get(5)?,
+                tax_rate: row.get(6)?,
+                tax_amount: row.get(7)?,
+                total: row.get(8)?,
+                currency: row.get(9)?,
+                notes: row.get(10)?,
+                artwork_requirements: row.get(11)?,
+                converted_order_id: row.get(12)?,
+                created_at: row.get(13)?,
+                updated_at: row.get(14)?,
+            })
+        })?;
+        rows.collect()
+    }
+
+    pub fn get_estimate_data(&self, estimate_id: i64) -> Result<EstimateData> {
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let mut stmt = conn.prepare(
+            "SELECT id, estimate_number, client_id, status, valid_until, subtotal, tax_rate, tax_amount, total, currency, notes, artwork_requirements, converted_order_id, created_at, updated_at FROM estimates WHERE id = ?1"
+        )?;
+        let estimate = stmt.query_row(params![estimate_id], |row| {
+            Ok(Estimate {
+                id: row.get(0)?,
+                estimate_number: row.get(1)?,
+                client_id: row.get(2)?,
+                status: row.get(3)?,
+                valid_until: row.get(4)?,
+                subtotal: row.get(5)?,
+                tax_rate: row.get(6)?,
+                tax_amount: row.get(7)?,
+                total: row.get(8)?,
+                currency: row.get(9)?,
+                notes: row.get(10)?,
+                artwork_requirements: row.get(11)?,
+                converted_order_id: row.get(12)?,
+                created_at: row.get(13)?,
+                updated_at: row.get(14)?,
+            })
+        })?;
+
+        let mut stmt = conn.prepare(
+            "SELECT id, estimate_id, description, category, quantity, unit_price, sort_order FROM estimate_line_items WHERE estimate_id = ?1 ORDER BY sort_order"
+        )?;
+        let line_items = stmt.query_map(params![estimate_id], |row| {
+            Ok(EstimateLineItem {
+                id: row.get(0)?,
+                estimate_id: row.get(1)?,
+                description: row.get(2)?,
+                category: row.get(3)?,
+                quantity: row.get(4)?,
+                unit_price: row.get(5)?,
+                sort_order: row.get(6)?,
+            })
+        })?.collect::<Result<Vec<_>>>()?;
+
+        Ok(EstimateData { estimate, line_items })
+    }
+
+    pub fn add_estimate_line_item(&self, estimate_id: i64, description: &str, category: &str, quantity: f64, unit_price: f64) -> Result<EstimateLineItem> {
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let sort_order: i64 = conn.query_row(
+            "SELECT COALESCE(MAX(sort_order), -1) FROM estimate_line_items WHERE estimate_id = ?1",
+            params![estimate_id],
+            |row| row.get(0),
+        )?;
+        conn.execute(
+            "INSERT INTO estimate_line_items (estimate_id, description, category, quantity, unit_price, sort_order) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![estimate_id, description, category, quantity, unit_price, sort_order + 1],
+        )?;
+        let id = conn.last_insert_rowid();
+        Ok(EstimateLineItem {
+            id,
+            estimate_id,
+            description: description.to_string(),
+            category: category.to_string(),
+            quantity,
+            unit_price,
+            sort_order: sort_order + 1,
+        })
+    }
+
+    pub fn update_estimate(&self, id: i64, status: &str, subtotal: f64, tax_rate: f64, tax_amount: f64, total: f64, notes: &str, artwork_requirements: &str) -> Result<()> {
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        conn.execute(
+            "UPDATE estimates SET status = ?1, subtotal = ?2, tax_rate = ?3, tax_amount = ?4, total = ?5, notes = ?6, artwork_requirements = ?7, updated_at = datetime('now') WHERE id = ?8",
+            params![status, subtotal, tax_rate, tax_amount, total, notes, artwork_requirements, id],
         )?;
         Ok(())
     }

@@ -185,3 +185,28 @@ pub fn update_order_status(db: State<'_, Database>, order_id: i64, new_status: S
 pub fn update_order(db: State<'_, Database>, id: i64, priority: String, description: String, artwork_notes: String, artwork_approved: bool, deposit_requested: bool, deposit_amount: f64, total_value: f64) -> Result<(), String> {
     db.update_order(id, &priority, &description, &artwork_notes, artwork_approved, deposit_requested, deposit_amount, total_value).map_err(|e| e.to_string())
 }
+
+#[tauri::command]
+pub fn create_estimate(db: State<'_, Database>, estimate_number: String, valid_until: String) -> Result<Estimate, String> {
+    db.create_estimate(&estimate_number, &valid_until).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn list_estimates(db: State<'_, Database>) -> Result<Vec<Estimate>, String> {
+    db.list_estimates().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_estimate(db: State<'_, Database>, id: i64) -> Result<EstimateData, String> {
+    db.get_estimate_data(id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn add_estimate_line_item(db: State<'_, Database>, estimate_id: i64, description: String, category: String, quantity: f64, unit_price: f64) -> Result<EstimateLineItem, String> {
+    db.add_estimate_line_item(estimate_id, &description, &category, quantity, unit_price).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn update_estimate(db: State<'_, Database>, id: i64, status: String, subtotal: f64, tax_rate: f64, tax_amount: f64, total: f64, notes: String, artwork_requirements: String) -> Result<(), String> {
+    db.update_estimate(id, &status, subtotal, tax_rate, tax_amount, total, &notes, &artwork_requirements).map_err(|e| e.to_string())
+}

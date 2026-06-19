@@ -124,3 +124,36 @@ export interface OrderData {
   order: Order
   status_history: OrderStatusHistory[]
 }
+
+export interface EstimateLineItem {
+  id: number
+  estimate_id: number
+  description: string
+  category: 'labor' | 'materials' | 'inventory' | 'finishing'
+  quantity: number
+  unit_price: number
+  sort_order: number
+}
+
+export interface Estimate {
+  id: number
+  estimate_number: string
+  client_id: number | null
+  status: 'draft' | 'sent' | 'approved' | 'rejected' | 'converted'
+  valid_until: string
+  subtotal: number
+  tax_rate: number
+  tax_amount: number
+  total: number
+  currency: string
+  notes: string
+  artwork_requirements: string
+  converted_order_id: number | null
+  created_at: string
+  updated_at: string
+}
+
+export interface EstimateData {
+  estimate: Estimate
+  line_items: EstimateLineItem[]
+}

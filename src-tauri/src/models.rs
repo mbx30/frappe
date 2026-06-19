@@ -135,3 +135,39 @@ pub struct OrderData {
     pub order: Order,
     pub status_history: Vec<OrderStatusHistory>,
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct EstimateLineItem {
+    pub id: i64,
+    pub estimate_id: i64,
+    pub description: String,
+    pub category: String, // labor, materials, inventory, finishing
+    pub quantity: f64,
+    pub unit_price: f64,
+    pub sort_order: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Estimate {
+    pub id: i64,
+    pub estimate_number: String,
+    pub client_id: Option<i64>,
+    pub status: String, // draft, sent, approved, rejected, converted
+    pub valid_until: String,
+    pub subtotal: f64,
+    pub tax_rate: f64,
+    pub tax_amount: f64,
+    pub total: f64,
+    pub currency: String,
+    pub notes: String,
+    pub artwork_requirements: String,
+    pub converted_order_id: Option<i64>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct EstimateData {
+    pub estimate: Estimate,
+    pub line_items: Vec<EstimateLineItem>,
+}
