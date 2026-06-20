@@ -192,3 +192,34 @@ export interface InventoryAlert {
   is_acknowledged: boolean
   created_at: string
 }
+
+export interface Client {
+  id: number
+  name: string
+  company: string
+  email: string
+  phone: string
+  address: string
+  tags: string
+  status: 'active' | 'inactive'
+  notes: string
+  last_contacted: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ArtApproval {
+  id: number
+  order_id: number
+  version: number
+  file_path: string
+  status: 'pending' | 'approved' | 'changes_requested'
+  customer_notes: string
+  staff_notes: string
+  secure_token: string
+  follow_up_hours: number
+  follow_up_count: number
+  submitted_at: string
+  responded_at: string | null
+  created_at: string
+}

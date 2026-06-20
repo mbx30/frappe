@@ -80,6 +80,15 @@ pub fn run() {
             commands::adjust_inventory,
             commands::get_low_stock_alerts,
             commands::acknowledge_alert,
+            commands::create_client,
+            commands::list_clients,
+            commands::get_client,
+            commands::update_client,
+            commands::delete_client,
+            commands::create_art_approval,
+            commands::get_art_approvals_for_order,
+            commands::respond_to_art_approval,
+            commands::increment_art_approval_follow_up,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

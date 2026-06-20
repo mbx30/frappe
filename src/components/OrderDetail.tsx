@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { Button, Input, Select, Card, Checkbox } from '../design-system'
 import type { Order, OrderData } from '../types'
+import ArtApprovalPanel from './ArtApprovalPanel'
 import './OrderDetail.css'
 
 interface OrderDetailProps {
@@ -393,6 +394,13 @@ export default function OrderDetail({ orderId, onSave, onCancel }: OrderDetailPr
               )}
             </div>
           </Card>
+
+          {/* Art Approvals */}
+          {order.id !== 0 && (
+            <Card>
+              <ArtApprovalPanel orderId={order.id} orderNumber={order.order_number} />
+            </Card>
+          )}
 
           {/* Status history */}
           <Card>
