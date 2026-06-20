@@ -144,7 +144,13 @@ pub fn save_business_info(db: State<'_, Database>, business_name: String, indust
 
 #[tauri::command]
 pub fn create_invoice(db: State<'_, Database>, invoice_number: String, due_date: String, payment_terms: String) -> Result<Invoice, String> {
-    db.create_invoice(&invoice_number, &due_date, &payment_terms).map_err(|e| e.to_string())
+    db.create_invoice(&invoice_number, &due_date, &payment_terms).map_err(|e| {
+        if matches!(e, rusqlite::Error::QueryReturnedNoRows) {
+            format!("Invoice number '{}' is already in use. Choose a different number.", invoice_number)
+        } else {
+            e.to_string()
+        }
+    })
 }
 
 #[tauri::command]
@@ -209,7 +215,13 @@ pub fn update_order(db: State<'_, Database>, id: i64, priority: String, descript
 
 #[tauri::command]
 pub fn create_estimate(db: State<'_, Database>, estimate_number: String, valid_until: String) -> Result<Estimate, String> {
-    db.create_estimate(&estimate_number, &valid_until).map_err(|e| e.to_string())
+    db.create_estimate(&estimate_number, &valid_until).map_err(|e| {
+        if matches!(e, rusqlite::Error::QueryReturnedNoRows) {
+            format!("Estimate number '{}' is already in use. Choose a different number.", estimate_number)
+        } else {
+            e.to_string()
+        }
+    })
 }
 
 #[tauri::command]

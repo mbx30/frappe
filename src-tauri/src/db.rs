@@ -550,6 +550,14 @@ impl Database {
             return Err(rusqlite::Error::InvalidQuery);
         }
         let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+
+        // Check if invoice number already exists
+        let mut stmt = conn.prepare("SELECT COUNT(*) FROM invoices WHERE invoice_number = ?1")?;
+        let count: u32 = stmt.query_row(params![invoice_number], |row| row.get(0))?;
+        if count > 0 {
+            return Err(rusqlite::Error::QueryReturnedNoRows);
+        }
+
         let issue_date = chrono::Utc::now().format("%Y-%m-%d").to_string();
         conn.execute(
             "INSERT INTO invoices (invoice_number, issue_date, due_date, payment_terms, status)
@@ -838,6 +846,14 @@ impl Database {
             return Err(rusqlite::Error::InvalidQuery);
         }
         let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+
+        // Check if estimate number already exists
+        let mut stmt = conn.prepare("SELECT COUNT(*) FROM estimates WHERE estimate_number = ?1")?;
+        let count: u32 = stmt.query_row(params![estimate_number], |row| row.get(0))?;
+        if count > 0 {
+            return Err(rusqlite::Error::QueryReturnedNoRows);
+        }
+
         conn.execute(
             "INSERT INTO estimates (estimate_number, valid_until, status) VALUES (?1, ?2, 'draft')",
             params![estimate_number, valid_until],
