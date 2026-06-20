@@ -264,3 +264,51 @@ export interface ArtApproval {
   responded_at: string | null
   created_at: string
 }
+
+export interface PdfSummary {
+  id: number
+  file_path: string
+  file_name: string
+  page_count: number
+  pdf_version: string
+  file_size_bytes: number
+  title: string
+  creator: string
+  producer: string
+  creation_date: string
+  is_encrypted: boolean
+}
+
+export interface FontFinding {
+  font_name: string
+  font_type: string
+  is_embedded: boolean
+  is_subsetted: boolean
+  pages: number[]
+  severity: string
+  message: string
+}
+
+export interface PageBoxFinding {
+  page: number
+  box_type: string
+  x: number
+  y: number
+  w: number
+  h: number
+  severity: string
+  message: string
+}
+
+export interface ImageResolutionFinding {
+  page: number
+  image_name: string
+  pixel_width: number
+  pixel_height: number
+  rendered_width_pts: number
+  rendered_height_pts: number
+  effective_dpi: number
+  color_space: string
+  severity: string
+  message: string
+}

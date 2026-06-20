@@ -1,10 +1,16 @@
 use std::path::PathBuf;
 
+use std::io::{Read, BufReader};
+use lopdf::Object;
 use tauri::State;
 
+use crate::cloud_import;
 use crate::db::{Database, VerificationResult};
 use crate::models::{*, BusinessInfo};
-use crate::cloud_import;
+use crate::pdf::engine::PdfEngine;
+use crate::pdf::boxes::PageBoxFinding;
+use crate::pdf::fonts::FontFinding;
+use crate::pdf::images::ImageResolutionFinding;
 
 #[tauri::command]
 pub fn create_workbook(db: State<'_, Database>, name: String) -> Result<Workbook, String> {
@@ -389,4 +395,170 @@ pub fn list_department_notes(db: State<'_, Database>, order_id: i64) -> Result<V
 #[tauri::command]
 pub fn delete_department_note(db: State<'_, Database>, id: i64) -> Result<(), String> {
     db.delete_department_note(id).map_err(|e| e.to_string())
+}
+
+fn read_pdf_version(path: &str) -> String {
+    if let Ok(file) = std::fs::File::open(path) {
+        let mut reader = BufReader::new(file);
+        let mut header = [0u8; 100];
+        if reader.read(&mut header).is_ok() {
+            let s = String::from_utf8_lossy(&header);
+            for line in s.lines() {
+                let trimmed = line.trim();
+                if trimmed.starts_with("%PDF-") {
+                    return trimmed[5..].trim().to_string();
+                }
+            }
+        }
+    }
+    "unknown".to_string()
+}
+
+fn get_info_string(lopdf_doc: &lopdf::Document, key: &[u8]) -> String {
+    (|| -> Option<String> {
+        let info = lopdf_doc.trailer.get(b"Info").ok()?;
+        let (_range, info_obj) = lopdf_doc.dereference(info).ok()?;
+        let dict = info_obj.as_dict().ok()?;
+        let val = dict.get(key).ok()?;
+        let (_r, val_obj) = lopdf_doc.dereference(val).ok()?;
+        match val_obj {
+            Object::String(s, _) => Some(String::from_utf8_lossy(s).to_string()),
+            Object::Name(n) => Some(String::from_utf8_lossy(n).to_string()),
+            _ => None,
+        }
+    })()
+    .unwrap_or_default()
+}
+
+#[tauri::command]
+pub fn open_pdf(engine: State<'_, PdfEngine>, path: String) -> Result<PdfSummary, String> {
+    let path_buf = PathBuf::from(&path);
+    let file_name = path_buf
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let file_size_bytes = std::fs::metadata(&path)
+        .map(|m| m.len())
+        .unwrap_or(0);
+
+    let doc = engine.open_document(&path)?;
+    let page_count = doc.pages().len() as usize;
+
+    let pdf_version = read_pdf_version(&path);
+
+    let lopdf_doc =
+        lopdf::Document::load(&path).map_err(|e| format!("Failed to parse PDF metadata: {}", e))?;
+
+    let is_encrypted = lopdf_doc
+        .trailer
+        .get(b"Encrypt")
+        .map(|o| !matches!(o, Object::Null))
+        .unwrap_or(false);
+
+    let title = get_info_string(&lopdf_doc, b"Title");
+    let creator = get_info_string(&lopdf_doc, b"Creator");
+    let producer = get_info_string(&lopdf_doc, b"Producer");
+    let creation_date = get_info_string(&lopdf_doc, b"CreationDate");
+
+    Ok(PdfSummary {
+        id: 0,
+        file_path: path.clone(),
+        file_name,
+        page_count,
+        pdf_version,
+        file_size_bytes,
+        title,
+        creator,
+        producer,
+        creation_date,
+        is_encrypted,
+    })
+}
+
+#[tauri::command]
+pub fn save_pdf_job(db: State<'_, Database>, summary: PdfSummary) -> Result<i64, String> {
+    db.save_pdf_job(&summary).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn list_pdf_jobs(db: State<'_, Database>) -> Result<Vec<PdfSummary>, String> {
+    db.list_pdf_jobs().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_pdf_job(db: State<'_, Database>, id: i64) -> Result<(), String> {
+    db.delete_pdf_job(id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn render_page_thumbnail(engine: State<'_, PdfEngine>, path: String, page_index: usize, width_px: Option<u32>) -> Result<String, String> {
+    use image::RgbaImage;
+    let doc = engine.open_document(&path)?;
+    let idx: i32 = page_index.try_into().map_err(|_| format!("Page index too large: {page_index}"))?;
+    let page = doc.pages().get(idx).map_err(|e| format!("Page {page_index} not found: {e}"))?;
+    let width: i32 = width_px.unwrap_or(120) as i32;
+    let config = pdfium_render::prelude::PdfRenderConfig::new().set_target_width(width);
+    let bitmap = page.render_with_config(&config).map_err(|e| format!("Render error: {}", e))?;
+    let temp_dir = std::env::temp_dir().join("frappe_pdf");
+    std::fs::create_dir_all(&temp_dir).map_err(|e| format!("Temp dir error: {}", e))?;
+    let out_path = temp_dir.join(format!("thumb_{page_index}.png"));
+    let pw = bitmap.width() as u32;
+    let ph = bitmap.height() as u32;
+    let bytes = bitmap.as_raw_bytes();
+    let mut img = RgbaImage::new(pw, ph);
+    for y in 0..ph {
+        for x in 0..pw {
+            let i = ((y * pw + x) * 4) as usize;
+            img.put_pixel(x, y, image::Rgba([bytes[i + 2], bytes[i + 1], bytes[i], bytes[i + 3]]));
+        }
+    }
+    img.save(&out_path).map_err(|e| format!("Save error: {}", e))?;
+    Ok(out_path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub fn render_page(engine: State<'_, PdfEngine>, path: String, page_index: usize, dpi: Option<f32>) -> Result<String, String> {
+    use image::RgbaImage;
+    use pdfium_render::prelude::PdfRenderConfig;
+    let doc = engine.open_document(&path)?;
+    let idx: i32 = page_index.try_into().map_err(|_| format!("Page index too large: {page_index}"))?;
+    let page = doc.pages().get(idx).map_err(|e| format!("Page {page_index} not found: {e}"))?;
+    let dpi_val = dpi.unwrap_or(144.0) as f64;
+    let page_width = page.width().value as f64;
+    let px_width = (page_width * dpi_val / 72.0) as i32;
+    let config = PdfRenderConfig::new().set_target_width(px_width);
+    let bitmap = page.render_with_config(&config).map_err(|e| format!("Render error: {}", e))?;
+    let temp_dir = std::env::temp_dir().join("frappe_pdf");
+    std::fs::create_dir_all(&temp_dir).map_err(|e| format!("Temp dir error: {}", e))?;
+    let out_path = temp_dir.join(format!("page_{page_index}.png"));
+    let pw = bitmap.width() as u32;
+    let ph = bitmap.height() as u32;
+    let bytes = bitmap.as_raw_bytes();
+    let mut img = RgbaImage::new(pw, ph);
+    for y in 0..ph {
+        for x in 0..pw {
+            let i = ((y * pw + x) * 4) as usize;
+            img.put_pixel(x, y, image::Rgba([bytes[i + 2], bytes[i + 1], bytes[i], bytes[i + 3]]));
+        }
+    }
+    img.save(&out_path).map_err(|e| format!("Save error: {}", e))?;
+    Ok(out_path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub fn check_fonts(path: String) -> Result<Vec<FontFinding>, String> {
+    let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
+    Ok(crate::pdf::fonts::collect_fonts(&doc))
+}
+
+#[tauri::command]
+pub fn check_page_boxes(path: String) -> Result<Vec<PageBoxFinding>, String> {
+    let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
+    Ok(crate::pdf::boxes::check_page_boxes(&doc))
+}
+
+#[tauri::command]
+pub fn check_image_resolution(path: String) -> Result<Vec<ImageResolutionFinding>, String> {
+    let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
+    Ok(crate::pdf::images::check_image_resolution(&doc))
 }

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
-import type { Workbook, WorkbookData, SheetData, Client } from '../types'
+import type { Workbook, WorkbookData, SheetData, Client, PdfSummary } from '../types'
 import WorkbookList from './WorkbookList'
 import Spreadsheet from './Spreadsheet'
 import Toolbar from './Toolbar'
@@ -18,6 +18,7 @@ import ClientList from './ClientList'
 import ClientForm from './ClientForm'
 import POSView from './POSView'
 import QBSyncPanel from './QBSyncPanel'
+import PDFView from './PDFView'
 import './ManagementView.css'
 
 type Section =
@@ -30,6 +31,7 @@ type Section =
   | 'clients'
   | 'pos'
   | 'qb'
+  | 'pdf'
 
 const NAV_ITEMS: { id: Section; label: string; icon: string }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: '⊞' },
@@ -41,6 +43,7 @@ const NAV_ITEMS: { id: Section; label: string; icon: string }[] = [
   { id: 'clients', label: 'Clients', icon: '👥' },
   { id: 'pos', label: 'Point of Sale', icon: '$' },
   { id: 'qb', label: 'QuickBooks', icon: '⚡' },
+  { id: 'pdf', label: 'PDF Tools', icon: '📄' },
 ]
 
 export default function ManagementView() {
@@ -65,6 +68,10 @@ export default function ManagementView() {
   // Client state
   const [editingClient, setEditingClient] = useState<Client | null | undefined>(undefined)
   const [importError, setImportError] = useState<string | null>(null)
+
+  // PDF state
+  const [pdfSummary, setPdfSummary] = useState<PdfSummary | null>(null)
+  const [pdfJobs, setPdfJobs] = useState<PdfSummary[]>([])
 
   const loadWorkbooks = useCallback(async () => {
     const list = await invoke<Workbook[]>('list_workbooks')
@@ -268,6 +275,47 @@ export default function ManagementView() {
 
       case 'qb':
         return <QBSyncPanel />
+
+      case 'pdf':
+        return (
+          <PDFView
+            summary={pdfSummary}
+            jobs={pdfJobs}
+            onOpenFile={async () => {
+              const filePath = await open({ filters: [{ name: 'PDF', extensions: ['pdf'] }], multiple: false })
+              if (!filePath) return
+              try {
+                const summary = await invoke<PdfSummary>('open_pdf', { path: filePath })
+                setPdfSummary(summary)
+                const jobs = await invoke<PdfSummary[]>('list_pdf_jobs')
+                setPdfJobs(jobs)
+              } catch (e) {
+                setImportError(`Failed to open PDF: ${e}`)
+              }
+            }}
+            onSaveJob={async () => {
+              if (!pdfSummary) return
+              await invoke('save_pdf_job', { summary: pdfSummary })
+              setPdfJobs(await invoke<PdfSummary[]>('list_pdf_jobs'))
+            }}
+            onDeleteJob={async (id: number) => {
+              await invoke('delete_pdf_job', { id })
+              setPdfJobs(await invoke<PdfSummary[]>('list_pdf_jobs'))
+            }}
+            onLoadJob={async (id: number) => {
+              const job = pdfJobs.find(j => j.id === id)
+              if (!job) return
+              try {
+                const summary = await invoke<PdfSummary>('open_pdf', { path: job.file_path })
+                setPdfSummary(summary)
+              } catch (e) {
+                setImportError(`Failed to re-open PDF: ${e}`)
+              }
+            }}
+            error={importError}
+            onClearError={() => setImportError(null)}
+          />
+        )
 
       case 'clients':
         if (editingClient !== undefined) {

@@ -269,7 +269,21 @@ impl Database {
                 department TEXT NOT NULL DEFAULT 'general',
                 created_at TEXT DEFAULT (datetime('now'))
             );
-            CREATE INDEX IF NOT EXISTS idx_dept_notes_order ON department_notes(order_id);"
+            CREATE INDEX IF NOT EXISTS idx_dept_notes_order ON department_notes(order_id);
+            CREATE TABLE IF NOT EXISTS pdf_jobs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                file_path TEXT NOT NULL,
+                file_name TEXT NOT NULL,
+                page_count INTEGER NOT NULL,
+                pdf_version TEXT NOT NULL,
+                file_size_bytes INTEGER NOT NULL,
+                title TEXT NOT NULL DEFAULT '',
+                creator TEXT NOT NULL DEFAULT '',
+                producer TEXT NOT NULL DEFAULT '',
+                is_encrypted INTEGER NOT NULL DEFAULT 0,
+                creation_date TEXT NOT NULL DEFAULT '',
+                opened_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );"
         )?;
         // Migration: add new columns to existing tables (ignored if already present)
         let _ = conn.execute("ALTER TABLE orders ADD COLUMN print_type TEXT DEFAULT ''", []);
@@ -1618,6 +1632,46 @@ impl Database {
     pub fn delete_department_note(&self, id: i64) -> Result<()> {
         let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute("DELETE FROM department_notes WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    // ── PDF Jobs ──────────────────────────────────────────────────────────────
+
+    pub fn save_pdf_job(&self, summary: &PdfSummary) -> Result<i64> {
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        conn.execute(
+            "INSERT INTO pdf_jobs (file_path, file_name, page_count, pdf_version, file_size_bytes, title, creator, producer, is_encrypted, creation_date) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![summary.file_path, summary.file_name, summary.page_count as i64, summary.pdf_version, summary.file_size_bytes as i64, summary.title, summary.creator, summary.producer, summary.is_encrypted as i32, summary.creation_date],
+        )?;
+        Ok(conn.last_insert_rowid())
+    }
+
+    pub fn list_pdf_jobs(&self) -> Result<Vec<PdfSummary>> {
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let mut stmt = conn.prepare(
+            "SELECT id, file_path, file_name, page_count, pdf_version, file_size_bytes, title, creator, producer, is_encrypted, creation_date, opened_at FROM pdf_jobs ORDER BY opened_at DESC LIMIT 20"
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(PdfSummary {
+                id: row.get(0)?,
+                file_path: row.get(1)?,
+                file_name: row.get(2)?,
+                page_count: row.get::<_, i64>(3)? as usize,
+                pdf_version: row.get(4)?,
+                file_size_bytes: row.get::<_, i64>(5)? as u64,
+                title: row.get(6)?,
+                creator: row.get(7)?,
+                producer: row.get(8)?,
+                is_encrypted: row.get::<_, i32>(9)? != 0,
+                creation_date: row.get(10)?,
+            })
+        })?;
+        rows.collect()
+    }
+
+    pub fn delete_pdf_job(&self, id: i64) -> Result<()> {
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        conn.execute("DELETE FROM pdf_jobs WHERE id = ?1", params![id])?;
         Ok(())
     }
 }

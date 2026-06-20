@@ -35,6 +35,7 @@
     ],
     "android": {
       "debugApplicationIdSuffix": ".debug"
-    }
+    },
+    "resources": ["resources/pdfium.dll"]
   }
 }

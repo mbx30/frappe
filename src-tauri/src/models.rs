@@ -1,6 +1,21 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PdfSummary {
+    pub id: i64,
+    pub file_path: String,
+    pub file_name: String,
+    pub page_count: usize,
+    pub pdf_version: String,
+    pub file_size_bytes: u64,
+    pub title: String,
+    pub creator: String,
+    pub producer: String,
+    pub creation_date: String,
+    pub is_encrypted: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Workbook {
     pub id: i64,
     pub name: String,

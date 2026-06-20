@@ -3,7 +3,9 @@ mod commands;
 mod db;
 mod import;
 mod models;
+mod pdf;
 
+use crate::pdf::engine::PdfEngine;
 use db::Database;
 use std::path::PathBuf;
 use tauri::Manager;
@@ -15,7 +17,10 @@ pub fn run() {
         .setup(|app| {
             let app_handle = app.handle();
             let app_dir: PathBuf = app_handle.path().app_data_dir().expect("failed to get app data dir");
-            let database = Database::new(app_dir).expect("failed to initialize database");
+            let database = Database::new(app_dir.clone()).expect("failed to initialize database");
+
+            let pdf_engine = PdfEngine::init().expect("failed to initialize PDF engine");
+            app_handle.manage(pdf_engine);
 
             // Verify database integrity on startup
             let verification_result = database.verify_integrity();
@@ -103,6 +108,15 @@ pub fn run() {
             commands::add_department_note,
             commands::list_department_notes,
             commands::delete_department_note,
+            commands::open_pdf,
+            commands::save_pdf_job,
+            commands::list_pdf_jobs,
+            commands::delete_pdf_job,
+            commands::render_page_thumbnail,
+            commands::render_page,
+            commands::check_fonts,
+            commands::check_page_boxes,
+            commands::check_image_resolution,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
