@@ -564,6 +564,96 @@ pub fn render_page(engine: State<'_, PdfEngine>, path: String, page_index: usize
     Ok(out_path.to_string_lossy().to_string())
 }
 
+#[derive(serde::Serialize)]
+pub struct PageDimensions {
+    pub width_pts: f64,
+    pub height_pts: f64,
+    pub width_mm: f64,
+    pub height_mm: f64,
+}
+
+#[tauri::command]
+pub fn render_page_with_overprint(engine: State<'_, PdfEngine>, path: String, page_index: usize, dpi: Option<f32>) -> Result<String, String> {
+    use image::RgbaImage;
+    use pdfium_render::prelude::PdfRenderConfig;
+    let doc = engine.open_document(&path)?;
+    let idx: i32 = page_index.try_into().map_err(|_| format!("Page index too large: {page_index}"))?;
+    let page = doc.pages().get(idx).map_err(|e| format!("Page {page_index} not found: {e}"))?;
+    let dpi_val = dpi.unwrap_or(144.0) as f64;
+    let page_width = page.width().value as f64;
+    let px_width = (page_width * dpi_val / 72.0) as i32;
+    let config = PdfRenderConfig::new().set_target_width(px_width).use_print_quality(true);
+    let bitmap = page.render_with_config(&config).map_err(|e| format!("Render error: {}", e))?;
+    let temp_dir = std::env::temp_dir().join("frappe_pdf");
+    std::fs::create_dir_all(&temp_dir).map_err(|e| format!("Temp dir error: {}", e))?;
+    let out_path = temp_dir.join(format!("page_{page_index}_overprint.png"));
+    let pw = bitmap.width() as u32;
+    let ph = bitmap.height() as u32;
+    let bytes = bitmap.as_raw_bytes();
+    let mut img = RgbaImage::new(pw, ph);
+    for y in 0..ph {
+        for x in 0..pw {
+            let i = ((y * pw + x) * 4) as usize;
+            img.put_pixel(x, y, image::Rgba([bytes[i + 2], bytes[i + 1], bytes[i], bytes[i + 3]]));
+        }
+    }
+    img.save(&out_path).map_err(|e| format!("Save error: {}", e))?;
+    Ok(out_path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub fn get_page_dimensions(engine: State<'_, PdfEngine>, path: String, page_index: usize) -> Result<PageDimensions, String> {
+    let doc = engine.open_document(&path)?;
+    let idx: i32 = page_index.try_into().map_err(|_| format!("Page index too large: {page_index}"))?;
+    let page = doc.pages().get(idx).map_err(|e| format!("Page {page_index} not found: {e}"))?;
+    let w = page.width().value as f64;
+    let h = page.height().value as f64;
+    Ok(PageDimensions {
+        width_pts: w,
+        height_pts: h,
+        width_mm: w * 0.3528,
+        height_mm: h * 0.3528,
+    })
+}
+
+#[tauri::command]
+pub fn extract_pages(path: String, indices: Vec<usize>, output_path: String) -> Result<(), String> {
+    let mut doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
+    let pages = doc.get_pages();
+    let all_page_numbers: Vec<u32> = pages.keys().copied().collect();
+    let to_keep: std::collections::HashSet<u32> = indices.iter().filter_map(|i| all_page_numbers.get(*i)).copied().collect();
+    let to_remove: Vec<u32> = all_page_numbers.iter().filter(|pn| !to_keep.contains(pn)).copied().collect();
+    doc.delete_pages(&to_remove);
+    doc.save(&output_path).map_err(|e| format!("Failed to save: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_pages(path: String, indices: Vec<usize>, output_path: String) -> Result<(), String> {
+    let mut doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
+    let pages = doc.get_pages();
+    let all_page_numbers: Vec<u32> = pages.keys().copied().collect();
+    let to_remove: Vec<u32> = indices.iter().filter_map(|i| all_page_numbers.get(*i)).copied().collect();
+    doc.delete_pages(&to_remove);
+    doc.save(&output_path).map_err(|e| format!("Failed to save: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn rotate_page(path: String, page_index: usize, degrees: i64, output_path: String) -> Result<(), String> {
+    let mut doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
+    let pages = doc.get_pages();
+    let obj_id = match pages.get(&(page_index as u32)) {
+        Some(id) => *id,
+        None => return Err(format!("Page {} not found", page_index)),
+    };
+    if let Ok(page) = doc.get_dictionary_mut(obj_id) {
+        page.set("Rotate", Object::Integer(degrees));
+    }
+    doc.save(&output_path).map_err(|e| format!("Failed to save: {}", e))?;
+    Ok(())
+}
+
 #[tauri::command]
 pub fn check_fonts(path: String) -> Result<Vec<FontFinding>, String> {
     let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
