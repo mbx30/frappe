@@ -210,3 +210,36 @@ pub struct InventoryAlert {
     pub is_acknowledged: bool,
     pub created_at: String,
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Client {
+    pub id: i64,
+    pub name: String,
+    pub company: String,
+    pub email: String,
+    pub phone: String,
+    pub address: String,
+    pub tags: String, // comma-separated
+    pub status: String, // active, inactive
+    pub notes: String,
+    pub last_contacted: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ArtApproval {
+    pub id: i64,
+    pub order_id: i64,
+    pub version: i64,
+    pub file_path: String,
+    pub status: String, // pending, approved, changes_requested
+    pub customer_notes: String,
+    pub staff_notes: String,
+    pub secure_token: String,
+    pub follow_up_hours: i64,
+    pub follow_up_count: i64,
+    pub submitted_at: String,
+    pub responded_at: Option<String>,
+    pub created_at: String,
+}

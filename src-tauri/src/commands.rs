@@ -240,3 +240,52 @@ pub fn get_low_stock_alerts(db: State<'_, Database>) -> Result<Vec<InventoryAler
 pub fn acknowledge_alert(db: State<'_, Database>, alert_id: i64) -> Result<(), String> {
     db.acknowledge_alert(alert_id).map_err(|e| e.to_string())
 }
+
+// ── Clients ───────────────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn create_client(db: State<'_, Database>, name: String, company: String, email: String, phone: String, address: String, tags: String) -> Result<Client, String> {
+    db.create_client(&name, &company, &email, &phone, &address, &tags).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn list_clients(db: State<'_, Database>, search: Option<String>, status_filter: Option<String>) -> Result<Vec<Client>, String> {
+    db.list_clients(search.as_deref(), status_filter.as_deref()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_client(db: State<'_, Database>, id: i64) -> Result<Client, String> {
+    db.get_client(id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn update_client(db: State<'_, Database>, id: i64, name: String, company: String, email: String, phone: String, address: String, tags: String, status: String, notes: String) -> Result<(), String> {
+    db.update_client(id, &name, &company, &email, &phone, &address, &tags, &status, &notes).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_client(db: State<'_, Database>, id: i64) -> Result<(), String> {
+    db.delete_client(id).map_err(|e| e.to_string())
+}
+
+// ── Art Approvals ─────────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn create_art_approval(db: State<'_, Database>, order_id: i64, file_path: String, staff_notes: String, follow_up_hours: i64) -> Result<ArtApproval, String> {
+    db.create_art_approval(order_id, &file_path, &staff_notes, follow_up_hours).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_art_approvals_for_order(db: State<'_, Database>, order_id: i64) -> Result<Vec<ArtApproval>, String> {
+    db.get_art_approvals_for_order(order_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn respond_to_art_approval(db: State<'_, Database>, token: String, status: String, customer_notes: String) -> Result<ArtApproval, String> {
+    db.respond_to_art_approval(&token, &status, &customer_notes).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn increment_art_approval_follow_up(db: State<'_, Database>, id: i64) -> Result<(), String> {
+    db.increment_art_approval_follow_up(id).map_err(|e| e.to_string())
+}

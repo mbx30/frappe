@@ -192,7 +192,42 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_inventory_material ON inventory_items(material_type);
             CREATE INDEX IF NOT EXISTS idx_inventory_quantity ON inventory_items(quantity);
             CREATE INDEX IF NOT EXISTS idx_transactions_item ON inventory_transactions(inventory_item_id);
-            CREATE INDEX IF NOT EXISTS idx_alerts_item ON inventory_alerts(inventory_item_id);"
+            CREATE INDEX IF NOT EXISTS idx_alerts_item ON inventory_alerts(inventory_item_id);
+            CREATE TABLE IF NOT EXISTS clients (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                company TEXT DEFAULT '',
+                email TEXT DEFAULT '',
+                phone TEXT DEFAULT '',
+                address TEXT DEFAULT '',
+                tags TEXT DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'active',
+                notes TEXT DEFAULT '',
+                last_contacted TEXT,
+                created_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_clients_name ON clients(name);
+            CREATE INDEX IF NOT EXISTS idx_clients_company ON clients(company);
+            CREATE INDEX IF NOT EXISTS idx_clients_status ON clients(status);
+            CREATE TABLE IF NOT EXISTS art_approvals (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+                version INTEGER NOT NULL DEFAULT 1,
+                file_path TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'pending',
+                customer_notes TEXT DEFAULT '',
+                staff_notes TEXT DEFAULT '',
+                secure_token TEXT NOT NULL UNIQUE,
+                follow_up_hours INTEGER NOT NULL DEFAULT 24,
+                follow_up_count INTEGER NOT NULL DEFAULT 0,
+                submitted_at TEXT DEFAULT (datetime('now')),
+                responded_at TEXT,
+                created_at TEXT DEFAULT (datetime('now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_approvals_order ON art_approvals(order_id);
+            CREATE INDEX IF NOT EXISTS idx_approvals_token ON art_approvals(secure_token);
+            CREATE INDEX IF NOT EXISTS idx_approvals_status ON art_approvals(status);"
         )?;
         Ok(())
     }
@@ -1125,4 +1160,188 @@ impl Database {
 
         result
     }
+
+    // ── Clients ───────────────────────────────────────────────────────────────
+
+    pub fn create_client(&self, name: &str, company: &str, email: &str, phone: &str, address: &str, tags: &str) -> Result<Client> {
+        if name.trim().is_empty() {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        conn.execute(
+            "INSERT INTO clients (name, company, email, phone, address, tags) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![name.trim(), company, email, phone, address, tags],
+        )?;
+        let id = conn.last_insert_rowid();
+        Ok(Client {
+            id,
+            name: name.trim().to_string(),
+            company: company.to_string(),
+            email: email.to_string(),
+            phone: phone.to_string(),
+            address: address.to_string(),
+            tags: tags.to_string(),
+            status: "active".to_string(),
+            notes: String::new(),
+            last_contacted: None,
+            created_at: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+            updated_at: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+        })
+    }
+
+    pub fn list_clients(&self, search: Option<&str>, status_filter: Option<&str>) -> Result<Vec<Client>> {
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        const COLS: &str = "SELECT id, name, company, email, phone, address, tags, status, notes, last_contacted, created_at, updated_at FROM clients";
+        match (search, status_filter) {
+            (Some(s), Some(sf)) => {
+                let pattern = format!("%{}%", s);
+                let mut stmt = conn.prepare(&format!("{} WHERE status = ?1 AND (name LIKE ?2 OR company LIKE ?2 OR email LIKE ?2) ORDER BY name", COLS))?;
+                let rows = stmt.query_map(params![sf, pattern], map_client)?.collect::<Result<Vec<_>>>();
+                rows
+            }
+            (Some(s), None) => {
+                let pattern = format!("%{}%", s);
+                let mut stmt = conn.prepare(&format!("{} WHERE name LIKE ?1 OR company LIKE ?1 OR email LIKE ?1 ORDER BY name", COLS))?;
+                let rows = stmt.query_map(params![pattern], map_client)?.collect::<Result<Vec<_>>>();
+                rows
+            }
+            (None, Some(sf)) => {
+                let mut stmt = conn.prepare(&format!("{} WHERE status = ?1 ORDER BY name", COLS))?;
+                let rows = stmt.query_map(params![sf], map_client)?.collect::<Result<Vec<_>>>();
+                rows
+            }
+            (None, None) => {
+                let mut stmt = conn.prepare(&format!("{} ORDER BY name", COLS))?;
+                let rows = stmt.query_map([], map_client)?.collect::<Result<Vec<_>>>();
+                rows
+            }
+        }
+    }
+
+    pub fn get_client(&self, id: i64) -> Result<Client> {
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        conn.query_row(
+            "SELECT id, name, company, email, phone, address, tags, status, notes, last_contacted, created_at, updated_at FROM clients WHERE id = ?1",
+            params![id],
+            map_client,
+        )
+    }
+
+    pub fn update_client(&self, id: i64, name: &str, company: &str, email: &str, phone: &str, address: &str, tags: &str, status: &str, notes: &str) -> Result<()> {
+        if name.trim().is_empty() {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        conn.execute(
+            "UPDATE clients SET name=?1, company=?2, email=?3, phone=?4, address=?5, tags=?6, status=?7, notes=?8, updated_at=datetime('now') WHERE id=?9",
+            params![name.trim(), company, email, phone, address, tags, status, notes, id],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_client(&self, id: i64) -> Result<()> {
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        conn.execute("DELETE FROM clients WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    // ── Art Approvals ─────────────────────────────────────────────────────────
+
+    pub fn create_art_approval(&self, order_id: i64, file_path: &str, staff_notes: &str, follow_up_hours: i64) -> Result<ArtApproval> {
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let version: i64 = conn.query_row(
+            "SELECT COALESCE(MAX(version), 0) FROM art_approvals WHERE order_id = ?1",
+            params![order_id],
+            |row| row.get(0),
+        ).unwrap_or(0);
+        let token = format!("{:x}{:x}", order_id, chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0));
+        conn.execute(
+            "INSERT INTO art_approvals (order_id, version, file_path, staff_notes, secure_token, follow_up_hours) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![order_id, version + 1, file_path, staff_notes, token, follow_up_hours],
+        )?;
+        let id = conn.last_insert_rowid();
+        let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        Ok(ArtApproval {
+            id,
+            order_id,
+            version: version + 1,
+            file_path: file_path.to_string(),
+            status: "pending".to_string(),
+            customer_notes: String::new(),
+            staff_notes: staff_notes.to_string(),
+            secure_token: token,
+            follow_up_hours,
+            follow_up_count: 0,
+            submitted_at: now.clone(),
+            responded_at: None,
+            created_at: now,
+        })
+    }
+
+    pub fn get_art_approvals_for_order(&self, order_id: i64) -> Result<Vec<ArtApproval>> {
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let mut stmt = conn.prepare(
+            "SELECT id, order_id, version, file_path, status, customer_notes, staff_notes, secure_token, follow_up_hours, follow_up_count, submitted_at, responded_at, created_at
+             FROM art_approvals WHERE order_id = ?1 ORDER BY version DESC"
+        )?;
+        let rows = stmt.query_map(params![order_id], map_art_approval)?.collect::<Result<Vec<_>>>();
+        rows
+    }
+
+    pub fn respond_to_art_approval(&self, token: &str, status: &str, customer_notes: &str) -> Result<ArtApproval> {
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        conn.execute(
+            "UPDATE art_approvals SET status=?1, customer_notes=?2, responded_at=datetime('now') WHERE secure_token=?3 AND status='pending'",
+            params![status, customer_notes, token],
+        )?;
+        conn.query_row(
+            "SELECT id, order_id, version, file_path, status, customer_notes, staff_notes, secure_token, follow_up_hours, follow_up_count, submitted_at, responded_at, created_at FROM art_approvals WHERE secure_token=?1",
+            params![token],
+            map_art_approval,
+        )
+    }
+
+    pub fn increment_art_approval_follow_up(&self, id: i64) -> Result<()> {
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        conn.execute(
+            "UPDATE art_approvals SET follow_up_count = follow_up_count + 1 WHERE id = ?1",
+            params![id],
+        )?;
+        Ok(())
+    }
+}
+
+fn map_client(row: &rusqlite::Row) -> rusqlite::Result<Client> {
+    Ok(Client {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        company: row.get(2)?,
+        email: row.get(3)?,
+        phone: row.get(4)?,
+        address: row.get(5)?,
+        tags: row.get(6)?,
+        status: row.get(7)?,
+        notes: row.get(8)?,
+        last_contacted: row.get(9)?,
+        created_at: row.get(10)?,
+        updated_at: row.get(11)?,
+    })
+}
+
+fn map_art_approval(row: &rusqlite::Row) -> rusqlite::Result<ArtApproval> {
+    Ok(ArtApproval {
+        id: row.get(0)?,
+        order_id: row.get(1)?,
+        version: row.get(2)?,
+        file_path: row.get(3)?,
+        status: row.get(4)?,
+        customer_notes: row.get(5)?,
+        staff_notes: row.get(6)?,
+        secure_token: row.get(7)?,
+        follow_up_hours: row.get(8)?,
+        follow_up_count: row.get(9)?,
+        submitted_at: row.get(10)?,
+        responded_at: row.get(11)?,
+        created_at: row.get(12)?,
+    })
 }
