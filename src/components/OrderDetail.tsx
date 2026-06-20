@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { Button, Input, Select, Card, Checkbox } from '../design-system'
-import type { OrderData } from '../types'
+import type { Order, OrderData } from '../types'
 import './OrderDetail.css'
 
 interface OrderDetailProps {
@@ -26,6 +26,7 @@ export default function OrderDetail({ orderId, onSave, onCancel }: OrderDetailPr
   const [isLoading, setIsLoading] = useState(!!orderId)
   const [isSaving, setIsSaving] = useState(false)
   const [transitionNotes, setTransitionNotes] = useState('')
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (orderId) {
@@ -85,17 +86,34 @@ export default function OrderDetail({ orderId, onSave, onCancel }: OrderDetailPr
       await loadOrder()
     } catch (e) {
       console.error('Failed to update status:', e)
-      alert(`Status update failed: ${e}`)
+      setError(`Status update failed: ${e}`)
     }
   }
 
+  const validate = (): string | null => {
+    if (!orderData) return 'No order loaded'
+    const { order } = orderData
+    if (!order.order_number.trim()) return 'Order number is required'
+    if (!order.description.trim()) return 'Description is required'
+    if (!order.due_date) return 'Due date is required'
+    if (order.deposit_amount < 0) return 'Deposit amount cannot be negative'
+    if (order.total_value < 0) return 'Total value cannot be negative'
+    if (order.deposit_requested && order.deposit_amount > order.total_value && order.total_value > 0) {
+      return 'Deposit amount cannot exceed the total value'
+    }
+    return null
+  }
+
   const handleSave = async () => {
-    if (!orderData) return
+    if (!orderData || isSaving) return
+    const validationError = validate()
+    if (validationError) { setError(validationError); return }
+    setError(null)
     setIsSaving(true)
     try {
       if (orderData.order.id === 0) {
         // Create new order
-        const newOrder = await invoke('create_order', {
+        const newOrder = await invoke<Order>('create_order', {
           order_number: orderData.order.order_number,
           due_date: orderData.order.due_date,
           description: orderData.order.description,
@@ -103,7 +121,7 @@ export default function OrderDetail({ orderId, onSave, onCancel }: OrderDetailPr
 
         // Update with details
         await invoke('update_order', {
-          id: (newOrder as any).id,
+          id: newOrder.id,
           priority: orderData.order.priority,
           description: orderData.order.description,
           artwork_notes: orderData.order.artwork_notes,
@@ -129,7 +147,7 @@ export default function OrderDetail({ orderId, onSave, onCancel }: OrderDetailPr
       onSave()
     } catch (e) {
       console.error('Failed to save order:', e)
-      alert(`Save failed: ${e}`)
+      setError(`Save failed: ${e}`)
     } finally {
       setIsSaving(false)
     }
@@ -165,6 +183,8 @@ export default function OrderDetail({ orderId, onSave, onCancel }: OrderDetailPr
           </Button>
         </div>
       </div>
+
+      {error && <div className="editor-error">{error}</div>}
 
       <div className="detail-grid">
         {/* Left column: Order details */}
@@ -223,7 +243,7 @@ export default function OrderDetail({ orderId, onSave, onCancel }: OrderDetailPr
                   onChange={(e) =>
                     setOrderData({
                       ...orderData,
-                      order: { ...order, priority: e.target.value as any },
+                      order: { ...order, priority: e.target.value as Order['priority'] },
                     })
                   }
                   options={[
@@ -244,11 +264,12 @@ export default function OrderDetail({ orderId, onSave, onCancel }: OrderDetailPr
                 onChange={(e) =>
                   setOrderData({
                     ...orderData,
-                    order: { ...order, total_value: parseFloat(e.target.value) || 0 },
+                    order: { ...order, total_value: Math.max(0, parseFloat(e.target.value) || 0) },
                   })
                 }
                 inputMode="decimal"
                 placeholder="0.00"
+                min="0"
               />
             </div>
           </Card>
@@ -313,11 +334,12 @@ export default function OrderDetail({ orderId, onSave, onCancel }: OrderDetailPr
                   onChange={(e) =>
                     setOrderData({
                       ...orderData,
-                      order: { ...order, deposit_amount: parseFloat(e.target.value) || 0 },
+                      order: { ...order, deposit_amount: Math.max(0, parseFloat(e.target.value) || 0) },
                     })
                   }
                   inputMode="decimal"
                   placeholder="0.00"
+                  min="0"
                 />
               </div>
             )}

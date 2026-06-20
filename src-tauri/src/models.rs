@@ -189,12 +189,13 @@ pub struct InventoryItem {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[allow(dead_code)] // Used by inventory_transactions table; exposed via future Tauri command
 pub struct InventoryTransaction {
     pub id: i64,
     pub inventory_item_id: i64,
-    pub transaction_type: String, // add, remove, adjust, import
+    pub transaction_type: String,
     pub quantity_change: f64,
-    pub reason: String, // manual_add, job_complete, csv_import, etc.
+    pub reason: String,
     pub related_order_id: Option<i64>,
     pub created_at: String,
 }

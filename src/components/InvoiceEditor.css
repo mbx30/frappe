@@ -6,6 +6,17 @@
   overflow: hidden;
 }
 
+.editor-error {
+  margin: 0 var(--space-6) var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--danger-subtle);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-md);
+  color: var(--danger);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+
 .invoice-editor-loading {
   display: flex;
   align-items: center;

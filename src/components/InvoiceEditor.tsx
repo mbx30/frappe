@@ -20,6 +20,7 @@ export default function InvoiceEditor({ invoiceId, onSave, onCancel }: InvoiceEd
   const [isLoading, setIsLoading] = useState(!!invoiceId)
   const [isSaving, setIsSaving] = useState(false)
   const [taxRate, setTaxRate] = useState(0)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (invoiceId) {
@@ -98,31 +99,42 @@ export default function InvoiceEditor({ invoiceId, onSave, onCancel }: InvoiceEd
     return { subtotal, tax, total }
   }
 
+  const validate = (): string | null => {
+    if (!invoice) return 'No invoice loaded'
+    if (!invoice.invoice_number.trim()) return 'Invoice number is required'
+    if (!invoice.due_date) return 'Due date is required'
+    if (taxRate < 0 || taxRate > 100) return 'Tax rate must be between 0% and 100%'
+    for (const item of lineItems) {
+      if (!item.description.trim()) return 'All line items must have a description'
+      if (item.quantity <= 0) return 'Line item quantities must be greater than zero'
+      if (item.unit_price < 0) return 'Line item prices cannot be negative'
+    }
+    return null
+  }
+
   const handleSave = async () => {
-    if (!invoice) return
+    if (!invoice || isSaving) return
+    const validationError = validate()
+    if (validationError) { setError(validationError); return }
+    setError(null)
     setIsSaving(true)
     try {
       const { subtotal, tax, total } = calculateTotals()
 
       if (invoice.id === 0) {
-        // Create new invoice
         const newInvoice = await invoke<Invoice>('create_invoice', {
-          invoice_number: invoice.invoice_number,
+          invoice_number: invoice.invoice_number.trim(),
           due_date: invoice.due_date,
           payment_terms: invoice.payment_terms,
         })
-
-        // Add line items
         for (const item of lineItems) {
           await invoke('add_invoice_line_item', {
             invoice_id: newInvoice.id,
-            description: item.description,
+            description: item.description.trim(),
             quantity: item.quantity,
             unit_price: item.unit_price,
           })
         }
-
-        // Update with totals
         await invoke('update_invoice', {
           id: newInvoice.id,
           status: invoice.status,
@@ -130,11 +142,10 @@ export default function InvoiceEditor({ invoiceId, onSave, onCancel }: InvoiceEd
           tax_rate: taxRate,
           tax_amount: tax,
           total,
-          internal_notes: invoice.internal_notes,
-          customer_notes: invoice.customer_notes,
+          internal_notes: invoice.internal_notes.trim(),
+          customer_notes: invoice.customer_notes.trim(),
         })
       } else {
-        // Update existing invoice
         await invoke('update_invoice', {
           id: invoice.id,
           status: invoice.status,
@@ -142,15 +153,15 @@ export default function InvoiceEditor({ invoiceId, onSave, onCancel }: InvoiceEd
           tax_rate: taxRate,
           tax_amount: tax,
           total,
-          internal_notes: invoice.internal_notes,
-          customer_notes: invoice.customer_notes,
+          internal_notes: invoice.internal_notes.trim(),
+          customer_notes: invoice.customer_notes.trim(),
         })
       }
 
       onSave()
     } catch (e) {
       console.error('Failed to save invoice:', e)
-      alert(`Save failed: ${e}`)
+      setError(`Save failed: ${e}`)
     } finally {
       setIsSaving(false)
     }
@@ -176,6 +187,8 @@ export default function InvoiceEditor({ invoiceId, onSave, onCancel }: InvoiceEd
         </div>
       </div>
 
+      {error && <div className="editor-error">{error}</div>}
+
       <div className="editor-grid">
         {/* Left column: Invoice details */}
         <div className="editor-section">
@@ -188,6 +201,7 @@ export default function InvoiceEditor({ invoiceId, onSave, onCancel }: InvoiceEd
                 value={invoice.invoice_number}
                 onChange={(e) => setInvoice({ ...invoice, invoice_number: e.target.value })}
                 disabled={invoice.id !== 0}
+                maxLength={50}
               />
             </div>
 
@@ -280,21 +294,24 @@ export default function InvoiceEditor({ invoiceId, onSave, onCancel }: InvoiceEd
                     placeholder="Description"
                     value={item.description}
                     onChange={(e) => handleUpdateLineItem(index, { description: e.target.value })}
+                    maxLength={200}
                   />
                   <div className="line-item-row">
                     <Input
                       type="number"
                       placeholder="Qty"
                       value={item.quantity}
-                      onChange={(e) => handleUpdateLineItem(index, { quantity: parseFloat(e.target.value) || 0 })}
+                      onChange={(e) => handleUpdateLineItem(index, { quantity: Math.max(0.001, parseFloat(e.target.value) || 0) })}
                       inputMode="decimal"
+                      min="0.001"
                     />
                     <Input
                       type="number"
                       placeholder="Unit Price"
                       value={item.unit_price}
-                      onChange={(e) => handleUpdateLineItem(index, { unit_price: parseFloat(e.target.value) || 0 })}
+                      onChange={(e) => handleUpdateLineItem(index, { unit_price: Math.max(0, parseFloat(e.target.value) || 0) })}
                       inputMode="decimal"
+                      min="0"
                     />
                     <div className="line-item-total">
                       ${(item.quantity * item.unit_price).toFixed(2)}
@@ -328,9 +345,11 @@ export default function InvoiceEditor({ invoiceId, onSave, onCancel }: InvoiceEd
               <Input
                 type="number"
                 value={taxRate}
-                onChange={(e) => setTaxRate(parseFloat(e.target.value) || 0)}
+                onChange={(e) => setTaxRate(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
                 placeholder="0"
                 inputMode="decimal"
+                min="0"
+                max="100"
               />
             </div>
 

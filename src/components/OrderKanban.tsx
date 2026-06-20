@@ -36,13 +36,11 @@ export default function OrderKanban({ orders, onOrdersChange }: OrderKanbanProps
     {} as Record<string, Order[]>
   )
 
-  const isOverdue = (dueDate: string) => {
-    return new Date(dueDate) < new Date() && new Date(dueDate).toDateString() !== new Date().toDateString()
-  }
+  const todayStr = new Date().toISOString().split('T')[0]
 
-  const isDueToday = (dueDate: string) => {
-    return new Date(dueDate).toDateString() === new Date().toDateString()
-  }
+  const isOverdue = (dueDate: string) => dueDate < todayStr
+
+  const isDueToday = (dueDate: string) => dueDate === todayStr
 
   const handleDragStart = (order: Order) => {
     setDraggedOrder(order)
