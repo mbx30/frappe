@@ -15,6 +15,7 @@ use crate::pdf::bleed::BleedFinding;
 use crate::pdf::metadata::OutputIntent;
 use crate::pdf::security::SecurityFinding;
 use crate::pdf::color::ColorSpaceFinding;
+use crate::pdf::overprint::{OverprintFinding, TransparencyFinding, HiddenContentFinding};
 use crate::pdf::pdfx::PdfXFinding;
 
 #[tauri::command]
@@ -677,6 +678,9 @@ pub struct CombinedPreflightResult {
     pub security: Vec<SecurityFinding>,
     pub pdfx: Vec<PdfXFinding>,
     pub color_spaces: Vec<ColorSpaceFinding>,
+    pub overprint: Vec<OverprintFinding>,
+    pub transparency: Vec<TransparencyFinding>,
+    pub hidden_content: Vec<HiddenContentFinding>,
 }
 
 #[tauri::command]
@@ -685,6 +689,9 @@ pub fn check_full_preflight(path: String) -> Result<CombinedPreflightResult, Str
     let mut pdfx = crate::pdf::pdfx::check_metadata(&doc);
     pdfx.extend(crate::pdf::pdfx::check_version_compatibility(&path, "x4"));
     let color_spaces = crate::pdf::color::check_color_spaces(&doc, "any");
+    let overprint = crate::pdf::overprint::check_overprint(&doc);
+    let transparency = crate::pdf::overprint::check_transparency(&doc);
+    let hidden_content = crate::pdf::overprint::check_hidden_content(&doc);
     Ok(CombinedPreflightResult {
         fonts: crate::pdf::fonts::collect_fonts(&doc),
         page_boxes: crate::pdf::boxes::check_page_boxes(&doc),
@@ -694,6 +701,9 @@ pub fn check_full_preflight(path: String) -> Result<CombinedPreflightResult, Str
         security: crate::pdf::security::check_security(&doc),
         pdfx,
         color_spaces,
+        overprint,
+        transparency,
+        hidden_content,
     })
 }
 
@@ -729,6 +739,10 @@ pub fn check_pdfx(path: String, profile: String) -> Result<CombinedPreflightResu
         });
     }
 
+    let overprint = crate::pdf::overprint::check_overprint(&doc);
+    let transparency = crate::pdf::overprint::check_transparency(&doc);
+    let hidden_content = crate::pdf::overprint::check_hidden_content(&doc);
+
     Ok(CombinedPreflightResult {
         fonts,
         page_boxes,
@@ -738,6 +752,9 @@ pub fn check_pdfx(path: String, profile: String) -> Result<CombinedPreflightResu
         security,
         pdfx,
         color_spaces,
+        overprint,
+        transparency,
+        hidden_content,
     })
 }
 
@@ -745,6 +762,24 @@ pub fn check_pdfx(path: String, profile: String) -> Result<CombinedPreflightResu
 pub fn check_color_spaces(path: String, target_profile: String) -> Result<Vec<ColorSpaceFinding>, String> {
     let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     Ok(crate::pdf::color::check_color_spaces(&doc, &target_profile))
+}
+
+#[tauri::command]
+pub fn check_overprint(path: String) -> Result<Vec<OverprintFinding>, String> {
+    let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
+    Ok(crate::pdf::overprint::check_overprint(&doc))
+}
+
+#[tauri::command]
+pub fn check_transparency(path: String) -> Result<Vec<TransparencyFinding>, String> {
+    let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
+    Ok(crate::pdf::overprint::check_transparency(&doc))
+}
+
+#[tauri::command]
+pub fn check_hidden_content(path: String) -> Result<Vec<HiddenContentFinding>, String> {
+    let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
+    Ok(crate::pdf::overprint::check_hidden_content(&doc))
 }
 
 #[tauri::command]

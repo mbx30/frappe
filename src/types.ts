@@ -358,6 +358,32 @@ export interface ColorSpaceFinding {
   message: string
 }
 
+export interface OverprintFinding {
+  page: number
+  object_context: string
+  overprint_stroke: boolean
+  overprint_fill: boolean
+  mode: string
+  severity: string
+  message: string
+}
+
+export interface TransparencyFinding {
+  page: number
+  ty: string
+  value: string
+  is_pdfx1a_violation: boolean
+  severity: string
+  message: string
+}
+
+export interface HiddenContentFinding {
+  page: number
+  ty: string
+  description: string
+  severity: string
+}
+
 export interface CombinedPreflightResult {
   fonts: FontFinding[]
   page_boxes: PageBoxFinding[]
@@ -367,6 +393,9 @@ export interface CombinedPreflightResult {
   security: SecurityFinding[]
   pdfx: PdfXFinding[]
   color_spaces: ColorSpaceFinding[]
+  overprint: OverprintFinding[]
+  transparency: TransparencyFinding[]
+  hidden_content: HiddenContentFinding[]
 }
 
 export interface PreflightFinding {

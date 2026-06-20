@@ -31,7 +31,7 @@ const PROFILES = [
 
 export default function PreflightReport({ filePath, result, jobId, onSaved }: PreflightReportProps) {
   const [sections, setSections] = useState<SectionState>({
-    fonts: true, boxes: true, images: true, bleed: true, intents: true, security: true, pdfx: true, color_spaces: true,
+    fonts: true, boxes: true, images: true, bleed: true, intents: true, security: true, pdfx: true, color_spaces: true, overprint: true, transparency: true, hidden_content: true,
   })
   const [minBleed, setMinBleed] = useState(3)
   const [bleedFindings, setBleedFindings] = useState(result.bleed)
@@ -49,9 +49,12 @@ export default function PreflightReport({ filePath, result, jobId, onSaved }: Pr
   const sc = countBySeverity(result.security)
   const xc = countBySeverity(result.pdfx)
   const cc = countBySeverity(result.color_spaces)
+  const oc = countBySeverity(result.overprint)
+  const tc = countBySeverity(result.transparency)
+  const hc = countBySeverity(result.hidden_content)
 
-  const totalErrors = fc.errors + bc.errors + ic.errors + blc.errors + sc.errors + xc.errors + cc.errors
-  const totalWarnings = fc.warnings + bc.warnings + ic.warnings + blc.warnings + sc.warnings + xc.warnings + cc.warnings
+  const totalErrors = fc.errors + bc.errors + ic.errors + blc.errors + sc.errors + xc.errors + cc.errors + oc.errors + tc.errors + hc.errors
+  const totalWarnings = fc.warnings + bc.warnings + ic.warnings + blc.warnings + sc.warnings + xc.warnings + cc.warnings + oc.warnings + tc.warnings + hc.warnings
 
   const handleSave = async () => {
     if (!jobId) return
@@ -66,6 +69,9 @@ export default function PreflightReport({ filePath, result, jobId, onSaved }: Pr
       for (const f of result.security) findings.push({ check_name: 'security', severity: f.severity, page_num: null, object_ref: f.category, message: f.message, fix_hint: '' })
       for (const f of result.pdfx) findings.push({ check_name: 'pdfx', severity: f.severity, page_num: null, object_ref: f.category, message: f.message, fix_hint: f.fix_hint })
       for (const f of result.color_spaces) findings.push({ check_name: 'color_spaces', severity: f.severity, page_num: null, object_ref: f.color_space, message: f.message, fix_hint: '' })
+      for (const f of result.overprint) findings.push({ check_name: 'overprint', severity: f.severity, page_num: f.page as any, object_ref: f.object_context, message: f.message, fix_hint: '' })
+      for (const f of result.transparency) findings.push({ check_name: 'transparency', severity: f.severity, page_num: f.page as any, object_ref: f.ty, message: f.message, fix_hint: '' })
+      for (const f of result.hidden_content) findings.push({ check_name: 'hidden_content', severity: f.severity, page_num: f.page as any, object_ref: f.ty, message: f.description, fix_hint: '' })
       await invoke('save_preflight_run', { jobId, profile, findings })
       setSaveMsg('Report saved!')
       onSaved()
@@ -231,6 +237,64 @@ export default function PreflightReport({ filePath, result, jobId, onSaved }: Pr
             <span className="pdf-finding-pages">p. {f.pages.join(', ')}</span>
             {f.is_pdf_x_violation && <span className="pdf-finding-badge">PDF/X viol.</span>}
             <span className="pdf-finding-message">{f.message}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Overprint */}
+      <div className="pdf-preflight-section">
+        <div className="pdf-preflight-header" onClick={() => toggle('overprint')} style={{ cursor: 'pointer' }}>
+          <h4>Overprint ({oc.errors}E, {oc.warnings}W, {oc.ok}OK)</h4>
+          <span>{sections.overprint ? '▼' : '▶'}</span>
+        </div>
+        {sections.overprint && result.overprint.length === 0 && (
+          <p className="pdf-empty">No overprint settings found.</p>
+        )}
+        {sections.overprint && result.overprint.map((f, i) => (
+          <div key={i} className={`pdf-finding pdf-finding--${f.severity}`}>
+            <span className="pdf-finding-sev">{f.severity.toUpperCase()}</span>
+            <span className="pdf-finding-name">P.{f.page}</span>
+            <span className="pdf-finding-type">{f.object_context}</span>
+            <span className="pdf-finding-message">{f.message}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Transparency */}
+      <div className="pdf-preflight-section">
+        <div className="pdf-preflight-header" onClick={() => toggle('transparency')} style={{ cursor: 'pointer' }}>
+          <h4>Transparency ({tc.errors}E, {tc.warnings}W, {tc.ok}OK)</h4>
+          <span>{sections.transparency ? '▼' : '▶'}</span>
+        </div>
+        {sections.transparency && result.transparency.length === 0 && (
+          <p className="pdf-empty">No live transparency detected.</p>
+        )}
+        {sections.transparency && result.transparency.map((f, i) => (
+          <div key={i} className={`pdf-finding pdf-finding--${f.severity}`}>
+            <span className="pdf-finding-sev">{f.severity.toUpperCase()}</span>
+            <span className="pdf-finding-name">P.{f.page}</span>
+            <span className="pdf-finding-type">{f.ty}</span>
+            {f.is_pdfx1a_violation && <span className="pdf-finding-badge">X-1a viol.</span>}
+            <span className="pdf-finding-message">{f.message}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Hidden Content */}
+      <div className="pdf-preflight-section">
+        <div className="pdf-preflight-header" onClick={() => toggle('hidden_content')} style={{ cursor: 'pointer' }}>
+          <h4>Hidden Content ({hc.errors}E, {hc.warnings}W, {hc.ok}OK)</h4>
+          <span>{sections.hidden_content ? '▼' : '▶'}</span>
+        </div>
+        {sections.hidden_content && result.hidden_content.length === 0 && (
+          <p className="pdf-empty">No hidden content detected.</p>
+        )}
+        {sections.hidden_content && result.hidden_content.map((f, i) => (
+          <div key={i} className={`pdf-finding pdf-finding--${f.severity}`}>
+            <span className="pdf-finding-sev">{f.severity.toUpperCase()}</span>
+            <span className="pdf-finding-name">{f.ty}</span>
+            {f.page > 0 && <span className="pdf-finding-pages">P.{f.page}</span>}
+            <span className="pdf-finding-message">{f.description}</span>
           </div>
         ))}
       </div>

@@ -5,5 +5,6 @@ pub mod engine;
 pub mod fonts;
 pub mod images;
 pub mod metadata;
+pub mod overprint;
 pub mod pdfx;
 pub mod security;
