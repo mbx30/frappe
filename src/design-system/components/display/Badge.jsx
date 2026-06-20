@@ -17,8 +17,9 @@ const SIZES = {
 /**
  * Compact status / category badge. Optional leading status dot.
  */
-export function Badge({ children, tone = 'neutral', size = 'md', dot = false, style, ...rest }) {
-  const t = TONES[tone] || TONES.neutral;
+export function Badge({ children, label, tone, variant, size = 'md', dot = false, style, ...rest }) {
+  const resolvedTone = tone ?? variant ?? 'neutral';
+  const t = TONES[resolvedTone] || TONES.neutral;
   const sz = SIZES[size] || SIZES.md;
   return (
     <span style={{
@@ -29,7 +30,7 @@ export function Badge({ children, tone = 'neutral', size = 'md', dot = false, st
       letterSpacing: 'var(--tracking-tight)', lineHeight: 1.4, whiteSpace: 'nowrap', ...style,
     }} {...rest}>
       {dot && <span style={{ width: sz.dot, height: sz.dot, borderRadius: '50%', background: t.dot, flex: 'none' }} />}
-      {children}
+      {label ?? children}
     </span>
   );
 }

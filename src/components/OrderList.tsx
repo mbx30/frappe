@@ -16,13 +16,6 @@ const priorityColors: Record<string, 'success' | 'warning' | 'danger' | 'info'> 
   urgent: 'danger',
 }
 
-const statusColors: Record<string, 'success' | 'warning' | 'danger' | 'info'> = {
-  prepress: 'info',
-  production: 'warning',
-  delivery: 'warning',
-  completed: 'success',
-}
-
 const statusLabels: Record<string, string> = {
   prepress: 'Pre-press',
   production: 'Production',
@@ -33,7 +26,6 @@ const statusLabels: Record<string, string> = {
 export default function OrderList({ onCreateNew, onSelectOrder }: OrderListProps) {
   const [orders, setOrders] = useState<Order[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [filterStatus, setFilterStatus] = useState<string | null>(null)
 
   useEffect(() => {
     loadOrders()
@@ -53,10 +45,6 @@ export default function OrderList({ onCreateNew, onSelectOrder }: OrderListProps
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString()
   }
-
-  const filteredOrders = filterStatus
-    ? orders.filter((o) => o.status === filterStatus)
-    : orders
 
   const ordersByStatus = {
     prepress: orders.filter((o) => o.status === 'prepress'),

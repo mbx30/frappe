@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import type { PdfSummary, CombinedPreflightResult } from '../types'
 import PreflightReport from './preflight/PreflightReport'
@@ -121,7 +121,7 @@ export default function PDFView({ summary, jobs, onOpenFile, onSaveJob, onDelete
   const [showConversion, setShowConversion] = useState(false)
   const [showWizard, setShowWizard] = useState(false)
   const [showCertified, setShowCertified] = useState(false)
-  const [savedRunId, setSavedRunId] = useState<number | null>(null)
+  const [, _setSavedRunId] = useState<number | null>(null)
 
   useEffect(() => { setCurrentPage(0); setShowViewer(false); setPreflightResult(null); setShowReport(false) }, [summary?.file_path])
 
@@ -253,7 +253,7 @@ export default function PDFView({ summary, jobs, onOpenFile, onSaveJob, onDelete
               <PreflightReport
                 filePath={summary.file_path}
                 result={preflightResult}
-                jobId={savedRunId ?? summary.id ?? null}
+                jobId={summary.id ?? null}
                 onSaved={() => { }}
               />
             )}
@@ -285,7 +285,7 @@ export default function PDFView({ summary, jobs, onOpenFile, onSaveJob, onDelete
               />
             )}
             {showCertified && (
-              <CertifiedVersionPanel jobId={savedRunId ?? summary.id ?? null} filePath={summary.file_path} />
+              <CertifiedVersionPanel jobId={summary.id ?? null} filePath={summary.file_path} />
             )}
           </div>
         ) : (

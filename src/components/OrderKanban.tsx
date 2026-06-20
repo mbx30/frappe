@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import { Card, Badge } from '../design-system'
+import { Badge } from '../design-system'
 import type { Order } from '../types'
 import './OrderKanban.css'
 

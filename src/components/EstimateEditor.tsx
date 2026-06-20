@@ -321,7 +321,7 @@ export default function EstimateEditor({ estimateId, onSave, onCancel }: Estimat
                     <span className="item-count">({categoryItems.length})</span>
                   </div>
 
-                  {categoryItems.map((item, idx) => {
+                  {categoryItems.map((item) => {
                     const actualIndex = line_items.indexOf(item)
                     return (
                       <div key={actualIndex} className="line-item">

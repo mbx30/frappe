@@ -22,7 +22,7 @@ export default function Welcome({ onImportComplete }: WelcomeProps) {
 
     setIsLoading(true)
     try {
-      const wb = await invoke('create_workbook', { name: 'Imported Data' })
+      const wb = await invoke<{ id: number }>('create_workbook', { name: 'Imported Data' })
       const cmd = filePath.endsWith('.csv') ? 'import_csv_file' : 'import_excel_file'
       await invoke<SheetData>(cmd, { workbookId: wb.id, filePath })
       onImportComplete()

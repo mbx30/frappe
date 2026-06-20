@@ -21,7 +21,6 @@ interface DashboardStats {
 
 export default function Dashboard() {
   const [orders, setOrders] = useState<Order[]>([])
-  const [allOrders, setAllOrders] = useState<Order[]>([])
   const [filteredOrders, setFilteredOrders] = useState<Order[]>([])
   const [viewMode, setViewMode] = useState<ViewMode>('kanban')
   const [isLoading, setIsLoading] = useState(true)
@@ -52,7 +51,6 @@ export default function Dashboard() {
     setLoadError(null)
     try {
       const result = await invoke<Order[]>('list_orders')
-      setAllOrders(result)
       const activeOrders = result.filter((o) => o.status !== 'completed')
       setOrders(activeOrders)
       calculateStats(result)

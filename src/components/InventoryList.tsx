@@ -5,8 +5,8 @@ import type { InventoryItem, InventoryAlert } from '../types'
 import './InventoryList.css'
 
 interface InventoryListProps {
-  onCreateNew: () => void
-  onEditItem: (id: number) => void
+  onCreateNew?: () => void
+  onEditItem?: (id: number) => void
 }
 
 export default function InventoryList({ onCreateNew, onEditItem }: InventoryListProps) {
@@ -105,7 +105,7 @@ export default function InventoryList({ onCreateNew, onEditItem }: InventoryList
           <h2>Inventory</h2>
           <p className="subtitle">{items.length} items in stock</p>
         </div>
-        <Button variant="primary" onClick={onCreateNew}>
+        <Button variant="primary" onClick={() => onCreateNew?.()}>
           + Add Item
         </Button>
       </div>
@@ -151,7 +151,7 @@ export default function InventoryList({ onCreateNew, onEditItem }: InventoryList
             <p>Add your first inventory item to get started</p>
             <Button
               variant="primary"
-              onClick={onCreateNew}
+              onClick={() => onCreateNew?.()}
               style={{ marginTop: '16px' }}
             >
               Add Inventory Item
@@ -162,7 +162,6 @@ export default function InventoryList({ onCreateNew, onEditItem }: InventoryList
         <div className="inventory-grid">
           {items.map((item) => {
             const status = getStockStatus(item)
-            const threshold = item.alert_threshold
             const stockPercentage =
               item.reorder_level > 0
                 ? (item.quantity / item.reorder_level) * 100
@@ -242,7 +241,7 @@ export default function InventoryList({ onCreateNew, onEditItem }: InventoryList
                     variant="secondary"
                     size="sm"
                     fullWidth
-                    onClick={() => onEditItem(item.id)}
+                    onClick={() => onEditItem?.(item.id)}
                   >
                     Edit
                   </Button>

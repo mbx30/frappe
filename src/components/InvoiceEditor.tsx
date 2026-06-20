@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import { Button, Input, Select, Card, Checkbox } from '../design-system'
+import { Button, Input, Select, Card } from '../design-system'
 import type { Invoice, InvoiceData, InvoiceLineItem } from '../types'
 import PaymentPanel from './PaymentPanel'
 import ReminderPanel from './ReminderPanel'
