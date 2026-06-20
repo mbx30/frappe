@@ -8,3 +8,4 @@ pub mod metadata;
 pub mod overprint;
 pub mod pdfx;
 pub mod security;
+pub mod transforms;

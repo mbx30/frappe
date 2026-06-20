@@ -384,6 +384,14 @@ export interface HiddenContentFinding {
   severity: string
 }
 
+export interface IccProfileInfo {
+  name: string
+  description: string
+  color_space_type: string
+  num_channels: number
+  file_name: string
+}
+
 export interface CombinedPreflightResult {
   fonts: FontFinding[]
   page_boxes: PageBoxFinding[]

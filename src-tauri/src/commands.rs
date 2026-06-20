@@ -15,6 +15,7 @@ use crate::pdf::bleed::BleedFinding;
 use crate::pdf::metadata::OutputIntent;
 use crate::pdf::security::SecurityFinding;
 use crate::pdf::color::ColorSpaceFinding;
+use crate::pdf::transforms::IccProfileInfo;
 use crate::pdf::overprint::{OverprintFinding, TransparencyFinding, HiddenContentFinding};
 use crate::pdf::pdfx::PdfXFinding;
 
@@ -780,6 +781,29 @@ pub fn check_transparency(path: String) -> Result<Vec<TransparencyFinding>, Stri
 pub fn check_hidden_content(path: String) -> Result<Vec<HiddenContentFinding>, String> {
     let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     Ok(crate::pdf::overprint::check_hidden_content(&doc))
+}
+
+#[tauri::command]
+pub fn list_icc_profiles() -> Vec<IccProfileInfo> {
+    crate::pdf::transforms::get_bundled_icc_profiles()
+}
+
+#[tauri::command]
+pub fn convert_rgb_to_cmyk(path: String, output_path: String) -> Result<(), String> {
+    let mut doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
+    crate::pdf::transforms::convert_rgb_to_cmyk(&mut doc)?;
+    doc.save(&output_path).map_err(|e| format!("Failed to save converted PDF: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn add_output_intent(path: String, output_path: String, icc_profile: String, condition_id: String, condition: String) -> Result<(), String> {
+    let mut doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
+    // The ICC profile file path is passed; read it
+    let icc_data = std::fs::read(&icc_profile).map_err(|e| format!("Failed to read ICC profile: {}", e))?;
+    crate::pdf::transforms::add_output_intent(&mut doc, &icc_data, &condition_id, &condition)?;
+    doc.save(&output_path).map_err(|e| format!("Failed to save PDF: {}", e))?;
+    Ok(())
 }
 
 #[tauri::command]
