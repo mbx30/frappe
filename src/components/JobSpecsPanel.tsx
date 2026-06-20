@@ -24,7 +24,7 @@ export default function JobSpecsPanel({ order, onSaved }: JobSpecsPanelProps) {
     paper_stock: order.paper_stock,
     ink_colors: order.ink_colors,
     finishing: order.finishing,
-    quantity: String(order.quantity || ''),
+    quantity: String(order.quantity),
     production_notes: order.production_notes,
     assigned_operator: order.assigned_operator,
   })

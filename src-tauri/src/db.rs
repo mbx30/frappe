@@ -649,6 +649,18 @@ impl Database {
         })
     }
 
+    pub fn replace_invoice_line_items(&self, invoice_id: i64, items: &[(String, f64, f64)]) -> Result<()> {
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        conn.execute("DELETE FROM invoice_line_items WHERE invoice_id = ?1", params![invoice_id])?;
+        for (i, (description, quantity, unit_price)) in items.iter().enumerate() {
+            conn.execute(
+                "INSERT INTO invoice_line_items (invoice_id, description, quantity, unit_price, sort_order) VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![invoice_id, description, quantity, unit_price, i as i64],
+            )?;
+        }
+        Ok(())
+    }
+
     pub fn update_invoice(&self, id: i64, status: &str, subtotal: f64, tax_rate: f64, tax_amount: f64, total: f64, internal_notes: &str, customer_notes: &str) -> Result<()> {
         let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute(
@@ -927,6 +939,18 @@ impl Database {
             unit_price,
             sort_order: sort_order + 1,
         })
+    }
+
+    pub fn replace_estimate_line_items(&self, estimate_id: i64, items: &[(String, String, f64, f64)]) -> Result<()> {
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        conn.execute("DELETE FROM estimate_line_items WHERE estimate_id = ?1", params![estimate_id])?;
+        for (i, (description, category, quantity, unit_price)) in items.iter().enumerate() {
+            conn.execute(
+                "INSERT INTO estimate_line_items (estimate_id, description, category, quantity, unit_price, sort_order) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![estimate_id, description, category, quantity, unit_price, i as i64],
+            )?;
+        }
+        Ok(())
     }
 
     pub fn update_estimate(&self, id: i64, status: &str, subtotal: f64, tax_rate: f64, tax_amount: f64, total: f64, notes: &str, artwork_requirements: &str) -> Result<()> {
@@ -1444,8 +1468,22 @@ impl Database {
                 params![inv_id],
                 |row| row.get(0),
             )?;
-            let total: f64 = conn.query_row("SELECT total FROM invoices WHERE id = ?1", params![inv_id], |row| row.get(0))?;
-            let new_status = if paid >= total && paid > 0.0 { "paid" } else if paid > 0.0 { "partially-paid" } else { "sent" };
+            let (total, current_status): (f64, String) = conn.query_row(
+                "SELECT total, status FROM invoices WHERE id = ?1",
+                params![inv_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )?;
+            // When paid reaches 0, only promote back to "sent" if the invoice was already in
+            // a payment-derived state. Preserve "draft", "overdue", "voided", etc.
+            let new_status = if paid >= total && paid > 0.0 {
+                "paid".to_string()
+            } else if paid > 0.0 {
+                "partially-paid".to_string()
+            } else if current_status == "paid" || current_status == "partially-paid" {
+                "sent".to_string()
+            } else {
+                current_status
+            };
             conn.execute(
                 "UPDATE invoices SET amount_paid = ?1, status = ?2, updated_at = datetime('now') WHERE id = ?3",
                 params![paid, new_status, inv_id],

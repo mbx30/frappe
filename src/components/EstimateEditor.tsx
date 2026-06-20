@@ -163,7 +163,16 @@ export default function EstimateEditor({ estimateId, onSave, onCancel }: Estimat
           artwork_requirements: estimate.artwork_requirements,
         })
       } else {
-        // Update existing estimate
+        // Replace line items then update totals/metadata
+        await invoke('replace_estimate_line_items', {
+          estimateId: estimate.id,
+          items: line_items.map((item) => ({
+            description: item.description.trim(),
+            category: item.category,
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+          })),
+        })
         await invoke('update_estimate', {
           id: estimate.id,
           status: estimate.status,

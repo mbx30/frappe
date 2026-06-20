@@ -150,6 +150,14 @@ export default function InvoiceEditor({ invoiceId, onSave, onCancel }: InvoiceEd
           customer_notes: invoice.customer_notes.trim(),
         })
       } else {
+        await invoke('replace_invoice_line_items', {
+          invoiceId: invoice.id,
+          items: lineItems.map((item) => ({
+            description: item.description.trim(),
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+          })),
+        })
         await invoke('update_invoice', {
           id: invoice.id,
           status: invoice.status,

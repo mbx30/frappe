@@ -156,6 +156,21 @@ pub fn add_invoice_line_item(db: State<'_, Database>, invoice_id: i64, descripti
     db.add_line_item(invoice_id, &description, quantity, unit_price).map_err(|e| e.to_string())
 }
 
+#[derive(serde::Deserialize)]
+pub struct InvoiceLineItemInput {
+    pub description: String,
+    pub quantity: f64,
+    pub unit_price: f64,
+}
+
+#[tauri::command]
+pub fn replace_invoice_line_items(db: State<'_, Database>, invoice_id: i64, items: Vec<InvoiceLineItemInput>) -> Result<(), String> {
+    let items_data: Vec<(String, f64, f64)> = items.into_iter()
+        .map(|i| (i.description, i.quantity, i.unit_price))
+        .collect();
+    db.replace_invoice_line_items(invoice_id, &items_data).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn update_invoice(db: State<'_, Database>, id: i64, status: String, subtotal: f64, tax_rate: f64, tax_amount: f64, total: f64, internal_notes: String, customer_notes: String) -> Result<(), String> {
     db.update_invoice(id, &status, subtotal, tax_rate, tax_amount, total, &internal_notes, &customer_notes).map_err(|e| e.to_string())
@@ -204,6 +219,22 @@ pub fn get_estimate(db: State<'_, Database>, id: i64) -> Result<EstimateData, St
 #[tauri::command]
 pub fn add_estimate_line_item(db: State<'_, Database>, estimate_id: i64, description: String, category: String, quantity: f64, unit_price: f64) -> Result<EstimateLineItem, String> {
     db.add_estimate_line_item(estimate_id, &description, &category, quantity, unit_price).map_err(|e| e.to_string())
+}
+
+#[derive(serde::Deserialize)]
+pub struct EstimateLineItemInput {
+    pub description: String,
+    pub category: String,
+    pub quantity: f64,
+    pub unit_price: f64,
+}
+
+#[tauri::command]
+pub fn replace_estimate_line_items(db: State<'_, Database>, estimate_id: i64, items: Vec<EstimateLineItemInput>) -> Result<(), String> {
+    let items_data: Vec<(String, String, f64, f64)> = items.into_iter()
+        .map(|i| (i.description, i.category, i.quantity, i.unit_price))
+        .collect();
+    db.replace_estimate_line_items(estimate_id, &items_data).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

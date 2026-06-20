@@ -140,7 +140,7 @@ export default function POSView() {
         <div className="pos-results">
           {results.map((r) => (
             <button key={`${r.type}-${r.id}`} className="pos-result-row" onClick={() => handleSelect(r)}>
-              <span className="pos-type-badge pos-type-badge--{r.type}">{r.type}</span>
+              <span className={`pos-type-badge pos-type-badge--${r.type}`}>{r.type}</span>
               <span className="pos-result-number">{r.number}</span>
               <span className="pos-result-status">{r.status}</span>
               <span className="pos-result-balance">
