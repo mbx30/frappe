@@ -14,7 +14,7 @@ use crate::pdf::images::ImageResolutionFinding;
 use crate::pdf::bleed::BleedFinding;
 use crate::pdf::metadata::OutputIntent;
 use crate::pdf::security::SecurityFinding;
-use crate::pdf::color::ColorSpaceFinding;
+use crate::pdf::color::{ColorSpaceFinding, SpotColorFinding, InkCoverageFinding};
 use crate::pdf::transforms::IccProfileInfo;
 use crate::pdf::overprint::{OverprintFinding, TransparencyFinding, HiddenContentFinding};
 use crate::pdf::pdfx::PdfXFinding;
@@ -781,6 +781,17 @@ pub fn check_transparency(path: String) -> Result<Vec<TransparencyFinding>, Stri
 pub fn check_hidden_content(path: String) -> Result<Vec<HiddenContentFinding>, String> {
     let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     Ok(crate::pdf::overprint::check_hidden_content(&doc))
+}
+
+#[tauri::command]
+pub fn check_spot_colors(path: String) -> Result<Vec<SpotColorFinding>, String> {
+    let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
+    Ok(crate::pdf::color::check_spot_colors(&doc))
+}
+
+#[tauri::command]
+pub fn check_ink_coverage() -> Vec<InkCoverageFinding> {
+    crate::pdf::color::check_ink_coverage()
 }
 
 #[tauri::command]

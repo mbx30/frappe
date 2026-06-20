@@ -127,6 +127,8 @@ pub fn run() {
             commands::check_overprint,
             commands::check_transparency,
             commands::check_hidden_content,
+            commands::check_spot_colors,
+            commands::check_ink_coverage,
             commands::list_icc_profiles,
             commands::convert_rgb_to_cmyk,
             commands::add_output_intent,

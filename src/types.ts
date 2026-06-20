@@ -392,6 +392,24 @@ export interface IccProfileInfo {
   file_name: string
 }
 
+export interface SpotColorFinding {
+  name: string
+  pages: number[]
+  has_alternate_colorspace: boolean
+  alternate_colorspace_type: string
+  severity: string
+  message: string
+}
+
+export interface InkCoverageFinding {
+  page: number
+  max_tac: number
+  average_tac: number
+  exceeds_threshold: boolean
+  severity: string
+  message: string
+}
+
 export interface CombinedPreflightResult {
   fonts: FontFinding[]
   page_boxes: PageBoxFinding[]

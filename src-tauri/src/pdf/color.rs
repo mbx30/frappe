@@ -826,6 +826,166 @@ fn collect_image_color_spaces(doc: &Document, page_id: (u32, u16)) -> Vec<(Color
     results
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct SpotColorFinding {
+    pub name: String,
+    pub pages: Vec<usize>,
+    pub has_alternate_colorspace: bool,
+    pub alternate_colorspace_type: String,
+    pub severity: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct InkCoverageFinding {
+    pub page: usize,
+    pub max_tac: f64,
+    pub average_tac: f64,
+    pub exceeds_threshold: bool,
+    pub severity: String,
+    pub message: String,
+}
+
+pub fn check_spot_colors(doc: &Document) -> Vec<SpotColorFinding> {
+    let page_ids: Vec<(u32, u16)> = doc.get_pages().values().copied().collect();
+    let mut spot_names: std::collections::HashMap<String, Vec<usize>> = std::collections::HashMap::new();
+    let mut alt_spaces: std::collections::HashMap<String, ColorSpaceKind> = std::collections::HashMap::new();
+
+    for page_num in 0..page_ids.len() {
+        let obj_id = page_ids[page_num];
+        let page = page_num + 1;
+
+        let resources = match get_resources(doc, obj_id) {
+            Some(r) => r,
+            None => continue,
+        };
+
+        let cs_dict = match resources.get(b"ColorSpace") {
+            Ok(Object::Dictionary(d)) => d.clone(),
+            Ok(Object::Reference(id)) => doc.get_dictionary(*id).ok().cloned().unwrap_or_default(),
+            _ => continue,
+        };
+
+        for (_name, value) in cs_dict.iter() {
+            let arr: Vec<Object> = match value {
+                Object::Array(a) => a.clone(),
+                Object::Reference(id) => {
+                    match doc.get_object(*id).ok().and_then(|o| o.as_array().ok()) {
+                        Some(a) => a.clone(),
+                        None => continue,
+                    }
+                }
+                _ => continue,
+            };
+
+            if arr.is_empty() { continue; }
+            let family = match &arr[0] {
+                Object::Name(n) => String::from_utf8_lossy(&n).to_string(),
+                _ => continue,
+            };
+
+            if family == "Separation" && arr.len() >= 3 {
+                let spot_name = match &arr[1] {
+                    Object::Name(n) => String::from_utf8_lossy(&n).to_string(),
+                    _ => continue,
+                };
+                let alt = resolve_color_space_object(&arr[2], doc, &resources, 0);
+                alt_spaces.insert(spot_name.clone(), alt);
+                spot_names.entry(spot_name).or_default().push(page);
+            } else if family == "DeviceN" && arr.len() >= 4 {
+                let names_arr = match &arr[1] {
+                    Object::Array(a) => a,
+                    _ => continue,
+                };
+                for name_obj in names_arr {
+                    if let Object::Name(n) = name_obj {
+                        let name = String::from_utf8_lossy(&n).to_string();
+                        let alt = resolve_color_space_object(&arr[2], doc, &resources, 0);
+                        alt_spaces.insert(name.clone(), alt);
+                        spot_names.entry(name).or_default().push(page);
+                    }
+                }
+            }
+        }
+
+        // Also check image color spaces for Separation/DeviceN
+        let xobject_dict = find_xobject_dict(doc, &resources).unwrap_or_else(|| Dictionary::new());
+        for (_name, value) in xobject_dict.iter() {
+            let stream = match value {
+                Object::Reference(id) => match doc.get_object(*id).ok().and_then(|o| o.as_stream().ok()) {
+                    Some(s) => s,
+                    None => continue,
+                },
+                _ => continue,
+            };
+            let subtype = stream.dict.get(b"Subtype").ok().and_then(|o| o.as_name().ok());
+            if subtype != Some(b"Image") { continue; }
+            if let Ok(cs) = stream.dict.get(b"ColorSpace") {
+                let resolved = resolve_color_space_object(cs, doc, &resources, 0);
+                if let ColorSpaceKind::Separation(_) = &resolved {
+                    // Get the name from the color space array
+                    if let Object::Array(arr) = cs {
+                        if arr.len() >= 2 {
+                            if let Object::Name(n) = &arr[1] {
+                                let name = String::from_utf8_lossy(n).to_string();
+                                spot_names.entry(name).or_default().push(page);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let mut findings: Vec<SpotColorFinding> = spot_names.into_iter().map(|(name, pages)| {
+        let alt = alt_spaces.get(&name);
+        let is_process = name.eq_ignore_ascii_case("All")
+            || name.eq_ignore_ascii_case("None")
+            || name.contains("Cut") || name.contains("Die")
+            || name.contains("Cyan") || name.contains("Magenta")
+            || name.contains("Yellow") || name.contains("Black")
+            || name.contains("Varnish") || name.contains("Coat");
+        SpotColorFinding {
+            name: name.clone(),
+            pages: pages.clone(),
+            has_alternate_colorspace: alt.is_some(),
+            alternate_colorspace_type: alt.map(|a| a.display_name()).unwrap_or_else(|| "none".into()),
+            severity: if is_process { "info".into() } else { "warning".into() },
+            message: if is_process {
+                format!("'{}' — appears to be a process/finishing name. Verify intent.", name)
+            } else {
+                let alt_str = alt.map(|a| format!(" using {}", a.display_name())).unwrap_or_default();
+                format!("Spot color '{}' found{} on pages {}.", name, alt_str,
+                    pages.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", "))
+            },
+        }
+    }).collect();
+
+    if findings.is_empty() {
+        findings.push(SpotColorFinding {
+            name: "No spot colors".into(),
+            pages: vec![],
+            has_alternate_colorspace: false,
+            alternate_colorspace_type: "none".into(),
+            severity: "ok".into(),
+            message: "No spot colors (Separation or DeviceN) found in the document.".into(),
+        });
+    }
+
+    findings
+}
+
+pub fn check_ink_coverage() -> Vec<InkCoverageFinding> {
+    vec![InkCoverageFinding {
+        page: 0,
+        max_tac: 0.0,
+        average_tac: 0.0,
+        exceeds_threshold: false,
+        severity: "info".into(),
+        message: "Ink coverage analysis requires rendering — available in Phase 5. Check Total Area Coverage manually in Acrobat Pro: Print Production → Ink Manager.".into(),
+    }]
+}
+
 pub fn icc_profile_from_stream(doc: &Document, stream_ref: &Object) -> Option<IccProfileInfo> {
     let stream = match stream_ref {
         Object::Reference(id) => doc.get_object(*id).ok().and_then(|o| o.as_stream().ok())?,

@@ -31,7 +31,7 @@ const PROFILES = [
 
 export default function PreflightReport({ filePath, result, jobId, onSaved }: PreflightReportProps) {
   const [sections, setSections] = useState<SectionState>({
-    fonts: true, boxes: true, images: true, bleed: true, intents: true, security: true, pdfx: true, color_spaces: true, overprint: true, transparency: true, hidden_content: true,
+    fonts: true, boxes: true, images: true, bleed: true, intents: true, security: true, pdfx: true, color_spaces: true, spot_colors: true, overprint: true, transparency: true, hidden_content: true,
   })
   const [minBleed, setMinBleed] = useState(3)
   const [bleedFindings, setBleedFindings] = useState(result.bleed)
