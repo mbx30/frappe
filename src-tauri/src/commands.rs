@@ -390,3 +390,10 @@ pub fn list_department_notes(db: State<'_, Database>, order_id: i64) -> Result<V
 pub fn delete_department_note(db: State<'_, Database>, id: i64) -> Result<(), String> {
     db.delete_department_note(id).map_err(|e| e.to_string())
 }
+
+// ── PDF Tooling (#21–#60) ─────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn open_pdf(path: String) -> Result<PdfSummary, String> {
+    crate::pdf::open_pdf(&path)
+}

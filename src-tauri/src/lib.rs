@@ -3,6 +3,7 @@ mod commands;
 mod db;
 mod import;
 mod models;
+mod pdf;
 
 use db::Database;
 use std::path::PathBuf;
@@ -103,6 +104,7 @@ pub fn run() {
             commands::add_department_note,
             commands::list_department_notes,
             commands::delete_department_note,
+            commands::open_pdf,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
