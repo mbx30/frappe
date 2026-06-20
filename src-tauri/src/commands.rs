@@ -1,10 +1,13 @@
 use std::path::PathBuf;
 
+use std::io::{Read, BufReader};
+use lopdf::Object;
 use tauri::State;
 
+use crate::cloud_import;
 use crate::db::{Database, VerificationResult};
 use crate::models::{*, BusinessInfo};
-use crate::cloud_import;
+use crate::pdf::engine::PdfEngine;
 
 #[tauri::command]
 pub fn create_workbook(db: State<'_, Database>, name: String) -> Result<Workbook, String> {
@@ -389,4 +392,97 @@ pub fn list_department_notes(db: State<'_, Database>, order_id: i64) -> Result<V
 #[tauri::command]
 pub fn delete_department_note(db: State<'_, Database>, id: i64) -> Result<(), String> {
     db.delete_department_note(id).map_err(|e| e.to_string())
+}
+
+fn read_pdf_version(path: &str) -> String {
+    if let Ok(file) = std::fs::File::open(path) {
+        let mut reader = BufReader::new(file);
+        let mut header = [0u8; 100];
+        if reader.read(&mut header).is_ok() {
+            let s = String::from_utf8_lossy(&header);
+            for line in s.lines() {
+                let trimmed = line.trim();
+                if trimmed.starts_with("%PDF-") {
+                    return trimmed[5..].trim().to_string();
+                }
+            }
+        }
+    }
+    "unknown".to_string()
+}
+
+fn get_info_string(lopdf_doc: &lopdf::Document, key: &[u8]) -> String {
+    (|| -> Option<String> {
+        let info = lopdf_doc.trailer.get(b"Info").ok()?;
+        let (_range, info_obj) = lopdf_doc.dereference(info).ok()?;
+        let dict = info_obj.as_dict().ok()?;
+        let val = dict.get(key).ok()?;
+        let (_r, val_obj) = lopdf_doc.dereference(val).ok()?;
+        match val_obj {
+            Object::String(s, _) => Some(String::from_utf8_lossy(s).to_string()),
+            Object::Name(n) => Some(String::from_utf8_lossy(n).to_string()),
+            _ => None,
+        }
+    })()
+    .unwrap_or_default()
+}
+
+#[tauri::command]
+pub fn open_pdf(engine: State<'_, PdfEngine>, path: String) -> Result<PdfSummary, String> {
+    let path_buf = PathBuf::from(&path);
+    let file_name = path_buf
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let file_size_bytes = std::fs::metadata(&path)
+        .map(|m| m.len())
+        .unwrap_or(0);
+
+    let doc = engine.open_document(&path)?;
+    let page_count = doc.pages().len() as usize;
+
+    let pdf_version = read_pdf_version(&path);
+
+    let lopdf_doc =
+        lopdf::Document::load(&path).map_err(|e| format!("Failed to parse PDF metadata: {}", e))?;
+
+    let is_encrypted = lopdf_doc
+        .trailer
+        .get(b"Encrypt")
+        .map(|o| !matches!(o, Object::Null))
+        .unwrap_or(false);
+
+    let title = get_info_string(&lopdf_doc, b"Title");
+    let creator = get_info_string(&lopdf_doc, b"Creator");
+    let producer = get_info_string(&lopdf_doc, b"Producer");
+    let creation_date = get_info_string(&lopdf_doc, b"CreationDate");
+
+    Ok(PdfSummary {
+        id: 0,
+        file_path: path.clone(),
+        file_name,
+        page_count,
+        pdf_version,
+        file_size_bytes,
+        title,
+        creator,
+        producer,
+        creation_date,
+        is_encrypted,
+    })
+}
+
+#[tauri::command]
+pub fn save_pdf_job(db: State<'_, Database>, summary: PdfSummary) -> Result<i64, String> {
+    db.save_pdf_job(&summary).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn list_pdf_jobs(db: State<'_, Database>) -> Result<Vec<PdfSummary>, String> {
+    db.list_pdf_jobs().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_pdf_job(db: State<'_, Database>, id: i64) -> Result<(), String> {
+    db.delete_pdf_job(id).map_err(|e| e.to_string())
 }

@@ -29,3 +29,7 @@ target/
 
 # Tauri
 src-tauri/gen/
+
+# Large downloaded binaries (install via scripts/build)
+src-tauri/resources/pdfium.dll
+src-tauri/resources/libpdfium.dylib
