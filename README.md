@@ -4,6 +4,19 @@
 
 Built with **React 19 + TypeScript** (frontend) and **Rust + Tauri v2** (backend), with **SQLite** for persistent data.
 
+## Product Context — Local-First Print Ops
+
+Frappe is built as a **local-first** print-shop operations app: the desktop machine is the source of truth, SQLite holds all data, and the cloud is **backup-only in v1** (true sync arrives in V2). The schema is **multi-tenant from day one** — every table carries `tenant_id` — so the same codebase scales from a single-location pilot to multi-tenant SaaS without re-architecture.
+
+- **ICP:** single-location digital print shops working paper-ish materials up to **13×19**.
+- **Intake channels:** email (paste), walk-in, phone — captured into a fast, validated job ticket.
+- **Job lifecycle:** `new → waiting_on_customer → ready_for_production → printing → finishing → ready_for_pickup_or_ship → completed`.
+- **Color model (job level):** B/W or Color. **Proofing:** optional, not gating in v1.
+- **Positioning wedge:** "Fastest, cleanest intake → idiot-proof job ticket → production board" for small shops; expand into estimating and true multi-tenant SaaS after workflow adoption.
+- **Audit trail:** an append-only `events` log records the full row after every change, powering deterministic cloud backup and a future sync engine.
+
+The PDF tooling operates on artwork attached to these jobs, so preflight results, fixups, and outbound actions tie back to clients and orders.
+
 ## Features
 
 ### Business Management
@@ -43,10 +56,20 @@ Built with **React 19 + TypeScript** (frontend) and **Rust + Tauri v2** (backend
 - **Action List Debugger** — Step through operations with before/after page views
 
 #### Phase 5: Advanced Features (Planned)
-- **PDF Compression** — Downsample images, re-compress streams, remove metadata
-- **AI-Powered Visual Checking** — Detect low-resolution images, text overflow
-- **Barcode Detection & Validation** — Find and validate barcodes
-- **Dieline Derivation** — Auto-generate cut lines for labels and packaging
+- **PDF Compression & Font Subsetting** — Downsample images, re-compress streams, strip metadata, remove unused glyphs
+- **AI-Powered Visual Checking** — Vision-model preflight (opt-in, off by default) with pre-run cost estimate
+- **Barcode Detection & Validation** — Decode + validate quiet zones and minimum sizes
+- **Analytics Dashboard** — Pass rates, top errors, per-client trends
+- **Approval Sheets & Report Export** — Branded sign-off sheets; PDF / CSV / JSON report export
+- **Ink Coverage (TAC)** — Total-area-coverage estimate against coated/uncoated thresholds
+
+#### Phase 6: Integration & Polish (Planned)
+- **Email / FTP / MIS Webhook** — Send reports & approval sheets, upload outputs, push job events (with retry queue)
+- **Keyboard Shortcuts & Help** — Full keyboard operability + non-technical in-app help articles
+- **Settings, Hardening & Release** — Signed/notarized installers, auto-update, accessibility & memory audits
+
+### Cross-Cutting Engineering Standards
+Applied to every phase as part of "done": golden-file test corpus + CI regression gate + fuzzing; signed/notarized CI builds with auto-update; structured logging, crash reporting, and opt-in telemetry; secrets in the OS keychain; ordered idempotent migrations with `schema_version` and DB backup/restore; explicit per-feature consent for anything leaving the device; performance budgets (open < 2s, 20-page thumbnails < 5s, 50-page preflight < 10s), keyboard accessibility, and i18n-ready strings.
 
 ## Tech Stack
 
@@ -104,21 +127,37 @@ frappe/
 │   │   ├── pdf/            # PDF processing modules
 │   │   └── lib.rs          # Tauri app setup
 │   └── Cargo.toml
-├── PDF_TOOLING_PLAN.md     # 270-day implementation roadmap
+├── PDF_TOOLING_PLAN.md     # Phase → workstream → task implementation roadmap
 └── README.md               # This file
 ```
 
 ## Database Schema
 
-### Core Tables
+All tables carry `tenant_id` for a clean path to multi-tenant SaaS.
+
+### Business & Ops Tables
 - `business_info` — Company details (onboarding state)
 - `invoices`, `invoice_line_items` — Billing documents
 - `estimates`, `estimate_line_items` — Quote documents
 - `orders` — Production orders with status tracking
-- `clients` — Customer information
+- `clients` / `customers` — Customer information
 - `inventory` — Stock levels and item definitions
-- `pdf_jobs` — PDF file history and metadata
-- `preflight_findings` — Test results from PDF checks
+
+### Local-First Foundation (multi-tenant)
+- `tenants`, `device` — Tenant and device registration
+- `jobs` — Work orders (intake source, product type, qty, size, stock, color mode, promised date, status)
+- `files` — Artwork/proof assets (path, mime, size, `sha256`)
+- `events` — Append-only audit log (full row after change), drives cloud backup
+- `backup_state` — Last uploaded sequence / snapshot tracking
+
+### PDF Tooling Tables
+- `pdf_jobs` — PDF file history and metadata (optional `client_id`)
+- `preflight_findings` / `preflight_run_summary` — Check results and run history
+- `preflight_profiles` / `profile_checks` / `profile_fixups` — Configurable profiles
+- `action_lists` / `action_list_steps` — Recorded automation
+- `batch_jobs` / `batch_results` — Batch runs
+- `hot_folders` / `hot_folder_log` — Watched-folder automation
+- `webhook_deliveries` — MIS webhook retry queue
 
 ## Key Commands
 
@@ -142,17 +181,21 @@ frappe/
 
 ## Roadmap
 
-See [PDF_TOOLING_PLAN.md](./PDF_TOOLING_PLAN.md) for the full 270-day implementation schedule across 6 phases.
+See [PDF_TOOLING_PLAN.md](./PDF_TOOLING_PLAN.md) for the full **phase → workstream → task** roadmap. Work is gated by explicit *Done when* acceptance criteria rather than a calendar; each workstream is proven, PR'd, and merged before the next begins.
 
-**Current Status:** Phase 1 complete (preflight foundation), Phase 2 in progress (color space detection).
+**Current Status:** Phase 1 foundation complete (ingestion/viewer, fonts, page boxes, image DPI); remaining Phase 1 (bleed fixup, PDF/X, inspector, findings store) and Phase 2 (color detection & conversion) in progress.
 
 ## Issues & Testing
 
 Open issues are organized by feature area:
 - **#22–#30** — Phase 1: Preflight foundation
-- **#31–#37** — Phase 3: PDF viewing & editing
+- **#23, #25, #26, #34** — Phase 2: Color detection & conversion
+- **#31, #32, #35, #36, #55, #56** — Phase 3: PDF viewing & editing
 - **#38–#42** — Phase 4: Automation engine
-- **#43–#60+** — Phase 5: Advanced features
+- **#45, #48, #49, #50, #59, #60** — Phase 5: Advanced features
+- **#52, #54, #57, #58** — Phase 6: Integration & polish
+
+Cross-cutting and product-foundation work (local-first job model, event log, cloud backup, golden corpus, CI signing, observability, secrets, migrations) is tracked in newer issues — see the roadmap's cross-cutting table.
 
 For bug reports, see [#73](https://github.com/mbx30/frappe/issues/73) (bug hunt with child issues #78–#82).
 
