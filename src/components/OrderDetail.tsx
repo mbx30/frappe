@@ -3,6 +3,9 @@ import { invoke } from '@tauri-apps/api/core'
 import { Button, Input, Select, Card, Checkbox } from '../design-system'
 import type { Order, OrderData } from '../types'
 import ArtApprovalPanel from './ArtApprovalPanel'
+import FulfillmentPanel from './FulfillmentPanel'
+import JobSpecsPanel from './JobSpecsPanel'
+import PaymentPanel from './PaymentPanel'
 import './OrderDetail.css'
 
 interface OrderDetailProps {
@@ -67,6 +70,18 @@ export default function OrderDetail({ orderId, onSave, onCancel }: OrderDetailPr
         deposit_requested: false,
         deposit_amount: 0,
         total_value: 0,
+        print_type: '',
+        paper_stock: '',
+        ink_colors: '',
+        finishing: '',
+        quantity: 0,
+        production_notes: '',
+        assigned_operator: '',
+        fulfillment_method: 'pickup',
+        tracking_number: '',
+        tracking_carrier: '',
+        ready_for_pickup: false,
+        shipped_at: null,
         created_at: today,
         updated_at: today,
       },
@@ -345,6 +360,11 @@ export default function OrderDetail({ orderId, onSave, onCancel }: OrderDetailPr
               </div>
             )}
           </Card>
+
+          {/* Job Specs + Department Notes */}
+          {order.id !== 0 && (
+            <JobSpecsPanel order={order} onSaved={loadOrder} />
+          )}
         </div>
 
         {/* Right column: Status workflow & history */}
@@ -399,6 +419,18 @@ export default function OrderDetail({ orderId, onSave, onCancel }: OrderDetailPr
           {order.id !== 0 && (
             <Card>
               <ArtApprovalPanel orderId={order.id} orderNumber={order.order_number} />
+            </Card>
+          )}
+
+          {/* Fulfillment */}
+          {order.id !== 0 && (
+            <FulfillmentPanel order={order} onSaved={loadOrder} />
+          )}
+
+          {/* Payments */}
+          {order.id !== 0 && order.total_value > 0 && (
+            <Card>
+              <PaymentPanel orderId={order.id} totalDue={order.total_value} />
             </Card>
           )}
 

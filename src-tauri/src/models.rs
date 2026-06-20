@@ -80,10 +80,10 @@ pub struct Invoice {
     pub id: i64,
     pub invoice_number: String,
     pub client_id: Option<i64>,
-    pub status: String, // draft, sent, paid, overdue, voided
+    pub status: String,
     pub issue_date: String,
     pub due_date: String,
-    pub payment_terms: String, // net-15, net-30, custom
+    pub payment_terms: String,
     pub subtotal: f64,
     pub tax_rate: f64,
     pub tax_amount: f64,
@@ -91,6 +91,8 @@ pub struct Invoice {
     pub currency: String,
     pub internal_notes: String,
     pub customer_notes: String,
+    pub qb_sync_status: String,
+    pub amount_paid: f64,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -106,8 +108,8 @@ pub struct Order {
     pub id: i64,
     pub order_number: String,
     pub client_id: Option<i64>,
-    pub status: String, // prepress, production, delivery, completed
-    pub priority: String, // low, normal, high, urgent
+    pub status: String,
+    pub priority: String,
     pub due_date: String,
     pub description: String,
     pub artwork_notes: String,
@@ -116,6 +118,18 @@ pub struct Order {
     pub deposit_requested: bool,
     pub deposit_amount: f64,
     pub total_value: f64,
+    pub print_type: String,
+    pub paper_stock: String,
+    pub ink_colors: String,
+    pub finishing: String,
+    pub quantity: i64,
+    pub production_notes: String,
+    pub assigned_operator: String,
+    pub fulfillment_method: String,
+    pub tracking_number: String,
+    pub tracking_carrier: String,
+    pub ready_for_pickup: bool,
+    pub shipped_at: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -225,6 +239,36 @@ pub struct Client {
     pub last_contacted: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Payment {
+    pub id: i64,
+    pub invoice_id: Option<i64>,
+    pub order_id: Option<i64>,
+    pub amount: f64,
+    pub payment_method: String, // cash, check, card, bank_transfer, other
+    pub reference: String,      // check #, card last 4, etc.
+    pub notes: String,
+    pub recorded_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct InvoiceReminder {
+    pub id: i64,
+    pub invoice_id: i64,
+    pub method: String, // email, sms, phone, manual
+    pub notes: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DepartmentNote {
+    pub id: i64,
+    pub order_id: i64,
+    pub note: String,
+    pub department: String, // design, prepress, press, finishing, shipping, general
+    pub created_at: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

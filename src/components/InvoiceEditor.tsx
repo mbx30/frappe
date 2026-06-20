@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { Button, Input, Select, Card, Checkbox } from '../design-system'
 import type { Invoice, InvoiceData, InvoiceLineItem } from '../types'
+import PaymentPanel from './PaymentPanel'
+import ReminderPanel from './ReminderPanel'
 import './InvoiceEditor.css'
 
 interface InvoiceEditorProps {
@@ -62,6 +64,8 @@ export default function InvoiceEditor({ invoiceId, onSave, onCancel }: InvoiceEd
       currency: 'USD',
       internal_notes: '',
       customer_notes: '',
+      qb_sync_status: 'not_synced',
+      amount_paid: 0,
       created_at: today,
       updated_at: today,
     })
@@ -362,7 +366,34 @@ export default function InvoiceEditor({ invoiceId, onSave, onCancel }: InvoiceEd
               <span>Total</span>
               <span>${total.toFixed(2)}</span>
             </div>
+
+            {invoice.id !== 0 && invoice.amount_paid > 0 && (
+              <>
+                <div className="summary-row">
+                  <span>Amount Paid</span>
+                  <span style={{ color: 'var(--success)' }}>${invoice.amount_paid.toFixed(2)}</span>
+                </div>
+                <div className="summary-row">
+                  <span>Balance Due</span>
+                  <span style={{ fontWeight: 'bold' }}>${Math.max(0, total - invoice.amount_paid).toFixed(2)}</span>
+                </div>
+              </>
+            )}
           </Card>
+
+          {/* Payments */}
+          {invoice.id !== 0 && invoice.total > 0 && (
+            <Card>
+              <PaymentPanel invoiceId={invoice.id} totalDue={invoice.total} onPaymentRecorded={loadInvoice} />
+            </Card>
+          )}
+
+          {/* Reminders */}
+          {invoice.id !== 0 && (
+            <Card>
+              <ReminderPanel invoiceId={invoice.id} invoiceStatus={invoice.status} />
+            </Card>
+          )}
         </div>
       </div>
     </div>

@@ -84,6 +84,8 @@ export interface Invoice {
   currency: string
   internal_notes: string
   customer_notes: string
+  qb_sync_status: 'not_synced' | 'synced' | 'pending' | 'error'
+  amount_paid: number
   created_at: string
   updated_at: string
 }
@@ -107,8 +109,47 @@ export interface Order {
   deposit_requested: boolean
   deposit_amount: number
   total_value: number
+  print_type: string
+  paper_stock: string
+  ink_colors: string
+  finishing: string
+  quantity: number
+  production_notes: string
+  assigned_operator: string
+  fulfillment_method: 'pickup' | 'ship' | 'delivery'
+  tracking_number: string
+  tracking_carrier: string
+  ready_for_pickup: boolean
+  shipped_at: string | null
   created_at: string
   updated_at: string
+}
+
+export interface Payment {
+  id: number
+  invoice_id: number | null
+  order_id: number | null
+  amount: number
+  payment_method: 'cash' | 'check' | 'card' | 'bank_transfer' | 'other'
+  reference: string
+  notes: string
+  recorded_at: string
+}
+
+export interface InvoiceReminder {
+  id: number
+  invoice_id: number
+  method: 'email' | 'sms' | 'phone' | 'manual'
+  notes: string
+  created_at: string
+}
+
+export interface DepartmentNote {
+  id: number
+  order_id: number
+  note: string
+  department: 'design' | 'prepress' | 'press' | 'finishing' | 'shipping' | 'general'
+  created_at: string
 }
 
 export interface OrderStatusHistory {

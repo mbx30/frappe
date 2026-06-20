@@ -289,3 +289,73 @@ pub fn respond_to_art_approval(db: State<'_, Database>, token: String, status: S
 pub fn increment_art_approval_follow_up(db: State<'_, Database>, id: i64) -> Result<(), String> {
     db.increment_art_approval_follow_up(id).map_err(|e| e.to_string())
 }
+
+// ── Payments (#10, #11) ───────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn record_payment(db: State<'_, Database>, invoice_id: Option<i64>, order_id: Option<i64>, amount: f64, payment_method: String, reference: String, notes: String) -> Result<Payment, String> {
+    db.record_payment(invoice_id, order_id, amount, &payment_method, &reference, &notes).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn list_payments(db: State<'_, Database>, invoice_id: Option<i64>, order_id: Option<i64>) -> Result<Vec<Payment>, String> {
+    db.list_payments(invoice_id, order_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_payment(db: State<'_, Database>, id: i64) -> Result<(), String> {
+    db.delete_payment(id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn search_invoices_and_orders(db: State<'_, Database>, query: String) -> Result<Vec<serde_json::Value>, String> {
+    db.search_invoices_and_orders(&query).map_err(|e| e.to_string())
+}
+
+// ── Invoice reminders (#9) ────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn log_invoice_reminder(db: State<'_, Database>, invoice_id: i64, method: String, notes: String) -> Result<InvoiceReminder, String> {
+    db.log_invoice_reminder(invoice_id, &method, &notes).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn list_invoice_reminders(db: State<'_, Database>, invoice_id: i64) -> Result<Vec<InvoiceReminder>, String> {
+    db.list_invoice_reminders(invoice_id).map_err(|e| e.to_string())
+}
+
+// ── QuickBooks sync (#7) ──────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn update_invoice_qb_status(db: State<'_, Database>, id: i64, status: String) -> Result<(), String> {
+    db.update_invoice_qb_status(id, &status).map_err(|e| e.to_string())
+}
+
+// ── Job specs + production + fulfillment (#15, #16, #18) ─────────────────────
+
+#[tauri::command]
+pub fn update_order_job_specs(db: State<'_, Database>, id: i64, print_type: String, paper_stock: String, ink_colors: String, finishing: String, quantity: i64, production_notes: String, assigned_operator: String) -> Result<(), String> {
+    db.update_order_job_specs(id, &print_type, &paper_stock, &ink_colors, &finishing, quantity, &production_notes, &assigned_operator).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn update_order_fulfillment(db: State<'_, Database>, id: i64, fulfillment_method: String, tracking_number: String, tracking_carrier: String, ready_for_pickup: bool, shipped_at: Option<String>) -> Result<(), String> {
+    db.update_order_fulfillment(id, &fulfillment_method, &tracking_number, &tracking_carrier, ready_for_pickup, shipped_at.as_deref()).map_err(|e| e.to_string())
+}
+
+// ── Department notes (#18) ────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn add_department_note(db: State<'_, Database>, order_id: i64, note: String, department: String) -> Result<DepartmentNote, String> {
+    db.add_department_note(order_id, &note, &department).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn list_department_notes(db: State<'_, Database>, order_id: i64) -> Result<Vec<DepartmentNote>, String> {
+    db.list_department_notes(order_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_department_note(db: State<'_, Database>, id: i64) -> Result<(), String> {
+    db.delete_department_note(id).map_err(|e| e.to_string())
+}

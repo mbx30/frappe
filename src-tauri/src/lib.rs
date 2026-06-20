@@ -89,6 +89,18 @@ pub fn run() {
             commands::get_art_approvals_for_order,
             commands::respond_to_art_approval,
             commands::increment_art_approval_follow_up,
+            commands::record_payment,
+            commands::list_payments,
+            commands::delete_payment,
+            commands::search_invoices_and_orders,
+            commands::log_invoice_reminder,
+            commands::list_invoice_reminders,
+            commands::update_invoice_qb_status,
+            commands::update_order_job_specs,
+            commands::update_order_fulfillment,
+            commands::add_department_note,
+            commands::list_department_notes,
+            commands::delete_department_note,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

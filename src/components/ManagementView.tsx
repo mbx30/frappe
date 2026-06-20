@@ -16,6 +16,8 @@ import EstimateEditor from './EstimateEditor'
 import InventoryList from './InventoryList'
 import ClientList from './ClientList'
 import ClientForm from './ClientForm'
+import POSView from './POSView'
+import QBSyncPanel from './QBSyncPanel'
 import './ManagementView.css'
 
 type Section =
@@ -26,6 +28,8 @@ type Section =
   | 'estimates'
   | 'inventory'
   | 'clients'
+  | 'pos'
+  | 'qb'
 
 const NAV_ITEMS: { id: Section; label: string; icon: string }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: '⊞' },
@@ -35,6 +39,8 @@ const NAV_ITEMS: { id: Section; label: string; icon: string }[] = [
   { id: 'invoices', label: 'Invoices', icon: '🧾' },
   { id: 'inventory', label: 'Inventory', icon: '🗄' },
   { id: 'clients', label: 'Clients', icon: '👥' },
+  { id: 'pos', label: 'Point of Sale', icon: '$' },
+  { id: 'qb', label: 'QuickBooks', icon: '⚡' },
 ]
 
 export default function ManagementView() {
@@ -256,6 +262,12 @@ export default function ManagementView() {
 
       case 'inventory':
         return <InventoryList />
+
+      case 'pos':
+        return <POSView />
+
+      case 'qb':
+        return <QBSyncPanel />
 
       case 'clients':
         if (editingClient !== undefined) {

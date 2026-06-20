@@ -84,6 +84,8 @@ impl Database {
                 currency TEXT DEFAULT 'USD',
                 internal_notes TEXT DEFAULT '',
                 customer_notes TEXT DEFAULT '',
+                qb_sync_status TEXT DEFAULT 'not_synced',
+                amount_paid REAL DEFAULT 0,
                 created_at TEXT DEFAULT (datetime('now')),
                 updated_at TEXT DEFAULT (datetime('now'))
             );
@@ -112,6 +114,18 @@ impl Database {
                 deposit_requested INTEGER DEFAULT 0,
                 deposit_amount REAL DEFAULT 0,
                 total_value REAL DEFAULT 0,
+                print_type TEXT DEFAULT '',
+                paper_stock TEXT DEFAULT '',
+                ink_colors TEXT DEFAULT '',
+                finishing TEXT DEFAULT '',
+                quantity INTEGER DEFAULT 0,
+                production_notes TEXT DEFAULT '',
+                assigned_operator TEXT DEFAULT '',
+                fulfillment_method TEXT DEFAULT 'pickup',
+                tracking_number TEXT DEFAULT '',
+                tracking_carrier TEXT DEFAULT '',
+                ready_for_pickup INTEGER DEFAULT 0,
+                shipped_at TEXT,
                 created_at TEXT DEFAULT (datetime('now')),
                 updated_at TEXT DEFAULT (datetime('now'))
             );
@@ -227,8 +241,51 @@ impl Database {
             );
             CREATE INDEX IF NOT EXISTS idx_approvals_order ON art_approvals(order_id);
             CREATE INDEX IF NOT EXISTS idx_approvals_token ON art_approvals(secure_token);
-            CREATE INDEX IF NOT EXISTS idx_approvals_status ON art_approvals(status);"
+            CREATE INDEX IF NOT EXISTS idx_approvals_status ON art_approvals(status);
+            CREATE TABLE IF NOT EXISTS payments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                invoice_id INTEGER REFERENCES invoices(id) ON DELETE SET NULL,
+                order_id INTEGER REFERENCES orders(id) ON DELETE SET NULL,
+                amount REAL NOT NULL,
+                payment_method TEXT NOT NULL DEFAULT 'cash',
+                reference TEXT DEFAULT '',
+                notes TEXT DEFAULT '',
+                recorded_at TEXT DEFAULT (datetime('now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_payments_invoice ON payments(invoice_id);
+            CREATE INDEX IF NOT EXISTS idx_payments_order ON payments(order_id);
+            CREATE TABLE IF NOT EXISTS invoice_reminders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                invoice_id INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+                method TEXT NOT NULL DEFAULT 'email',
+                notes TEXT DEFAULT '',
+                created_at TEXT DEFAULT (datetime('now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_reminders_invoice ON invoice_reminders(invoice_id);
+            CREATE TABLE IF NOT EXISTS department_notes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+                note TEXT NOT NULL,
+                department TEXT NOT NULL DEFAULT 'general',
+                created_at TEXT DEFAULT (datetime('now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_dept_notes_order ON department_notes(order_id);"
         )?;
+        // Migration: add new columns to existing tables (ignored if already present)
+        let _ = conn.execute("ALTER TABLE orders ADD COLUMN print_type TEXT DEFAULT ''", []);
+        let _ = conn.execute("ALTER TABLE orders ADD COLUMN paper_stock TEXT DEFAULT ''", []);
+        let _ = conn.execute("ALTER TABLE orders ADD COLUMN ink_colors TEXT DEFAULT ''", []);
+        let _ = conn.execute("ALTER TABLE orders ADD COLUMN finishing TEXT DEFAULT ''", []);
+        let _ = conn.execute("ALTER TABLE orders ADD COLUMN quantity INTEGER DEFAULT 0", []);
+        let _ = conn.execute("ALTER TABLE orders ADD COLUMN production_notes TEXT DEFAULT ''", []);
+        let _ = conn.execute("ALTER TABLE orders ADD COLUMN assigned_operator TEXT DEFAULT ''", []);
+        let _ = conn.execute("ALTER TABLE orders ADD COLUMN fulfillment_method TEXT DEFAULT 'pickup'", []);
+        let _ = conn.execute("ALTER TABLE orders ADD COLUMN tracking_number TEXT DEFAULT ''", []);
+        let _ = conn.execute("ALTER TABLE orders ADD COLUMN tracking_carrier TEXT DEFAULT ''", []);
+        let _ = conn.execute("ALTER TABLE orders ADD COLUMN ready_for_pickup INTEGER DEFAULT 0", []);
+        let _ = conn.execute("ALTER TABLE orders ADD COLUMN shipped_at TEXT", []);
+        let _ = conn.execute("ALTER TABLE invoices ADD COLUMN qb_sync_status TEXT DEFAULT 'not_synced'", []);
+        let _ = conn.execute("ALTER TABLE invoices ADD COLUMN amount_paid REAL DEFAULT 0", []);
         Ok(())
     }
 
@@ -501,8 +558,33 @@ impl Database {
             currency: "USD".to_string(),
             internal_notes: String::new(),
             customer_notes: String::new(),
+            qb_sync_status: "not_synced".to_string(),
+            amount_paid: 0.0,
             created_at: chrono::Utc::now().to_rfc3339(),
             updated_at: chrono::Utc::now().to_rfc3339(),
+        })
+    }
+
+    fn map_invoice(row: &rusqlite::Row<'_>) -> rusqlite::Result<Invoice> {
+        Ok(Invoice {
+            id: row.get(0)?,
+            invoice_number: row.get(1)?,
+            client_id: row.get(2)?,
+            status: row.get(3)?,
+            issue_date: row.get(4)?,
+            due_date: row.get(5)?,
+            payment_terms: row.get(6)?,
+            subtotal: row.get(7)?,
+            tax_rate: row.get(8)?,
+            tax_amount: row.get(9)?,
+            total: row.get(10)?,
+            currency: row.get(11)?,
+            internal_notes: row.get(12)?,
+            customer_notes: row.get(13)?,
+            qb_sync_status: row.get(14)?,
+            amount_paid: row.get(15)?,
+            created_at: row.get(16)?,
+            updated_at: row.get(17)?,
         })
     }
 
@@ -511,28 +593,9 @@ impl Database {
         let mut stmt = conn.prepare(
             "SELECT id, invoice_number, client_id, status, issue_date, due_date, payment_terms,
                     subtotal, tax_rate, tax_amount, total, currency, internal_notes, customer_notes,
-                    created_at, updated_at FROM invoices ORDER BY created_at DESC"
+                    qb_sync_status, amount_paid, created_at, updated_at FROM invoices ORDER BY created_at DESC"
         )?;
-        let rows = stmt.query_map([], |row| {
-            Ok(Invoice {
-                id: row.get(0)?,
-                invoice_number: row.get(1)?,
-                client_id: row.get(2)?,
-                status: row.get(3)?,
-                issue_date: row.get(4)?,
-                due_date: row.get(5)?,
-                payment_terms: row.get(6)?,
-                subtotal: row.get(7)?,
-                tax_rate: row.get(8)?,
-                tax_amount: row.get(9)?,
-                total: row.get(10)?,
-                currency: row.get(11)?,
-                internal_notes: row.get(12)?,
-                customer_notes: row.get(13)?,
-                created_at: row.get(14)?,
-                updated_at: row.get(15)?,
-            })
-        })?;
+        let rows = stmt.query_map([], Self::map_invoice)?;
         rows.collect()
     }
 
@@ -541,28 +604,9 @@ impl Database {
         let mut stmt = conn.prepare(
             "SELECT id, invoice_number, client_id, status, issue_date, due_date, payment_terms,
                     subtotal, tax_rate, tax_amount, total, currency, internal_notes, customer_notes,
-                    created_at, updated_at FROM invoices WHERE id = ?1"
+                    qb_sync_status, amount_paid, created_at, updated_at FROM invoices WHERE id = ?1"
         )?;
-        let invoice = stmt.query_row(params![invoice_id], |row| {
-            Ok(Invoice {
-                id: row.get(0)?,
-                invoice_number: row.get(1)?,
-                client_id: row.get(2)?,
-                status: row.get(3)?,
-                issue_date: row.get(4)?,
-                due_date: row.get(5)?,
-                payment_terms: row.get(6)?,
-                subtotal: row.get(7)?,
-                tax_rate: row.get(8)?,
-                tax_amount: row.get(9)?,
-                total: row.get(10)?,
-                currency: row.get(11)?,
-                internal_notes: row.get(12)?,
-                customer_notes: row.get(13)?,
-                created_at: row.get(14)?,
-                updated_at: row.get(15)?,
-            })
-        })?;
+        let invoice = stmt.query_row(params![invoice_id], Self::map_invoice)?;
 
         let mut stmt = conn.prepare(
             "SELECT id, invoice_id, description, quantity, unit_price, sort_order
@@ -638,8 +682,52 @@ impl Database {
             deposit_requested: false,
             deposit_amount: 0.0,
             total_value: 0.0,
+            print_type: String::new(),
+            paper_stock: String::new(),
+            ink_colors: String::new(),
+            finishing: String::new(),
+            quantity: 0,
+            production_notes: String::new(),
+            assigned_operator: String::new(),
+            fulfillment_method: "pickup".to_string(),
+            tracking_number: String::new(),
+            tracking_carrier: String::new(),
+            ready_for_pickup: false,
+            shipped_at: None,
             created_at: chrono::Utc::now().to_rfc3339(),
             updated_at: chrono::Utc::now().to_rfc3339(),
+        })
+    }
+
+    fn map_order(row: &rusqlite::Row<'_>) -> rusqlite::Result<Order> {
+        Ok(Order {
+            id: row.get(0)?,
+            order_number: row.get(1)?,
+            client_id: row.get(2)?,
+            status: row.get(3)?,
+            priority: row.get(4)?,
+            due_date: row.get(5)?,
+            description: row.get(6)?,
+            artwork_notes: row.get(7)?,
+            artwork_url: row.get(8)?,
+            artwork_approved: row.get::<_, i32>(9)? != 0,
+            deposit_requested: row.get::<_, i32>(10)? != 0,
+            deposit_amount: row.get(11)?,
+            total_value: row.get(12)?,
+            print_type: row.get(13)?,
+            paper_stock: row.get(14)?,
+            ink_colors: row.get(15)?,
+            finishing: row.get(16)?,
+            quantity: row.get(17)?,
+            production_notes: row.get(18)?,
+            assigned_operator: row.get(19)?,
+            fulfillment_method: row.get(20)?,
+            tracking_number: row.get(21)?,
+            tracking_carrier: row.get(22)?,
+            ready_for_pickup: row.get::<_, i32>(23)? != 0,
+            shipped_at: row.get(24)?,
+            created_at: row.get(25)?,
+            updated_at: row.get(26)?,
         })
     }
 
@@ -647,28 +735,13 @@ impl Database {
         let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
             "SELECT id, order_number, client_id, status, priority, due_date, description, artwork_notes, artwork_url,
-                    artwork_approved, deposit_requested, deposit_amount, total_value, created_at, updated_at
+                    artwork_approved, deposit_requested, deposit_amount, total_value,
+                    print_type, paper_stock, ink_colors, finishing, quantity, production_notes, assigned_operator,
+                    fulfillment_method, tracking_number, tracking_carrier, ready_for_pickup, shipped_at,
+                    created_at, updated_at
              FROM orders ORDER BY created_at DESC"
         )?;
-        let rows = stmt.query_map([], |row| {
-            Ok(Order {
-                id: row.get(0)?,
-                order_number: row.get(1)?,
-                client_id: row.get(2)?,
-                status: row.get(3)?,
-                priority: row.get(4)?,
-                due_date: row.get(5)?,
-                description: row.get(6)?,
-                artwork_notes: row.get(7)?,
-                artwork_url: row.get(8)?,
-                artwork_approved: row.get::<_, i32>(9)? != 0,
-                deposit_requested: row.get::<_, i32>(10)? != 0,
-                deposit_amount: row.get(11)?,
-                total_value: row.get(12)?,
-                created_at: row.get(13)?,
-                updated_at: row.get(14)?,
-            })
-        })?;
+        let rows = stmt.query_map([], Self::map_order)?;
         rows.collect()
     }
 
@@ -676,28 +749,13 @@ impl Database {
         let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
             "SELECT id, order_number, client_id, status, priority, due_date, description, artwork_notes, artwork_url,
-                    artwork_approved, deposit_requested, deposit_amount, total_value, created_at, updated_at
+                    artwork_approved, deposit_requested, deposit_amount, total_value,
+                    print_type, paper_stock, ink_colors, finishing, quantity, production_notes, assigned_operator,
+                    fulfillment_method, tracking_number, tracking_carrier, ready_for_pickup, shipped_at,
+                    created_at, updated_at
              FROM orders WHERE id = ?1"
         )?;
-        let order = stmt.query_row(params![order_id], |row| {
-            Ok(Order {
-                id: row.get(0)?,
-                order_number: row.get(1)?,
-                client_id: row.get(2)?,
-                status: row.get(3)?,
-                priority: row.get(4)?,
-                due_date: row.get(5)?,
-                description: row.get(6)?,
-                artwork_notes: row.get(7)?,
-                artwork_url: row.get(8)?,
-                artwork_approved: row.get::<_, i32>(9)? != 0,
-                deposit_requested: row.get::<_, i32>(10)? != 0,
-                deposit_amount: row.get(11)?,
-                total_value: row.get(12)?,
-                created_at: row.get(13)?,
-                updated_at: row.get(14)?,
-            })
-        })?;
+        let order = stmt.query_row(params![order_id], Self::map_order)?;
 
         let mut stmt = conn.prepare(
             "SELECT id, order_id, previous_status, new_status, notes, created_at
@@ -1307,6 +1365,221 @@ impl Database {
             "UPDATE art_approvals SET follow_up_count = follow_up_count + 1 WHERE id = ?1",
             params![id],
         )?;
+        Ok(())
+    }
+
+    // ── Payments (#10, #11) ───────────────────────────────────────────────────
+
+    pub fn record_payment(&self, invoice_id: Option<i64>, order_id: Option<i64>, amount: f64, payment_method: &str, reference: &str, notes: &str) -> Result<Payment> {
+        if amount <= 0.0 {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        conn.execute(
+            "INSERT INTO payments (invoice_id, order_id, amount, payment_method, reference, notes, recorded_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![invoice_id, order_id, amount, payment_method, reference, notes, now],
+        )?;
+        let id = conn.last_insert_rowid();
+        // Update amount_paid on invoice if linked
+        if let Some(inv_id) = invoice_id {
+            let paid: f64 = conn.query_row(
+                "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE invoice_id = ?1",
+                params![inv_id],
+                |row| row.get(0),
+            )?;
+            let total: f64 = conn.query_row("SELECT total FROM invoices WHERE id = ?1", params![inv_id], |row| row.get(0))?;
+            let new_status = if paid >= total { "paid" } else { "partially-paid" };
+            conn.execute(
+                "UPDATE invoices SET amount_paid = ?1, status = ?2, updated_at = datetime('now') WHERE id = ?3",
+                params![paid, new_status, inv_id],
+            )?;
+        }
+        Ok(Payment {
+            id,
+            invoice_id,
+            order_id,
+            amount,
+            payment_method: payment_method.to_string(),
+            reference: reference.to_string(),
+            notes: notes.to_string(),
+            recorded_at: now,
+        })
+    }
+
+    pub fn list_payments(&self, invoice_id: Option<i64>, order_id: Option<i64>) -> Result<Vec<Payment>> {
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let mut stmt = conn.prepare(
+            "SELECT id, invoice_id, order_id, amount, payment_method, reference, notes, recorded_at
+             FROM payments WHERE (?1 IS NULL OR invoice_id = ?1) AND (?2 IS NULL OR order_id = ?2)
+             ORDER BY recorded_at DESC"
+        )?;
+        let rows = stmt.query_map(params![invoice_id, order_id], |row| {
+            Ok(Payment {
+                id: row.get(0)?,
+                invoice_id: row.get(1)?,
+                order_id: row.get(2)?,
+                amount: row.get(3)?,
+                payment_method: row.get(4)?,
+                reference: row.get(5)?,
+                notes: row.get(6)?,
+                recorded_at: row.get(7)?,
+            })
+        })?.collect::<Result<Vec<_>>>();
+        rows
+    }
+
+    pub fn delete_payment(&self, id: i64) -> Result<()> {
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        // Re-derive amount_paid for invoice if linked
+        let inv_id: Option<i64> = conn.query_row(
+            "SELECT invoice_id FROM payments WHERE id = ?1",
+            params![id],
+            |row| row.get(0),
+        ).ok().flatten();
+        conn.execute("DELETE FROM payments WHERE id = ?1", params![id])?;
+        if let Some(inv_id) = inv_id {
+            let paid: f64 = conn.query_row(
+                "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE invoice_id = ?1",
+                params![inv_id],
+                |row| row.get(0),
+            )?;
+            let total: f64 = conn.query_row("SELECT total FROM invoices WHERE id = ?1", params![inv_id], |row| row.get(0))?;
+            let new_status = if paid >= total && paid > 0.0 { "paid" } else if paid > 0.0 { "partially-paid" } else { "sent" };
+            conn.execute(
+                "UPDATE invoices SET amount_paid = ?1, status = ?2, updated_at = datetime('now') WHERE id = ?3",
+                params![paid, new_status, inv_id],
+            )?;
+        }
+        Ok(())
+    }
+
+    pub fn search_invoices_and_orders(&self, query: &str) -> Result<Vec<serde_json::Value>> {
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let pattern = format!("%{}%", query);
+        let mut results: Vec<serde_json::Value> = Vec::new();
+        // Search invoices
+        let mut stmt = conn.prepare(
+            "SELECT id, invoice_number, client_id, status, total, amount_paid FROM invoices
+             WHERE invoice_number LIKE ?1 ORDER BY created_at DESC LIMIT 10"
+        )?;
+        let rows = stmt.query_map(params![pattern], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(3)?, row.get::<_, f64>(4)?, row.get::<_, f64>(5)?))
+        })?.collect::<Result<Vec<_>>>()?;
+        for (id, number, status, total, paid) in rows {
+            results.push(serde_json::json!({ "type": "invoice", "id": id, "number": number, "status": status, "total": total, "amount_paid": paid, "balance": total - paid }));
+        }
+        // Search orders
+        let mut stmt2 = conn.prepare(
+            "SELECT id, order_number, status, total_value FROM orders
+             WHERE order_number LIKE ?1 ORDER BY created_at DESC LIMIT 10"
+        )?;
+        let rows2 = stmt2.query_map(params![pattern], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?, row.get::<_, f64>(3)?))
+        })?.collect::<Result<Vec<_>>>()?;
+        for (id, number, status, total) in rows2 {
+            results.push(serde_json::json!({ "type": "order", "id": id, "number": number, "status": status, "total": total }));
+        }
+        Ok(results)
+    }
+
+    // ── Invoice reminders (#9) ────────────────────────────────────────────────
+
+    pub fn log_invoice_reminder(&self, invoice_id: i64, method: &str, notes: &str) -> Result<InvoiceReminder> {
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        conn.execute(
+            "INSERT INTO invoice_reminders (invoice_id, method, notes, created_at) VALUES (?1, ?2, ?3, ?4)",
+            params![invoice_id, method, notes, now],
+        )?;
+        let id = conn.last_insert_rowid();
+        Ok(InvoiceReminder { id, invoice_id, method: method.to_string(), notes: notes.to_string(), created_at: now })
+    }
+
+    pub fn list_invoice_reminders(&self, invoice_id: i64) -> Result<Vec<InvoiceReminder>> {
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let mut stmt = conn.prepare(
+            "SELECT id, invoice_id, method, notes, created_at FROM invoice_reminders WHERE invoice_id = ?1 ORDER BY created_at DESC"
+        )?;
+        let rows = stmt.query_map(params![invoice_id], |row| {
+            Ok(InvoiceReminder {
+                id: row.get(0)?,
+                invoice_id: row.get(1)?,
+                method: row.get(2)?,
+                notes: row.get(3)?,
+                created_at: row.get(4)?,
+            })
+        })?.collect::<Result<Vec<_>>>();
+        rows
+    }
+
+    // ── QB sync (#7) ──────────────────────────────────────────────────────────
+
+    pub fn update_invoice_qb_status(&self, id: i64, status: &str) -> Result<()> {
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        conn.execute(
+            "UPDATE invoices SET qb_sync_status = ?1, updated_at = datetime('now') WHERE id = ?2",
+            params![status, id],
+        )?;
+        Ok(())
+    }
+
+    // ── Job specs + fulfillment (#15, #16, #18) ───────────────────────────────
+
+    pub fn update_order_job_specs(&self, id: i64, print_type: &str, paper_stock: &str, ink_colors: &str, finishing: &str, quantity: i64, production_notes: &str, assigned_operator: &str) -> Result<()> {
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        conn.execute(
+            "UPDATE orders SET print_type=?1, paper_stock=?2, ink_colors=?3, finishing=?4, quantity=?5, production_notes=?6, assigned_operator=?7, updated_at=datetime('now') WHERE id=?8",
+            params![print_type, paper_stock, ink_colors, finishing, quantity, production_notes, assigned_operator, id],
+        )?;
+        Ok(())
+    }
+
+    pub fn update_order_fulfillment(&self, id: i64, fulfillment_method: &str, tracking_number: &str, tracking_carrier: &str, ready_for_pickup: bool, shipped_at: Option<&str>) -> Result<()> {
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        conn.execute(
+            "UPDATE orders SET fulfillment_method=?1, tracking_number=?2, tracking_carrier=?3, ready_for_pickup=?4, shipped_at=?5, updated_at=datetime('now') WHERE id=?6",
+            params![fulfillment_method, tracking_number, tracking_carrier, ready_for_pickup as i32, shipped_at, id],
+        )?;
+        Ok(())
+    }
+
+    // ── Department notes (#18) ────────────────────────────────────────────────
+
+    pub fn add_department_note(&self, order_id: i64, note: &str, department: &str) -> Result<DepartmentNote> {
+        if note.trim().is_empty() {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        conn.execute(
+            "INSERT INTO department_notes (order_id, note, department, created_at) VALUES (?1, ?2, ?3, ?4)",
+            params![order_id, note.trim(), department, now],
+        )?;
+        let id = conn.last_insert_rowid();
+        Ok(DepartmentNote { id, order_id, note: note.trim().to_string(), department: department.to_string(), created_at: now })
+    }
+
+    pub fn list_department_notes(&self, order_id: i64) -> Result<Vec<DepartmentNote>> {
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let mut stmt = conn.prepare(
+            "SELECT id, order_id, note, department, created_at FROM department_notes WHERE order_id = ?1 ORDER BY created_at DESC"
+        )?;
+        let rows = stmt.query_map(params![order_id], |row| {
+            Ok(DepartmentNote {
+                id: row.get(0)?,
+                order_id: row.get(1)?,
+                note: row.get(2)?,
+                department: row.get(3)?,
+                created_at: row.get(4)?,
+            })
+        })?.collect::<Result<Vec<_>>>();
+        rows
+    }
+
+    pub fn delete_department_note(&self, id: i64) -> Result<()> {
+        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        conn.execute("DELETE FROM department_notes WHERE id = ?1", params![id])?;
         Ok(())
     }
 }
