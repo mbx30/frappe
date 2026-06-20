@@ -110,7 +110,7 @@ export default function PDFView({ summary, jobs, onOpenFile, onSaveJob, onDelete
       .then(setBoxFindings)
       .catch(() => setBoxFindings([]))
     invoke<ImageResolutionFinding[]>('check_image_resolution', { path: summary.file_path })
-      .then(setImageFindings)
+      .then(r => setImageFindings(r ?? []))
       .catch(() => setImageFindings([]))
   }, [summary])
 

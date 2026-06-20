@@ -59,7 +59,7 @@ export default function OrderKanban({ orders, onOrdersChange }: OrderKanbanProps
 
     try {
       await invoke('update_order_status', {
-        order_id: draggedOrder.id,
+        orderId: draggedOrder.id,
         new_status: status,
         notes: `Moved to ${statusLabels[status]} from kanban board`,
       })

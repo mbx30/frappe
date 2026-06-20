@@ -94,7 +94,7 @@ export default function OrderDetail({ orderId, onSave, onCancel }: OrderDetailPr
     if (!orderData) return
     try {
       await invoke('update_order_status', {
-        order_id: orderData.order.id,
+        orderId: orderData.order.id,
         new_status: newStatus,
         notes: transitionNotes,
       })

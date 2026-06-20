@@ -6,11 +6,11 @@
 ---
 
 ## Phase 1 — Preflight Foundation
-*Issues: #21, #22, #24, #27, #28, #29, #30 | 50 days*
+*Issues: #21, #22, #24, #27, #28, #29, #30 | 50 days — Days 1-26 completed*
 
 ---
 
-### Day 1 — Cargo setup + PDFium binary wiring
+### ✓ Day 1 — Cargo setup + PDFium binary wiring
 **Phase 1 | Week 1**
 - Add `pdfium-render = { version = "0.9", features = ["sync"] }` and `lopdf = "0.41"` to `src-tauri/Cargo.toml`
 - Download pre-built PDFium binaries: `pdfium.dll` (Windows x64) and `libpdfium.dylib` (macOS arm64) from the pdfium-render GitHub releases
@@ -18,7 +18,7 @@
 - Run `cargo check` — fix any dependency conflicts
 ✅ Done when: `cargo check` passes with pdfium-render and lopdf in the dependency tree
 
-### Day 2 — PDFium initialization module
+? ### Day 2 — PDFium initialization module
 **Phase 1 | Week 1**
 - Create `src-tauri/src/pdf/mod.rs` — new module for all PDF logic
 - Write `PdfEngine` struct wrapping `pdfium_render::PdfiumRenderWasmConfig` or the native init
@@ -27,7 +27,7 @@
 - Write a basic smoke test: open a hardcoded PDF path, assert page count > 0
 ✅ Done when: `cargo check` passes; manual test shows PDFium loads without panic
 
-### Day 3 — `PdfSummary` struct + `open_pdf` command
+? ### Day 3 — `PdfSummary` struct + `open_pdf` command
 **Phase 1 | Week 1**
 - Add to `models.rs`:
   ```rust
@@ -54,7 +54,7 @@
 - Register in `lib.rs`
 ✅ Done when: calling `open_pdf` from Tauri devtools returns a populated `PdfSummary`
 
-### Day 4 — `pdf_jobs` table + persistence
+? ### Day 4 — `pdf_jobs` table + persistence
 **Phase 1 | Week 1**
 - Add `pdf_jobs` table to `db.rs` inside `execute_batch`:
   ```sql
@@ -78,7 +78,7 @@
 - Add `list_pdf_jobs` and `delete_pdf_job` Tauri commands
 ✅ Done when: opening a PDF via `open_pdf` persists a row; `list_pdf_jobs` returns it
 
-### Day 5 — PDFView skeleton in frontend
+? ### Day 5 — PDFView skeleton in frontend
 **Phase 1 | Week 1**
 - Add `'pdf'` to `Section` type in `ManagementView.tsx`
 - Add `{ id: 'pdf', label: 'PDF Tools', icon: '📄' }` to `NAV_ITEMS`
@@ -89,7 +89,7 @@
 - Create `src/components/PDFView.css`
 ✅ Done when: clicking "PDF Tools" in sidebar shows file picker; opening a PDF shows its metadata
 
-### Day 6 — Page thumbnail strip
+? ### Day 6 — Page thumbnail strip
 **Phase 1 | Week 1**
 - Add `render_page_thumbnail(path: String, page_index: usize, width_px: u32) -> Result<String, String>` command:
   - Load PDF via PDFium
@@ -100,7 +100,7 @@
 - Limit initial render to first 20 thumbnails; lazy-load the rest on scroll
 ✅ Done when: PDF with 5+ pages shows thumbnails in sidebar strip
 
-### Day 7 — Single-page viewer
+? ### Day 7 — Single-page viewer
 **Phase 1 | Week 2**
 - Add `render_page(path: String, page_index: usize, dpi: f32) -> Result<String, String>` command:
   - Render at specified DPI (default 144 for retina, 72 for standard)
@@ -112,7 +112,7 @@
 - Debounce re-render on zoom change (wait 300ms after last change)
 ✅ Done when: can navigate and zoom a multi-page PDF
 
-### Day 8 — PDF error handling + edge cases
+? ### Day 8 — PDF error handling + edge cases
 **Phase 1 | Week 2**
 - Handle password-protected PDFs: catch PDFium error, return `Err("PDF is encrypted — password required")`
 - Handle corrupted/truncated PDFs: catch parse errors, return descriptive error
@@ -122,7 +122,7 @@
 - Test with: a password-protected PDF, a truncated PDF, a zero-byte file renamed to `.pdf`
 ✅ Done when: all three error cases show a useful error message in the UI
 
-### Day 9 — Recent files + cleanup
+? ### Day 9 — Recent files + cleanup
 **Phase 1 | Week 2**
 - Limit `pdf_jobs` to 20 most recent (delete oldest on insert when count > 20)
 - Add "Remove from history" button on each recent file row
@@ -131,7 +131,7 @@
 - Sort recent files by `opened_at` descending
 ✅ Done when: recent files list is usable and self-managing
 
-### Day 10 — Phase 1.1 cleanup + PR
+? ### Day 10 — Phase 1.1 cleanup + PR
 **Phase 1 | Week 2**
 - Run `cargo check` and `npx tsc --noEmit` — fix all warnings and errors
 - Test with 5 real PDFs: simple, multi-page, encrypted, large (100+ pages), small (1 page, no metadata)
@@ -142,7 +142,7 @@
 
 ---
 
-### Day 11 — Font data structures
+? ### Day 11 — Font data structures
 **Phase 1 | Week 3**
 - Add to `models.rs`:
   ```rust
@@ -159,7 +159,7 @@
 - Write `pdf::fonts::collect_fonts(doc: &lopdf::Document) -> Vec<FontFinding>` stub
 ✅ Done when: struct compiles and stub returns empty vec
 
-### Day 12 — Font enumeration via PDFium
+? ### Day 12 — Font enumeration via PDFium
 **Phase 1 | Week 3**
 - Implement font walking: for each page, get `PdfPageFonts` via pdfium-render
 - For each font on the page: `font.is_embedded()`, `font.family_name()`, `font.font_type()`
@@ -167,7 +167,7 @@
 - Collect per-font: deduplicate by name, accumulate page list
 ✅ Done when: test PDF with known fonts shows correct embedded status
 
-### Day 13 — lopdf fallback for font descriptor
+? ### Day 13 — lopdf fallback for font descriptor
 **Phase 1 | Week 3**
 - Some PDFs expose fonts via the raw dictionary that PDFium doesn't surface
 - Write lopdf fallback: walk `Page.Resources.Font` dictionary, check `FontDescriptor` for `FontFile`, `FontFile2`, or `FontFile3` keys
@@ -175,7 +175,7 @@
 - Handle Type0 (composite) fonts: check their `DescendantFonts` array entry
 ✅ Done when: font list is complete including CIDFonts used in CJK documents
 
-### Day 14 — `check_fonts` command + severity assignment
+? ### Day 14 — `check_fonts` command + severity assignment
 **Phase 1 | Week 3**
 - Write `commands::check_fonts(path: String) -> Result<Vec<FontFinding>, String>`
 - Severity rules:
@@ -185,7 +185,7 @@
 - Register command in `lib.rs`
 ✅ Done when: `check_fonts` returns correct severity for each font in test PDFs
 
-### Day 15 — FontCheck UI component
+? ### Day 15 — FontCheck UI component
 **Phase 1 | Week 3**
 - Create `src/components/preflight/FontCheck.tsx`:
   - Summary row: N fonts found, N errors, N warnings
@@ -196,7 +196,7 @@
 - Add `FontCheck.css`
 ✅ Done when: running font check on a PDF with mixed embedded/unembedded fonts shows correct table
 
-### Day 16 — PageBox data structures + lopdf extraction
+? ### Day 16 — PageBox data structures + lopdf extraction
 **Phase 1 | Week 4**
 - Add to `models.rs`:
   ```rust
@@ -216,7 +216,7 @@
 - Convert from PDF points to mm: `points × 0.3528`
 ✅ Done when: extracting boxes from a PDF returns correct mm values matching Acrobat's display
 
-### Day 17 — Page box validation logic
+? ### Day 17 — Page box validation logic
 **Phase 1 | Week 4**
 - Validate each page:
   - MediaBox missing → error
@@ -228,14 +228,14 @@
 - Bundle standard bleed sizes: 3mm (ISO), 0.125" (US), configurable
 ✅ Done when: validation correctly flags a known-bad PDF provided as test case
 
-### Day 18 — `check_page_boxes` command
+? ### Day 18 — `check_page_boxes` command
 **Phase 1 | Week 4**
 - Write `commands::check_page_boxes(path: String) -> Result<Vec<PageBoxFinding>, String>`
 - Aggregate document-level summary: all pages pass / N pages have issues
 - Register in `lib.rs`
 ✅ Done when: command returns per-page findings with correct severity
 
-### Day 19 — PageBoxCheck UI component
+? ### Day 19 — PageBoxCheck UI component
 **Phase 1 | Week 4**
 - Create `src/components/preflight/PageBoxCheck.tsx`:
   - Per-page rows: page number, boxes present (checkmarks), any issues
@@ -244,7 +244,7 @@
   - Summary: "All pages have correct bleed" or "3 pages missing TrimBox"
 ✅ Done when: component renders box diagram and per-page issue list
 
-### Day 20 — Page box edge cases + PR
+? ### Day 20 — Page box edge cases + PR
 **Phase 1 | Week 4**
 - Handle: boxes defined via indirect object reference (lopdf `Document::dereference`)
 - Handle: page tree nodes with Resources inherited across page subtrees
@@ -255,7 +255,7 @@
 
 ---
 
-### Day 21 — Graphics state machine skeleton
+? ### Day 21 — Graphics state machine skeleton
 **Phase 1 | Week 5**
 - Create `src-tauri/src/pdf/content_stream.rs`
 - Define `GraphicsState` struct:
@@ -274,7 +274,7 @@
 - Implement matrix multiplication for `apply_cm`
 ✅ Done when: CTM correctly multiplies and stacks/unstacks in unit tests
 
-### Day 22 — Content stream byte tokenizer
+? ### Day 22 — Content stream byte tokenizer
 **Phase 1 | Week 5**
 - Write `tokenize(bytes: &[u8]) -> Vec<Token>` in `content_stream.rs`
 - `Token` enum: `Number(f64)`, `Name(String)`, `StringLit(Vec<u8>)`, `Operator(String)`, `ArrayStart`, `ArrayEnd`, `DictStart`, `DictEnd`
@@ -282,7 +282,7 @@
 - Handle: operator tokenization — letters only, no numbers, e.g., `cm`, `Do`, `Tf`, `q`, `Q`, `rg`, `k`
 ✅ Done when: tokenizer correctly parses a sample content stream extracted from a real PDF
 
-### Day 23 — CTM tracking through content stream
+? ### Day 23 — CTM tracking through content stream
 **Phase 1 | Week 5**
 - Write `execute_stream(tokens: &[Token], state: &mut GraphicsState)`
 - Handle operators that affect CTM:
@@ -292,7 +292,7 @@
 - Collect operand stack: numbers and names preceding each operator
 ✅ Done when: running `execute_stream` on a content stream with nested `q`/`Q`/`cm` produces correct CTM values
 
-### Day 24 — `Do` operator image tracking
+? ### Day 24 — `Do` operator image tracking
 **Phase 1 | Week 5**
 - On encountering `Do /XObjectName`:
   - Record: XObject name, current CTM at time of invocation
@@ -302,7 +302,7 @@
 - Store: `ImageUsage { xobject_name, pixel_width, pixel_height, ctm, effective_dpi }`
 ✅ Done when: test PDF with a known image shows correct pixel dimensions and rendered size
 
-### Day 25 — DPI calculation + `ImageResolutionFinding`
+? ### Day 25 — DPI calculation + `ImageResolutionFinding`
 **Phase 1 | Week 5**
 - Add to `models.rs`:
   ```rust
@@ -323,7 +323,7 @@
 - Severity: below 150 DPI → error; 150–299 → warning; 300+ → ok (all configurable)
 ✅ Done when: struct compiles and DPI is correctly calculated for a test image
 
-### Day 26 — `check_image_resolution` command
+? ### Day 26 — `check_image_resolution` command
 **Phase 1 | Week 6**
 - Write `commands::check_image_resolution(path: String, min_dpi: f64) -> Result<Vec<ImageResolutionFinding>, String>`
   - Iterate pages, run content stream parser on each
@@ -1975,3 +1975,4 @@
 | Keyboard shortcuts | 169–170 | #58 |
 | Help system | 171–176 | #57 |
 | Polish + QA | 177–195 | — |
+
