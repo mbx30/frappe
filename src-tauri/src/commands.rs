@@ -30,6 +30,12 @@ fn validate_read_path(path: &str) -> Result<PathBuf, String> {
     p.canonicalize().map_err(|e| format!("Invalid path: {}", e))
 }
 
+/// Convert a 0-based page index (frontend convention, matches pdfium-render)
+/// to the 1-based key used by `lopdf::Document::get_pages()`.
+fn lopdf_page_id(page_index: usize) -> u32 {
+    (page_index + 1) as u32
+}
+
 #[tauri::command]
 pub fn create_workbook(db: State<'_, Database>, name: String) -> Result<Workbook, String> {
     db.create_workbook(&name).map_err(|e| e.to_string())
@@ -680,7 +686,7 @@ pub fn rotate_page(path: String, page_index: usize, degrees: i64, output_path: S
     let _ = validate_read_path(&path)?;
     let mut doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     let pages = doc.get_pages();
-    let obj_id = match pages.get(&(page_index as u32)) {
+    let obj_id = match pages.get(&lopdf_page_id(page_index)) {
         Some(id) => *id,
         None => return Err(format!("Page {} not found", page_index)),
     };
@@ -1038,7 +1044,7 @@ pub fn reorder_pages(path: String, new_order: Vec<usize>, output_path: String) -
         .ok_or_else(|| "No Pages reference".to_string())?;
     let mut new_kids: Vec<Object> = Vec::new();
     for idx in &new_order {
-        if let Some(obj_ref) = pages.get(&(*idx as u32)) {
+        if let Some(obj_ref) = pages.get(&lopdf_page_id(*idx)) {
             new_kids.push(Object::Reference(*obj_ref));
         } else {
             return Err(format!("Page index {idx} out of range"));
@@ -1136,7 +1142,7 @@ pub fn decode_content_stream(path: String, page_index: usize) -> Result<String, 
     use crate::pdf::content_stream;
     let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {e}"))?;
     let pages = doc.get_pages();
-    let obj_id = pages.get(&(page_index as u32)).copied()
+    let obj_id = pages.get(&lopdf_page_id(page_index)).copied()
         .ok_or_else(|| format!("Page {page_index} not found"))?;
     let page_dict = doc.get_dictionary(obj_id).map_err(|e| format!("Page dict error: {e}"))?;
     let contents = page_dict.get(b"Contents").map_err(|_| "No Contents key".to_string())?;
@@ -1166,7 +1172,7 @@ pub fn encode_content_stream(path: String, page_index: usize, content: String, o
     use crate::pdf::content_stream;
     let mut doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {e}"))?;
     let pages = doc.get_pages();
-    let obj_id = pages.get(&(page_index as u32)).copied()
+    let obj_id = pages.get(&lopdf_page_id(page_index)).copied()
         .ok_or_else(|| format!("Page {page_index} not found"))?;
     let stream = content_stream::encode_stream(content.as_bytes());
     let stream_id = doc.add_object(lopdf::Object::Stream(stream));
@@ -1192,7 +1198,7 @@ pub fn tokenize_content_stream(path: String, page_index: usize) -> Result<Vec<St
 fn extract_text_from_page(doc: &lopdf::Document, page_index: usize) -> String {
     use lopdf::Object;
     let pages = doc.get_pages();
-    let obj_id = match pages.get(&(page_index as u32)) {
+    let obj_id = match pages.get(&lopdf_page_id(page_index)) {
         Some(id) => *id,
         None => return String::new(),
     };
