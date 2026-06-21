@@ -2668,22 +2668,12 @@ impl Database {
         )
     }
 
-    pub fn run_batch(&self, batch_id: i64) -> Result<()> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
-        let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
-        conn.execute(
-            "UPDATE batch_jobs SET status = 'running', started_at = ?1 WHERE id = ?2",
-            params![now, batch_id],
-        )?;
-        conn.execute(
-            "UPDATE batch_results SET status = 'completed', completed_at = ?1 WHERE batch_id = ?2",
-            params![now, batch_id],
-        )?;
-        conn.execute(
-            "UPDATE batch_jobs SET status = 'completed', processed_files = total_files, completed_at = ?1 WHERE id = ?2",
-            params![now, batch_id],
-        )?;
-        Ok(())
+    pub fn run_batch(&self, _batch_id: i64) -> Result<()> {
+        // Stub: batch processing is not implemented. Previously this
+        // silently marked every batch result as 'completed' without
+        // doing any work, which is a data-integrity hazard. Returning
+        // InvalidQuery forces the caller to surface the failure.
+        Err(rusqlite::Error::InvalidQuery)
     }
 
     pub fn list_batch_results(&self, batch_id: i64) -> Result<Vec<BatchResult>> {

@@ -975,13 +975,18 @@ pub fn check_spot_colors(doc: &Document) -> Vec<SpotColorFinding> {
 }
 
 pub fn check_ink_coverage() -> Vec<InkCoverageFinding> {
+    // Stub: ink coverage analysis requires pixel-level rendering of the
+    // PDF, which would require the full PDFium render pipeline. Returning
+    // hardcoded zeros would mislead the user into thinking the check
+    // passed. Returning a single 'info' finding with a clear "not
+    // implemented" message is more honest.
     vec![InkCoverageFinding {
         page: 0,
         max_tac: 0.0,
         average_tac: 0.0,
         exceeds_threshold: false,
         severity: "info".into(),
-        message: "Ink coverage analysis requires rendering — available in Phase 5. Check Total Area Coverage manually in Acrobat Pro: Print Production → Ink Manager.".into(),
+        message: "Ink coverage analysis is not implemented. Check Total Area Coverage manually in Acrobat Pro: Print Production → Ink Manager.".into(),
     }]
 }
 

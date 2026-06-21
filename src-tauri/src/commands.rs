@@ -1574,8 +1574,7 @@ pub fn compress_pdf(path: String, output_path: String) -> Result<(), String> {
 // Stub — actual zxing integration would go here
 #[tauri::command]
 pub fn detect_barcodes(_path: String) -> Result<Vec<BarcodeResult>, String> {
-    tracing::warn!("detect_barcodes is a stub — barcode detection not yet implemented");
-    Ok(Vec::new())
+    Err("detect_barcodes is not implemented. Tracked in v2 polish issue #135.".to_string())
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1592,30 +1591,13 @@ pub fn get_analytics_summary(db: State<'_, Database>) -> Result<AnalyticsSummary
 // ═══════════════════════════════════════════════════════════════════════════
 
 #[tauri::command]
-pub fn generate_approval_sheet(path: String, _config: ApprovalSheetConfig, output_path: String) -> Result<(), String> {
-    let _ = validate_write_path(&output_path)?;
-    use lopdf::Object;
-    let _source = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {e}"))?;
-    let mut doc = lopdf::Document::with_version("2.0");
-    // Create a simple cover page
-    let media_box = lopdf::Object::Array(vec![
-        Object::Real(0.0), Object::Real(0.0),
-        Object::Real(612.0), Object::Real(792.0),
-    ]);
-    let cover_dict = lopdf::Dictionary::from_iter(vec![
-        (b"Type".to_vec(), Object::Name(b"Page".to_vec())),
-        (b"MediaBox".to_vec(), media_box),
-    ]);
-    let cover_id = doc.new_object_id();
-    doc.objects.insert(cover_id, Object::Dictionary(cover_dict));
-    doc.save(&output_path).map_err(|e| format!("Failed to save: {e}"))?;
-    Ok(())
+pub fn generate_approval_sheet(_path: String, _config: ApprovalSheetConfig, _output_path: String) -> Result<(), String> {
+    Err("generate_approval_sheet is not implemented. Tracked in v2 polish issue #135.".to_string())
 }
 
 #[tauri::command]
-pub fn export_preflight_report(run_id: i64, format: String) -> Result<String, String> {
-    tracing::warn!("export_preflight_report is a stub — report export not yet implemented");
-    Ok(format!("Preflight report placeholder for run {run_id} in {format} format"))
+pub fn export_preflight_report(_run_id: i64, _format: String) -> Result<String, String> {
+    Err("export_preflight_report is not implemented. Tracked in v2 polish issue #135.".to_string())
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1623,9 +1605,8 @@ pub fn export_preflight_report(run_id: i64, format: String) -> Result<String, St
 // ═══════════════════════════════════════════════════════════════════════════
 
 #[tauri::command]
-pub fn ai_visual_check(path: String, prompt: String) -> Result<String, String> {
-    tracing::warn!("ai_visual_check is a stub — AI visual checking not yet implemented");
-    Ok(format!("AI visual check stub for {path}: prompt='{prompt}'"))
+pub fn ai_visual_check(_path: String, _prompt: String) -> Result<String, String> {
+    Err("ai_visual_check is not implemented. Tracked in v2 polish issue #135.".to_string())
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
