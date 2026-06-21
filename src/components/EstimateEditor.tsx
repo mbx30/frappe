@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { Button, Input, Select, Card } from '../design-system'
-import type { Estimate, EstimateData, EstimateLineItem } from '../types'
+import type { Estimate, EstimateData, EstimateLineItem, EstimateStatus } from '../types'
+import { allowedEstimateTransitions, isValidEstimateTransition, estimateStatusLabel } from '../types'
 import './EstimateEditor.css'
 
 interface EstimateEditorProps {
@@ -250,19 +251,18 @@ export default function EstimateEditor({ estimateId, onSave, onCancel }: Estimat
                 <label>Status</label>
                 <Select
                   value={estimate.status}
-                  onChange={(e) =>
-                    setEstimateData({
-                      ...estimateData,
-                      estimate: { ...estimate, status: e.target.value as Estimate['status'] },
-                    })
-                  }
-                  options={[
-                    { value: 'draft', label: 'Draft' },
-                    { value: 'sent', label: 'Sent' },
-                    { value: 'approved', label: 'Approved' },
-                    { value: 'rejected', label: 'Rejected' },
-                    { value: 'converted', label: 'Converted to Order' },
-                  ]}
+                  onChange={(e) => {
+                    const next = e.target.value as EstimateStatus
+                    if (isValidEstimateTransition(estimate.status, next)) {
+                      setEstimateData({
+                        ...estimateData,
+                        estimate: { ...estimate, status: next },
+                      })
+                    } else {
+                      alert(`Invalid transition: ${estimate.status} → ${next}`)
+                    }
+                  }}
+                  options={allowedEstimateTransitions(estimate.status).map((s) => ({ value: s, label: estimateStatusLabel(s) }))}
                 />
               </div>
             </div>

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { Button, Input, Select, Card } from '../design-system'
 import type { Invoice, InvoiceData, InvoiceLineItem } from '../types'
+import { allowedInvoiceTransitions, isValidInvoiceTransition, invoiceStatusLabel } from '../types'
 import PaymentPanel from './PaymentPanel'
 import ReminderPanel from './ReminderPanel'
 import './InvoiceEditor.css'
@@ -254,15 +255,15 @@ export default function InvoiceEditor({ invoiceId, onSave, onCancel }: InvoiceEd
               <label>Status</label>
               <Select
                 value={invoice.status}
-                onChange={(e) => setInvoice({ ...invoice, status: e.target.value as any })}
-                options={[
-                  { value: 'draft', label: 'Draft' },
-                  { value: 'sent', label: 'Sent' },
-                  { value: 'partially-paid', label: 'Partially Paid' },
-                  { value: 'paid', label: 'Paid' },
-                  { value: 'overdue', label: 'Overdue' },
-                  { value: 'voided', label: 'Voided' },
-                ]}
+                onChange={(e) => {
+                  const next = e.target.value as Invoice['status']
+                  if (isValidInvoiceTransition(invoice.status, next)) {
+                    setInvoice({ ...invoice, status: next })
+                  } else {
+                    alert(`Invalid transition: ${invoice.status} → ${next}`)
+                  }
+                }}
+                options={allowedInvoiceTransitions(invoice.status).map((s) => ({ value: s, label: invoiceStatusLabel(s) }))}
               />
             </div>
           </Card>

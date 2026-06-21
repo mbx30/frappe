@@ -638,3 +638,63 @@ export interface WebhookEntry {
   is_active: boolean
   created_at: string
 }
+
+// ── Invoice status machine ────────────────────────────────────────────
+export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue' | 'voided' | 'partially-paid'
+
+const INVOICE_TRANSITIONS: Record<InvoiceStatus, InvoiceStatus[]> = {
+  draft: ['sent', 'voided'],
+  sent: ['partially-paid', 'paid', 'overdue', 'voided'],
+  'partially-paid': ['paid', 'overdue', 'voided'],
+  paid: ['voided'],
+  overdue: ['partially-paid', 'paid', 'voided'],
+  voided: [],
+}
+
+export function allowedInvoiceTransitions(current: InvoiceStatus): InvoiceStatus[] {
+  return INVOICE_TRANSITIONS[current] ?? []
+}
+
+export function isValidInvoiceTransition(current: InvoiceStatus, next: InvoiceStatus): boolean {
+  return INVOICE_TRANSITIONS[current]?.includes(next) ?? false
+}
+
+export function invoiceStatusLabel(status: InvoiceStatus): string {
+  switch (status) {
+    case 'draft': return 'Draft'
+    case 'sent': return 'Sent'
+    case 'partially-paid': return 'Partially Paid'
+    case 'paid': return 'Paid'
+    case 'overdue': return 'Overdue'
+    case 'voided': return 'Voided'
+  }
+}
+
+// ── Estimate status machine ───────────────────────────────────────────
+export type EstimateStatus = 'draft' | 'sent' | 'approved' | 'rejected' | 'converted'
+
+const ESTIMATE_TRANSITIONS: Record<EstimateStatus, EstimateStatus[]> = {
+  draft: ['sent'],
+  sent: ['approved', 'rejected', 'draft'],
+  approved: ['converted', 'rejected'],
+  rejected: ['draft'],
+  converted: [],
+}
+
+export function allowedEstimateTransitions(current: EstimateStatus): EstimateStatus[] {
+  return ESTIMATE_TRANSITIONS[current] ?? []
+}
+
+export function isValidEstimateTransition(current: EstimateStatus, next: EstimateStatus): boolean {
+  return ESTIMATE_TRANSITIONS[current]?.includes(next) ?? false
+}
+
+export function estimateStatusLabel(status: EstimateStatus): string {
+  switch (status) {
+    case 'draft': return 'Draft'
+    case 'sent': return 'Sent'
+    case 'approved': return 'Approved'
+    case 'rejected': return 'Rejected'
+    case 'converted': return 'Converted to Order'
+  }
+}

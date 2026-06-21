@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 import type { Workbook, WorkbookData, SheetData, Client, PdfSummary } from '../types'
@@ -78,8 +78,14 @@ export default function ManagementView() {
     setWorkbooks(list)
   }, [])
 
+  // Request-id counter: a stale loadWorkbook response is ignored if a
+  // newer one has started. Prevents the A-then-B click race where B's
+  // response resolves first, then A's response overwrites B's data.
+  const reqIdRef = useRef(0)
   const loadWorkbook = useCallback(async (id: number) => {
+    const myId = ++reqIdRef.current
     const data = await invoke<WorkbookData>('get_workbook', { id })
+    if (myId !== reqIdRef.current) return
     setActiveWorkbook(data)
     setActiveSheetIdx(0)
   }, [])
