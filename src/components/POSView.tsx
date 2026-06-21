@@ -81,10 +81,10 @@ export default function POSView() {
     setIsSaving(true)
     try {
       await invoke('record_payment', {
-        invoiceId: selected.type === 'invoice' ? selected.id : null,
-        orderId: selected.type === 'order' ? selected.id : null,
+        invoice_id: selected.type === 'invoice' ? selected.id : null,
+        order_id: selected.type === 'order' ? selected.id : null,
         amount: parseFloat(payAmount),
-        paymentMethod: payMethod,
+        payment_method: payMethod,
         reference: payRef.trim(),
         notes: payNotes.trim(),
       })

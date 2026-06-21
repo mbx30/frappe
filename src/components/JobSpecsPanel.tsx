@@ -64,13 +64,13 @@ export default function JobSpecsPanel({ order, onSaved }: JobSpecsPanelProps) {
     try {
       await invoke('update_order_job_specs', {
         id: order.id,
-        printType: specs.print_type.trim(),
-        paperStock: specs.paper_stock.trim(),
-        inkColors: specs.ink_colors.trim(),
+        print_type: specs.print_type.trim(),
+        paper_stock: specs.paper_stock.trim(),
+        ink_colors: specs.ink_colors.trim(),
         finishing: specs.finishing.trim(),
         quantity: qty,
-        productionNotes: specs.production_notes.trim(),
-        assignedOperator: specs.assigned_operator.trim(),
+        production_notes: specs.production_notes.trim(),
+        assigned_operator: specs.assigned_operator.trim(),
       })
       setIsDirty(false)
       onSaved?.()

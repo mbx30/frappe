@@ -24,7 +24,7 @@ export default function BusinessOnboarding({ onComplete }: BusinessOnboardingPro
     setIsLoading(true)
     setError('')
     try {
-      await invoke('save_business_info', { businessName, industry, companySize })
+      await invoke('save_business_info', { business_name: businessName, industry, company_size: companySize })
       onComplete()
     } catch (e) {
       setError(`Failed to save business info: ${e}`)

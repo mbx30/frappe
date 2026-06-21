@@ -47,11 +47,11 @@ export default function FulfillmentPanel({ order, onSaved }: FulfillmentPanelPro
     try {
       await invoke('update_order_fulfillment', {
         id: order.id,
-        fulfillmentMethod: form.fulfillment_method,
-        trackingNumber: form.tracking_number.trim(),
-        trackingCarrier: form.tracking_carrier.trim(),
-        readyForPickup: form.fulfillment_method === 'pickup' ? form.ready_for_pickup : false,
-        shippedAt: form.shipped_at.trim() || null,
+        fulfillment_method: form.fulfillment_method,
+        tracking_number: form.tracking_number.trim(),
+        tracking_carrier: form.tracking_carrier.trim(),
+        ready_for_pickup: form.fulfillment_method === 'pickup' ? form.ready_for_pickup : false,
+        shipped_at: form.shipped_at.trim() || null,
       })
       setIsDirty(false)
       onSaved?.()

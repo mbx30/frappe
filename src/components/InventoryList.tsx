@@ -39,7 +39,7 @@ export default function InventoryList({ onCreateNew, onEditItem }: InventoryList
 
   const handleAcknowledgeAlert = async (alertId: number) => {
     try {
-      await invoke('acknowledge_alert', { alertId })
+      await invoke('acknowledge_alert', { alert_id: alertId })
       setAlerts(alerts.filter((a) => a.id !== alertId))
     } catch (e) {
       console.error('Failed to acknowledge alert:', e)
