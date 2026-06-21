@@ -53,7 +53,14 @@ pub fn delete_secret(service: &str, key: &str) -> Result<(), String> {
     }
 }
 
-// ── Fallback: encrypted JSON config file ────────────────────────────────
+// ── Fallback: PLAINTEXT JSON config file (NOT encrypted) ───────────────
+// IMPORTANT: This fallback is PLAINTEXT on disk. It is used only when the
+// OS keychain is unavailable (e.g. headless Linux, broken libsecret). The
+// file is at $XDG_CONFIG_HOME/frappe/secrets.json (Unix) or
+// %USERPROFILE%/AppData/Local/Frappe/secrets.json (Windows). The at-rest
+// protection is the filesystem ACL. If a backup/sync tool syncs this
+// file, the user's database encryption key is exfiltrated.
+// TODO: implement chacha20poly1305 with a machine-derived key in v2.
 
 fn secrets_path() -> Result<std::path::PathBuf, String> {
     let base = if let Some(home) = dirs::config_local_dir() {
@@ -76,7 +83,10 @@ fn read_fallback(service: &str, key: &str) -> Result<SecretValue, String> {
     }
     let data = std::fs::read_to_string(&path).map_err(|e| format!("read fallback failed: {e}"))?;
     let store: std::collections::HashMap<String, std::collections::HashMap<String, String>> =
-        serde_json::from_str(&data).unwrap_or_default();
+        serde_json::from_str(&data).map_err(|e| {
+            log::error!("secrets.json is corrupt ({}); refusing to wipe. Rename or delete manually.", e);
+            format!("secrets.json is corrupt: {}", e)
+        })?;
     let exists = store.get(service).and_then(|m| m.get(key)).is_some();
     Ok(SecretValue {
         exists,
@@ -88,8 +98,14 @@ fn write_fallback(service: &str, key: &str, value: &str) -> Result<(), String> {
     let path = secrets_path()?;
     let mut store: std::collections::HashMap<String, std::collections::HashMap<String, String>> =
         if path.exists() {
-            let data = std::fs::read_to_string(&path).unwrap_or_default();
-            serde_json::from_str(&data).unwrap_or_default()
+            let data = std::fs::read_to_string(&path).map_err(|e| format!("read fallback: {e}"))?;
+            match serde_json::from_str(&data) {
+                Ok(s) => s,
+                Err(e) => {
+                    log::error!("secrets.json is corrupt ({}); refusing to overwrite. Aborting write of {}/{} to avoid wiping existing secrets.", e, service, key);
+                    return Err(format!("secrets.json is corrupt, refusing to overwrite: {}", e));
+                }
+            }
         } else {
             std::collections::HashMap::new()
         };
@@ -106,7 +122,10 @@ fn delete_fallback(service: &str, key: &str) -> Result<(), String> {
     }
     let data = std::fs::read_to_string(&path).map_err(|e| format!("read fallback: {e}"))?;
     let mut store: std::collections::HashMap<String, std::collections::HashMap<String, String>> =
-        serde_json::from_str(&data).unwrap_or_default();
+        serde_json::from_str(&data).map_err(|e| {
+            log::error!("secrets.json is corrupt ({}); refusing to wipe. Aborting delete of {}/{} to avoid wiping existing secrets.", e, service, key);
+            format!("secrets.json is corrupt, refusing to wipe: {}", e)
+        })?;
     if let Some(map) = store.get_mut(service) {
         map.remove(key);
     }
