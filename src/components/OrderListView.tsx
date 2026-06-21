@@ -60,9 +60,15 @@ const OrderRow = memo(function OrderRow({ order, isOverdue }: { order: Order; is
   )
 })
 
-const todayStr = new Date().toISOString().split('T')[0]
-
 function OrderListView({ orders }: OrderListViewProps) {
+  // Issue #189: was module-level — froze at import time, so the app stayed
+  // open past midnight and all date calculations used yesterday's date.
+  // Moved into the component body so it recomputes on every render. The
+  // 1-minute useMemo keying (a real implementation would use a state timer
+  // here) is intentionally omitted to keep this fix minimal; the cost of
+  // `new Date().toISOString()` per render is negligible.
+  const todayStr = new Date().toISOString().split('T')[0]
+
   if (orders.length === 0) {
     return (
       <div className="order-list">
