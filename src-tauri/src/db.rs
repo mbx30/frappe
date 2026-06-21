@@ -1,3 +1,5 @@
+#![allow(unused_mut)] // many functions use `let mut conn` defensively (tx vs non-tx call paths)
+
 use rusqlite::{Connection, Result, params};
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -1181,14 +1183,16 @@ impl Database {
     }
 
     pub fn replace_invoice_line_items(&self, invoice_id: i64, items: &[(String, f64, f64)]) -> Result<()> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
-        conn.execute("DELETE FROM invoice_line_items WHERE invoice_id = ?1", params![invoice_id])?;
+        let mut conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let tx = conn.transaction()?;
+        tx.execute("DELETE FROM invoice_line_items WHERE invoice_id = ?1", params![invoice_id])?;
         for (i, (description, quantity, unit_price)) in items.iter().enumerate() {
-            conn.execute(
+            tx.execute(
                 "INSERT INTO invoice_line_items (invoice_id, description, quantity, unit_price, sort_order) VALUES (?1, ?2, ?3, ?4, ?5)",
                 params![invoice_id, description, quantity, unit_price, i as i64],
             )?;
         }
+        tx.commit()?;
         Ok(())
     }
 
@@ -1322,10 +1326,11 @@ impl Database {
     }
 
     pub fn update_order_status(&self, order_id: i64, new_status: &str, notes: &str) -> Result<()> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let mut conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let tx = conn.transaction()?;
 
         // Verify order exists
-        let exists: bool = conn.query_row(
+        let exists: bool = tx.query_row(
             "SELECT COUNT(*) FROM orders WHERE id = ?1",
             params![order_id],
             |row| row.get::<_, i64>(0),
@@ -1334,23 +1339,24 @@ impl Database {
             return Err(rusqlite::Error::QueryReturnedNoRows);
         }
 
-        let previous_status: String = conn.query_row(
+        let previous_status: String = tx.query_row(
             "SELECT status FROM orders WHERE id = ?1",
             params![order_id],
             |row| row.get(0),
         )?;
 
-        conn.execute(
+        tx.execute(
             "INSERT INTO order_status_history (order_id, previous_status, new_status, notes)
              VALUES (?1, ?2, ?3, ?4)",
             params![order_id, previous_status, new_status, notes],
         )?;
 
-        conn.execute(
+        tx.execute(
             "UPDATE orders SET status = ?1, updated_at = datetime('now') WHERE id = ?2",
             params![new_status, order_id],
         )?;
 
+        tx.commit()?;
         Ok(())
     }
 
@@ -1497,14 +1503,16 @@ impl Database {
     }
 
     pub fn replace_estimate_line_items(&self, estimate_id: i64, items: &[(String, String, f64, f64)]) -> Result<()> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
-        conn.execute("DELETE FROM estimate_line_items WHERE estimate_id = ?1", params![estimate_id])?;
+        let mut conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let tx = conn.transaction()?;
+        tx.execute("DELETE FROM estimate_line_items WHERE estimate_id = ?1", params![estimate_id])?;
         for (i, (description, category, quantity, unit_price)) in items.iter().enumerate() {
-            conn.execute(
+            tx.execute(
                 "INSERT INTO estimate_line_items (estimate_id, description, category, quantity, unit_price, sort_order) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
                 params![estimate_id, description, category, quantity, unit_price, i as i64],
             )?;
         }
+        tx.commit()?;
         Ok(())
     }
 
@@ -1972,14 +1980,15 @@ impl Database {
         if !amount.is_finite() || amount <= 0.0 {
             return Err(rusqlite::Error::InvalidQuery);
         }
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let mut conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let tx = conn.transaction()?;
         if let Some(inv_id) = invoice_id {
-            let total: f64 = conn.query_row(
+            let total: f64 = tx.query_row(
                 "SELECT total FROM invoices WHERE id = ?1",
                 params![inv_id],
                 |row| row.get(0),
             )?;
-            let existing: f64 = conn.query_row(
+            let existing: f64 = tx.query_row(
                 "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE invoice_id = ?1",
                 params![inv_id],
                 |row| row.get(0),
@@ -1990,25 +1999,26 @@ impl Database {
             }
         }
         let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
-        conn.execute(
+        tx.execute(
             "INSERT INTO payments (invoice_id, order_id, amount, payment_method, reference, notes, recorded_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![invoice_id, order_id, amount, payment_method, reference, notes, now],
         )?;
-        let id = conn.last_insert_rowid();
+        let id = tx.last_insert_rowid();
         // Update amount_paid on invoice if linked
         if let Some(inv_id) = invoice_id {
-            let paid: f64 = conn.query_row(
+            let paid: f64 = tx.query_row(
                 "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE invoice_id = ?1",
                 params![inv_id],
                 |row| row.get(0),
             )?;
-            let total: f64 = conn.query_row("SELECT total FROM invoices WHERE id = ?1", params![inv_id], |row| row.get(0))?;
+            let total: f64 = tx.query_row("SELECT total FROM invoices WHERE id = ?1", params![inv_id], |row| row.get(0))?;
             let new_status = if paid >= total { "paid" } else { "partially-paid" };
-            conn.execute(
+            tx.execute(
                 "UPDATE invoices SET amount_paid = ?1, status = ?2, updated_at = datetime('now') WHERE id = ?3",
                 params![paid, new_status, inv_id],
             )?;
         }
+        tx.commit()?;
         Ok(Payment {
             id,
             invoice_id,
