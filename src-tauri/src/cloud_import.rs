@@ -99,12 +99,20 @@ pub async fn import_notion_database(database_id: &str, api_key: &str) -> Result<
 
         let data: Value = resp.json().await.map_err(|e| format!("Failed to parse response: {}", e))?;
 
-        // First-page-only: pull column names from top-level `properties` (see #116/#129)
+        // Build column names. The query response does NOT include a
+        // top-level `properties` key (that's only in the GET database
+        // response). The column names live inside each result's
+        // `properties` object. We union the keys from the first page's
+        // results. See #116/#129.
         if columns.is_empty() {
-            if let Some(db_props) = data.as_object().and_then(|o| o.get("properties")) {
-                if let Some(props_obj) = db_props.as_object() {
-                    for (name, _prop) in props_obj {
-                        columns.push(name.clone());
+            if let Some(arr) = data["results"].as_array() {
+                for result in arr {
+                    if let Some(props_obj) = result["properties"].as_object() {
+                        for name in props_obj.keys() {
+                            if !columns.contains(name) {
+                                columns.push(name.clone());
+                            }
+                        }
                     }
                 }
             }
