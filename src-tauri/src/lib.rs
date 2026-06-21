@@ -21,7 +21,8 @@ pub fn run() {
             let app_handle = app.handle();
             let app_dir: PathBuf = app_handle.path().app_data_dir().expect("failed to get app data dir");
 
-            logging::init_logging(&app_dir);
+            let logging_guard = logging::init_logging(&app_dir);
+            app_handle.manage(logging_guard);
             tracing::info!("Frappe starting up");
 
             let database = Database::new(app_dir.clone()).expect("failed to initialize database");
