@@ -40,9 +40,10 @@ const OrderRow = memo(function OrderRow({ order, isOverdue }: { order: Order; is
       </div>
       <div className="col-status">
         <Badge
-          variant={statusColors[order.status]}
-          label={statusLabels[order.status] || order.status}
-        />
+          tone={statusColors[order.status]}
+        >
+          {statusLabels[order.status] || order.status}
+        </Badge>
       </div>
       <div className="col-date">
         <span className={isOverdue ? 'text-danger' : ''}>
@@ -50,7 +51,7 @@ const OrderRow = memo(function OrderRow({ order, isOverdue }: { order: Order; is
         </span>
       </div>
       <div className="col-priority">
-        <Badge variant={priorityColors[order.priority]} label={order.priority} />
+        <Badge tone={priorityColors[order.priority]}>{order.priority}</Badge>
       </div>
       <div className="col-notes">
         {order.deposit_requested && <span>💰 Deposit</span>}

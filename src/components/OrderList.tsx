@@ -97,9 +97,10 @@ export default function OrderList({ onCreateNew, onSelectOrder }: OrderListProps
                         <p className="order-description">{order.description}</p>
                       </div>
                       <Badge
-                        variant={priorityColors[order.priority]}
-                        label={order.priority}
-                      />
+                        tone={priorityColors[order.priority]}
+                      >
+                        {order.priority}
+                      </Badge>
                     </div>
 
                     <div className="card-body">

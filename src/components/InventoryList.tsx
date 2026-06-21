@@ -179,9 +179,10 @@ export default function InventoryList({ onCreateNew, onEditItem }: InventoryList
                     )}
                   </div>
                   <Badge
-                    variant={getStatusBadge(status)}
-                    label={status.toUpperCase()}
-                  />
+                    tone={getStatusBadge(status)}
+                  >
+                    {status.toUpperCase()}
+                  </Badge>
                 </div>
 
                 <div className="card-body">

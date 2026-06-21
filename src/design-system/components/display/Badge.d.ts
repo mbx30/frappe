@@ -3,14 +3,10 @@ import * as React from 'react';
 export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
   /** Semantic color. @default "neutral" */
   tone?: 'neutral' | 'brand' | 'success' | 'warning' | 'danger' | 'info';
-  /** Alias for tone — accepts the same values. */
-  variant?: 'neutral' | 'brand' | 'success' | 'warning' | 'danger' | 'info';
   /** @default "md" */
   size?: 'sm' | 'md';
   /** Show a leading status dot. */
   dot?: boolean;
-  /** Short text shown inside the badge. Alias for children. */
-  label?: React.ReactNode;
   children?: React.ReactNode;
 }
 

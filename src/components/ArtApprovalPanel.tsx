@@ -191,9 +191,10 @@ export default function ArtApprovalPanel({ orderId, orderNumber }: ArtApprovalPa
               <div className="version-header">
                 <span className="version-label">v{approval.version}</span>
                 <Badge
-                  variant={statusColors[approval.status]}
-                  label={statusLabels[approval.status] || approval.status}
-                />
+                  tone={statusColors[approval.status]}
+                >
+                  {statusLabels[approval.status] || approval.status}
+                </Badge>
                 <span className="version-date">{approval.submitted_at.split(' ')[0]}</span>
               </div>
 

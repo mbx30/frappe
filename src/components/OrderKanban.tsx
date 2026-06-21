@@ -113,9 +113,10 @@ export default function OrderKanban({ orders, onOrdersChange }: OrderKanbanProps
                   <div className="card-header">
                     <div className="order-number">{order.order_number}</div>
                     <Badge
-                      variant={priorityColors[order.priority]}
-                      label={order.priority}
-                    />
+                      tone={priorityColors[order.priority]}
+                    >
+                      {order.priority}
+                    </Badge>
                   </div>
 
                   <div className="card-body">

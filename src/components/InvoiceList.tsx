@@ -119,9 +119,10 @@ export default function InvoiceList({ onCreateNew, onEditInvoice }: InvoiceListP
               <div className="col-amount">{formatCurrency(invoice.total, invoice.currency)}</div>
               <div className="col-status">
                 <Badge
-                  variant={statusColors[invoice.status] || 'info'}
-                  label={invoice.status.replace('-', ' ')}
-                />
+                  tone={statusColors[invoice.status] || 'info'}
+                >
+                  {invoice.status.replace('-', ' ')}
+                </Badge>
               </div>
               <div className="col-actions" onClick={(e) => e.stopPropagation()}>
                 <Button

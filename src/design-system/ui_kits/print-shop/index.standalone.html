@@ -1,4 +1,3 @@
-<!-- @dsCard group="Print Shop" viewport="1400x880" name="Frappe App — full workspace" subtitle="Interactive print-shop MIS: dashboard, orders, production, estimates, invoices, inventory, clients, POS, QuickBooks, PDF Tools, workbooks" -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -7,6 +6,10 @@
 <title>Frappe — Print Shop</title>
 <link rel="icon" href="../../assets/favicon.svg">
 <link rel="stylesheet" href="../../styles.css">
+
+<!-- JS-referenced assets the bundler can't auto-discover -->
+<meta name="ext-resource-dependency" content="../../assets/frappe-logo.svg" data-resource-id="frappeLogoSvg" />
+
 <style>
   html, body { margin: 0; padding: 0; height: 100%; background: var(--bg-base); color: var(--text-primary); font-family: var(--font-sans); }
   * { box-sizing: border-box; }
@@ -15,6 +18,40 @@
   ::-webkit-scrollbar-track { background: transparent; }
   .tabular { font-variant-numeric: tabular-nums; }
 </style>
+
+<!-- Splash shown while bundle unpacks + JS-disabled fallback -->
+<template id="__bundler_thumbnail" data-bg-color="#0d0d10">
+  <svg viewBox="0 0 120 80" xmlns="http://www.w3.org/2000/svg">
+    <!-- Frappe violet lightning mark, simplified -->
+    <rect width="120" height="80" fill="#0d0d10"/>
+    <!-- Sidebar strip -->
+    <rect x="8" y="8" width="22" height="64" rx="4" fill="#17171c"/>
+    <!-- Logo circle in sidebar -->
+    <circle cx="19" cy="20" r="6" fill="#863bff"/>
+    <!-- Nav dots -->
+    <rect x="12" y="32" width="14" height="3" rx="1.5" fill="#863bff" opacity="0.9"/>
+    <rect x="12" y="39" width="14" height="3" rx="1.5" fill="#3a3a4a" opacity="0.8"/>
+    <rect x="12" y="46" width="14" height="3" rx="1.5" fill="#3a3a4a" opacity="0.8"/>
+    <rect x="12" y="53" width="14" height="3" rx="1.5" fill="#3a3a4a" opacity="0.8"/>
+    <!-- Main content area -->
+    <rect x="36" y="8" width="76" height="64" rx="4" fill="#17171c"/>
+    <!-- Top bar -->
+    <rect x="36" y="8" width="76" height="12" rx="4" fill="#1e1e26"/>
+    <!-- KPI cards row -->
+    <rect x="40" y="26" width="16" height="12" rx="2" fill="#1e1e26"/>
+    <rect x="59" y="26" width="16" height="12" rx="2" fill="#1e1e26"/>
+    <rect x="78" y="26" width="16" height="12" rx="2" fill="#1e1e26"/>
+    <rect x="97" y="26" width="11" height="12" rx="2" fill="#1e1e26"/>
+    <!-- Table card -->
+    <rect x="40" y="43" width="68" height="24" rx="2" fill="#1e1e26"/>
+    <rect x="43" y="47" width="40" height="2" rx="1" fill="#3a3a4a" opacity="0.7"/>
+    <rect x="43" y="52" width="55" height="2" rx="1" fill="#3a3a4a" opacity="0.5"/>
+    <rect x="43" y="57" width="48" height="2" rx="1" fill="#3a3a4a" opacity="0.5"/>
+    <rect x="43" y="62" width="52" height="2" rx="1" fill="#3a3a4a" opacity="0.5"/>
+    <!-- Violet accent dot -->
+    <circle cx="104" cy="14" r="2.5" fill="#863bff"/>
+  </svg>
+</template>
 </head>
 <body>
 <div id="root"></div>
@@ -27,8 +64,8 @@
 
 <script src="data.js"></script>
 <script type="text/babel" src="shared.jsx"></script>
-<script type="text/babel" src="AppShell.jsx"></script>
-<script type="text/babel" src="Welcome.jsx"></script>
+<script type="text/babel" src="AppShell.standalone.jsx"></script>
+<script type="text/babel" src="Welcome.standalone.jsx"></script>
 <script type="text/babel" src="Dashboard.jsx"></script>
 <script type="text/babel" src="Orders.jsx"></script>
 <script type="text/babel" src="Production.jsx"></script>
@@ -88,7 +125,6 @@
     return (
       <window.AppShell view={view} setView={go} theme={theme} toggleTheme={toggleTheme}>
         {screen}
-
         <Dialog
           open={newOpen}
           onClose={() => setNewOpen(false)}
@@ -112,7 +148,6 @@
             <Checkbox label="Rush job (+8% surcharge)" />
           </div>
         </Dialog>
-
         <ToastViewport placement="bottom-right">
           {toast && <Toast tone={toast.tone} title={toast.title} message={toast.message} onClose={() => setToast(null)} />}
         </ToastViewport>

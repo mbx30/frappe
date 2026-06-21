@@ -127,9 +127,10 @@ export default function EstimateList({ onCreateNew, onSelectEstimate }: Estimate
               <div className="col-amount">{formatCurrency(estimate.total, estimate.currency)}</div>
               <div className="col-status">
                 <Badge
-                  variant={statusColors[estimate.status] || 'info'}
-                  label={estimate.status}
-                />
+                  tone={statusColors[estimate.status] || 'info'}
+                >
+                  {estimate.status}
+                </Badge>
               </div>
               <div className="col-actions" onClick={(e) => e.stopPropagation()}>
                 <Button

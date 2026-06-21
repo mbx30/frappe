@@ -151,7 +151,7 @@ export default function ClientList({ onSelectClient, onNewClient }: ClientListPr
                     : null}
                 </td>
                 <td className="col-status">
-                  <Badge variant={statusColors[client.status]} label={client.status} />
+                  <Badge tone={statusColors[client.status]}>{client.status}</Badge>
                 </td>
                 <td className="col-actions" onClick={(e) => e.stopPropagation()}>
                   <Button
