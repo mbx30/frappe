@@ -80,7 +80,10 @@ export default function ArtApprovalPanel({ orderId, orderNumber }: ArtApprovalPa
   const handleFollowUp = async (id: number) => {
     try {
       await invoke('increment_art_approval_follow_up', { id })
-      load()
+      // load() has internal try/catch, but attach a catch here too so any
+      // rejection from the unawaited promise is not silently swallowed and
+      // we are not left with a state update on an unmounted component.
+      load().catch((e) => console.error('Failed to reload approvals after follow-up:', e))
     } catch (e) {
       console.error('Failed to record follow-up:', e)
     }
