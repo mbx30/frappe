@@ -36,6 +36,8 @@ export default function POSView() {
   const [isSaving, setIsSaving] = useState(false)
   const [payError, setPayError] = useState<string | null>(null)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
+  // Sum of payments recorded for the currently selected order (0 for invoices or nothing selected).
+  const [orderPaidTotal, setOrderPaidTotal] = useState(0)
 
   const handleSearch = useCallback(async () => {
     const q = query.trim()
@@ -44,6 +46,7 @@ export default function POSView() {
     setSearchError(null)
     setResults([])
     setSelected(null)
+    setOrderPaidTotal(0)
     setSuccessMsg(null)
     try {
       const res = await invoke<SearchResult[]>('search_invoices_and_orders', { query: q })
@@ -56,18 +59,40 @@ export default function POSView() {
     }
   }, [query])
 
-  const handleSelect = (r: SearchResult) => {
+  const handleSelect = async (r: SearchResult) => {
     setSelected(r)
-    const balance = r.balance ?? r.total
-    setPayAmount(balance.toFixed(2))
+    setOrderPaidTotal(0)
     setPayError(null)
     setSuccessMsg(null)
+    if (r.type === 'order') {
+      // Orders don't carry a `balance` field; compute it from recorded payments.
+      try {
+        const payments = await invoke<Payment[]>('list_payments', {
+          invoiceId: null,
+          orderId: r.id,
+        })
+        const paid = payments.reduce((sum, p) => sum + p.amount, 0)
+        setOrderPaidTotal(paid)
+        const balance = Math.max(0, r.total - paid)
+        setPayAmount(balance.toFixed(2))
+      } catch (e) {
+        setPayError(`Failed to load payments: ${e}`)
+        setPayAmount(r.total.toFixed(2))
+      }
+    } else {
+      const balance = r.balance ?? r.total
+      setPayAmount(balance.toFixed(2))
+    }
   }
 
   const validatePay = (): string | null => {
     const amt = parseFloat(payAmount)
     if (isNaN(amt) || amt <= 0) return 'Enter a valid amount'
-    const balance = selected ? (selected.balance ?? selected.total) : 0
+    const balance = selected
+      ? (selected.type === 'order'
+          ? Math.max(0, selected.total - orderPaidTotal)
+          : (selected.balance ?? selected.total))
+      : 0
     if (amt > balance + 0.01) return `Amount exceeds balance ($${balance.toFixed(2)})`
     if (payMethod === 'check' && !payRef.trim()) return 'Check number required'
     return null
@@ -89,10 +114,13 @@ export default function POSView() {
         notes: payNotes.trim(),
       })
       const paid = parseFloat(payAmount)
-      const balance = selected.balance ?? selected.total
+      const balance = selected.type === 'order'
+        ? Math.max(0, selected.total - orderPaidTotal)
+        : (selected.balance ?? selected.total)
       const remaining = Math.max(0, balance - paid)
       setSuccessMsg(`Payment of $${paid.toFixed(2)} recorded for ${selected.type} ${selected.number}. ${remaining > 0 ? `Remaining balance: $${remaining.toFixed(2)}` : 'Paid in full.'}`)
       setSelected(null)
+      setOrderPaidTotal(0)
       setResults([])
       setQuery('')
       setPayAmount('')
@@ -106,7 +134,11 @@ export default function POSView() {
     }
   }
 
-  const balance = selected ? (selected.balance ?? selected.total) : 0
+  const balance = selected
+    ? (selected.type === 'order'
+        ? Math.max(0, selected.total - orderPaidTotal)
+        : (selected.balance ?? selected.total))
+    : 0
 
   return (
     <div className="pos-view">
@@ -160,7 +192,7 @@ export default function POSView() {
               <div className="pos-payment-title">{selected.type === 'invoice' ? 'Invoice' : 'Order'} {selected.number}</div>
               <div className="pos-balance-due">Balance due: <strong>${balance.toFixed(2)}</strong></div>
             </div>
-            <Button variant="ghost" size="sm" onClick={() => { setSelected(null); setResults([]) }}>
+            <Button variant="ghost" size="sm" onClick={() => { setSelected(null); setOrderPaidTotal(0); setResults([]) }}>
               ← Change
             </Button>
           </div>
