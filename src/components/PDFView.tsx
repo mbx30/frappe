@@ -38,11 +38,22 @@ function ThumbnailStrip({ filePath, pageCount, currentPage, onSelectPage }: {
     setThumbnails({})
     const max = Math.min(pageCount, 20)
     let cancelled = false
-    for (let i = 0; i < max; i++) {
-      invoke<string>('render_page_thumbnail', { path: filePath, pageIndex: i, widthPx: 120 })
-        .then((url) => { if (!cancelled) setThumbnails((prev) => ({ ...prev, [i]: url })) })
-        .catch(() => {})
+
+    async function loadThumbs() {
+      const results: Record<number, string> = {}
+      for (let i = 0; i < max; i++) {
+        try {
+          const url = await invoke<string>('render_page_thumbnail', { path: filePath, pageIndex: i, widthPx: 120 })
+          if (cancelled) break
+          results[i] = url
+        } catch (e) {
+          // ignore per-thumbnail errors
+        }
+      }
+      if (!cancelled) setThumbnails(results)
     }
+
+    loadThumbs()
     return () => { cancelled = true }
   }, [filePath, pageCount])
 
@@ -86,13 +97,23 @@ function PageViewer({ filePath, pageIndex }: { filePath: string; pageIndex: numb
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
+    let cancelled = false
     setLoading(true)
     setRenderUrl(null)
     const dpi = Math.round(72 * zoom / 100)
-    invoke<string>('render_page', { path: filePath, pageIndex, dpi })
-      .then((url) => setRenderUrl(url))
-      .catch(() => {})
-      .finally(() => setLoading(false))
+
+    ;(async () => {
+      try {
+        const url = await invoke<string>('render_page', { path: filePath, pageIndex, dpi })
+        if (!cancelled) setRenderUrl(url)
+      } catch (e) {
+        // ignore render errors
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+
+    return () => { cancelled = true }
   }, [filePath, pageIndex, zoom])
 
   return (
