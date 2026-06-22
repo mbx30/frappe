@@ -42,15 +42,29 @@ function ThumbnailStrip({ filePath, pageCount, currentPage, onSelectPage }: {
 
     async function loadThumbs() {
       const results: Record<number, string> = {}
-      for (let i = 0; i < max; i++) {
+      const MAX_CONCURRENT = 3
+      let inProgress = 0
+      let nextIdx = 0
+
+      const loadOne = async () => {
+        if (nextIdx >= max || cancelled) return
+        const idx = nextIdx++
+        inProgress++
+
         try {
-          const url = await invoke<string>('render_page_thumbnail', { path: filePath, pageIndex: i, widthPx: 120 })
-          if (cancelled) break
-          results[i] = url
+          const url = await invoke<string>('render_page_thumbnail', { path: filePath, pageIndex: idx, widthPx: 120 })
+          if (!cancelled) results[idx] = url
         } catch {
           // ignore per-thumbnail errors
+        } finally {
+          inProgress--
+          if (nextIdx < max && !cancelled) await loadOne()
         }
       }
+
+      const promises = Array.from({ length: Math.min(MAX_CONCURRENT, max) }, () => loadOne())
+      await Promise.all(promises)
+
       if (!cancelled) setThumbnails(results)
     }
 
