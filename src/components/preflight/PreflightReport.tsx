@@ -170,8 +170,7 @@ export default function PreflightReport({ filePath, result, jobId, onSaved }: Pr
               <span className="pdf-finding-type">{f.pixel_width}×{f.pixel_height}px / {f.color_space}</span>
               <span className="pdf-finding-message">{f.effective_dpi.toFixed(0)} DPI — {f.message}</span>
             </div>
-          )
-        })}
+          ))}
       </div>
 
       {/* Bleed */}
