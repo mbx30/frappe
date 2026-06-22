@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { invoke, convertFileSrc } from '@tauri-apps/api/core'
 import type { PdfSummary, CombinedPreflightResult } from '../types'
 import PreflightReport from './preflight/PreflightReport'
@@ -33,6 +33,7 @@ function ThumbnailStrip({ filePath, pageCount, currentPage, onSelectPage }: {
   onSelectPage: (n: number) => void
 }) {
   const [thumbnails, setThumbnails] = useState<Record<number, string>>({})
+  const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -70,7 +71,7 @@ function ThumbnailStrip({ filePath, pageCount, currentPage, onSelectPage }: {
   }, [filePath, pageCount])
 
   return (
-    <div className="thumb-strip" role="tablist" aria-label={t('pdf.recent')}>
+    <div className="thumb-strip" ref={containerRef} role="tablist" aria-label={t('pdf.recent')}>
       {Array.from({ length: Math.min(pageCount, 20) }, (_, i) => (
         <button
           key={i}
@@ -81,13 +82,13 @@ function ThumbnailStrip({ filePath, pageCount, currentPage, onSelectPage }: {
           className={`thumb-item ${i === currentPage ? 'thumb-item--active' : ''}`}
           onClick={() => onSelectPage(i)}
           onKeyDown={(e) => {
-            if (e.key === 'ArrowRight') {
+            if (e.key === 'ArrowRight' && i < Math.min(pageCount, 20) - 1) {
               e.preventDefault()
-              const next = document.querySelector<HTMLButtonElement>(`.thumb-item:nth-child(${i + 2})`)
+              const next = containerRef.current?.querySelector<HTMLButtonElement>(`.thumb-item:nth-child(${i + 2})`)
               next?.focus()
-            } else if (e.key === 'ArrowLeft') {
+            } else if (e.key === 'ArrowLeft' && i > 0) {
               e.preventDefault()
-              const prev = document.querySelector<HTMLButtonElement>(`.thumb-item:nth-child(${i})`)
+              const prev = containerRef.current?.querySelector<HTMLButtonElement>(`.thumb-item:nth-child(${i})`)
               prev?.focus()
             }
           }}
