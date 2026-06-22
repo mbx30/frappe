@@ -324,9 +324,9 @@ export default function InvoiceEditor({ invoiceId, onSave, onCancel }: InvoiceEd
                         type="number"
                         placeholder="Qty"
                         value={item.quantity}
-                        onChange={(e) => handleUpdateLineItem(index, { quantity: Math.max(0.001, parseFloat(e.target.value) || 0) })}
+                        onChange={(e) => handleUpdateLineItem(index, { quantity: parseFloat(e.target.value) || 0 })}
                         inputMode="decimal"
-                        min="0.001"
+                        min="0"
                       />
                       <Input
                         type="number"
