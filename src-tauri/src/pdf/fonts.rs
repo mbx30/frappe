@@ -126,7 +126,7 @@ pub fn collect_fonts(doc: &Document) -> Vec<FontFinding> {
                         ("ok".to_string(), format!("Font '{}' is embedded and subsetted.", name))
                     };
                     FontFinding {
-                        font_name: name,
+                        font_name: name.clone(),
                         font_type,
                         is_embedded,
                         is_subsetted,
