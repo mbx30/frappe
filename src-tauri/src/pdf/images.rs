@@ -35,27 +35,40 @@ fn parse_content_operations(content: &[u8]) -> Vec<(String, Vec<f64>, Vec<Vec<u8
     let mut i = 0;
 
     while i < len {
-        if is_whitespace(content[i]) { i += 1; continue; }
+        if is_whitespace(content[i]) {
+            i += 1;
+            continue;
+        }
         if content[i] == b'%' {
-            while i < len && content[i] != b'\n' && content[i] != b'\r' { i += 1; }
+            while i < len && content[i] != b'\n' && content[i] != b'\r' {
+                i += 1;
+            }
             continue;
         }
 
         if content[i] == b'/' {
             let start = i;
             i += 1;
-            while i < len && !is_whitespace(content[i]) && content[i] != b'%' { i += 1; }
+            while i < len && !is_whitespace(content[i]) && content[i] != b'%' {
+                i += 1;
+            }
             operands_name.push(content[start..i].to_vec());
             continue;
         }
 
         if content[i] == b'-' || content[i] == b'+' || is_digit(content[i]) || content[i] == b'.' {
             let start = i;
-            if content[i] == b'-' || content[i] == b'+' { i += 1; }
-            while i < len && is_digit(content[i]) { i += 1; }
+            if content[i] == b'-' || content[i] == b'+' {
+                i += 1;
+            }
+            while i < len && is_digit(content[i]) {
+                i += 1;
+            }
             if i < len && content[i] == b'.' {
                 i += 1;
-                while i < len && is_digit(content[i]) { i += 1; }
+                while i < len && is_digit(content[i]) {
+                    i += 1;
+                }
             }
             let s = std::str::from_utf8(&content[start..i]).unwrap_or("0");
             if let Ok(n) = s.parse::<f64>() {
@@ -66,26 +79,46 @@ fn parse_content_operations(content: &[u8]) -> Vec<(String, Vec<f64>, Vec<Vec<u8
 
         if is_operator_char(content[i]) {
             let start = i;
-            while i < len && is_operator_char(content[i]) { i += 1; }
+            while i < len && is_operator_char(content[i]) {
+                i += 1;
+            }
             let op = String::from_utf8_lossy(&content[start..i]).to_string();
-            ops.push((op, std::mem::take(&mut operands_num), std::mem::take(&mut operands_name)));
+            ops.push((
+                op,
+                std::mem::take(&mut operands_num),
+                std::mem::take(&mut operands_name),
+            ));
             continue;
         }
 
         if content[i] == b'(' {
             let mut depth = 0;
             while i < len {
-                if content[i] == b'(' { depth += 1; }
-                if content[i] == b')' { depth -= 1; if depth == 0 { i += 1; break; } }
-                if content[i] == b'\\' { i += 1; }
+                if content[i] == b'(' {
+                    depth += 1;
+                }
+                if content[i] == b')' {
+                    depth -= 1;
+                    if depth == 0 {
+                        i += 1;
+                        break;
+                    }
+                }
+                if content[i] == b'\\' {
+                    i += 1;
+                }
                 i += 1;
             }
             continue;
         }
 
         if content[i] == b'<' && i + 1 < len && content[i + 1] != b'<' {
-            while i < len && content[i] != b'>' { i += 1; }
-            if i < len { i += 1; }
+            while i < len && content[i] != b'>' {
+                i += 1;
+            }
+            if i < len {
+                i += 1;
+            }
             continue;
         }
 
@@ -112,17 +145,30 @@ fn find_xobject_dict(doc: &Document, resources: &lopdf::Dictionary) -> Option<lo
     })
 }
 
-fn collect_xobject_subtype(doc: &Document, xobject_dict: &lopdf::Dictionary, name: &[u8]) -> Option<Vec<u8>> {
+fn collect_xobject_subtype(
+    doc: &Document,
+    xobject_dict: &lopdf::Dictionary,
+    name: &[u8],
+) -> Option<Vec<u8>> {
     xobject_dict.get(name).ok().and_then(|value| {
         let stream = match value {
             Object::Reference(id) => doc.get_object(*id).ok().and_then(|o| o.as_stream().ok())?,
             _ => return None,
         };
-        stream.dict.get(b"Subtype").ok().and_then(|o| o.as_name().ok()).map(|n| n.to_vec())
+        stream
+            .dict
+            .get(b"Subtype")
+            .ok()
+            .and_then(|o| o.as_name().ok())
+            .map(|n| n.to_vec())
     })
 }
 
-fn collect_form_xobject_stream(doc: &Document, xobject_dict: &lopdf::Dictionary, name: &[u8]) -> Option<Vec<u8>> {
+fn collect_form_xobject_stream(
+    doc: &Document,
+    xobject_dict: &lopdf::Dictionary,
+    name: &[u8],
+) -> Option<Vec<u8>> {
     xobject_dict.get(name).ok().and_then(|value| {
         let stream = match value {
             Object::Reference(id) => doc.get_object(*id).ok().and_then(|o| o.as_stream().ok())?,
@@ -132,7 +178,11 @@ fn collect_form_xobject_stream(doc: &Document, xobject_dict: &lopdf::Dictionary,
     })
 }
 
-fn collect_form_xobject_resources(doc: &Document, xobject_dict: &lopdf::Dictionary, name: &[u8]) -> Option<lopdf::Dictionary> {
+fn collect_form_xobject_resources(
+    doc: &Document,
+    xobject_dict: &lopdf::Dictionary,
+    name: &[u8],
+) -> Option<lopdf::Dictionary> {
     xobject_dict.get(name).ok().and_then(|value| {
         let stream = match value {
             Object::Reference(id) => doc.get_object(*id).ok().and_then(|o| o.as_stream().ok())?,
@@ -158,18 +208,43 @@ fn collect_image_xobjects(doc: &Document, page_id: (u32, u16)) -> Vec<(Vec<u8>, 
     };
     for (name, value) in xobject_dict.iter() {
         let stream = match value {
-            Object::Reference(id) => match doc.get_object(*id).ok().and_then(|o| o.as_stream().ok()) {
-                Some(s) => s,
-                None => continue,
-            },
+            Object::Reference(id) => {
+                match doc.get_object(*id).ok().and_then(|o| o.as_stream().ok()) {
+                    Some(s) => s,
+                    None => continue,
+                }
+            }
             _ => continue,
         };
-        let subtype = stream.dict.get(b"Subtype").ok().and_then(|o| o.as_name().ok());
-        if subtype != Some(b"Image") { continue; }
-        let width = stream.dict.get(b"Width").ok().and_then(|o| o.as_i64().ok()).unwrap_or(0) as u32;
-        let height = stream.dict.get(b"Height").ok().and_then(|o| o.as_i64().ok()).unwrap_or(0) as u32;
-        let color_space = stream.dict.get(b"ColorSpace").ok()
-            .and_then(|o| o.as_name().map(|n| String::from_utf8_lossy(n).to_string()).ok())
+        let subtype = stream
+            .dict
+            .get(b"Subtype")
+            .ok()
+            .and_then(|o| o.as_name().ok());
+        if subtype != Some(b"Image") {
+            continue;
+        }
+        let width = stream
+            .dict
+            .get(b"Width")
+            .ok()
+            .and_then(|o| o.as_i64().ok())
+            .unwrap_or(0) as u32;
+        let height = stream
+            .dict
+            .get(b"Height")
+            .ok()
+            .and_then(|o| o.as_i64().ok())
+            .unwrap_or(0) as u32;
+        let color_space = stream
+            .dict
+            .get(b"ColorSpace")
+            .ok()
+            .and_then(|o| {
+                o.as_name()
+                    .map(|n| String::from_utf8_lossy(n).to_string())
+                    .ok()
+            })
             .unwrap_or_else(|| "Unknown".into());
         images.push((name.clone(), width, height, color_space));
     }
@@ -186,17 +261,24 @@ fn process_content_stream(
     xobject_dict: &lopdf::Dictionary,
     depth: usize,
 ) {
-    if depth > 10 { return; }
+    if depth > 10 {
+        return;
+    }
 
     let ops = parse_content_operations(content_bytes);
     let mut ctm = initial_ctm;
     let mut ctm_stack: Vec<[f64; 6]> = Vec::new();
-    let mut seen_usages: std::collections::HashSet<(String, i64, i64)> = std::collections::HashSet::new();
+    let mut seen_usages: std::collections::HashSet<(String, i64, i64)> =
+        std::collections::HashSet::new();
 
     for (op, nums, names) in &ops {
         match op.as_str() {
             "q" => ctm_stack.push(ctm),
-            "Q" => { if let Some(saved) = ctm_stack.pop() { ctm = saved; } }
+            "Q" => {
+                if let Some(saved) = ctm_stack.pop() {
+                    ctm = saved;
+                }
+            }
             "cm" => {
                 if nums.len() >= 6 {
                     let [a, b, c, d, e, f] = [nums[0], nums[1], nums[2], nums[3], nums[4], nums[5]];
@@ -218,9 +300,12 @@ fn process_content_stream(
                     // Check if this is a Form XObject (need to recurse)
                     let subtype = collect_xobject_subtype(doc, xobject_dict, name_bytes);
                     if subtype.as_deref() == Some(b"Form") {
-                        if let Some(form_content) = collect_form_xobject_stream(doc, xobject_dict, name_bytes) {
-                            let form_resources = collect_form_xobject_resources(doc, xobject_dict, name_bytes)
-                                .unwrap_or_else(|| xobject_dict.clone());
+                        if let Some(form_content) =
+                            collect_form_xobject_stream(doc, xobject_dict, name_bytes)
+                        {
+                            let form_resources =
+                                collect_form_xobject_resources(doc, xobject_dict, name_bytes)
+                                    .unwrap_or_else(|| xobject_dict.clone());
 
                             // Create a synthetic xobject dict for recursion
                             let form_xobject_dict = find_xobject_dict(doc, &form_resources)
@@ -233,23 +318,55 @@ fn process_content_stream(
                                         Object::Reference(id) => doc.get_object(*id).ok(),
                                         _ => continue,
                                     };
-                                    let stream = match obj.and_then(|o| o.as_stream().ok()) { Some(s) => s, None => continue, };
-                                        let subtype = stream.dict.get(b"Subtype").ok().and_then(|o| o.as_name().ok());
-                                        if subtype == Some(b"Image") {
-                                            let w = stream.dict.get(b"Width").ok().and_then(|o| o.as_i64().ok()).unwrap_or(0) as u32;
-                                            let h = stream.dict.get(b"Height").ok().and_then(|o| o.as_i64().ok()).unwrap_or(0) as u32;
-                                            let cs = stream.dict.get(b"ColorSpace").ok()
-                                                .and_then(|o| o.as_name().map(|n| String::from_utf8_lossy(n).to_string()).ok())
-                                                .unwrap_or_else(|| "Unknown".into());
-                                            imgs.push((xn.clone(), w, h, cs));
-                                        }
+                                    let stream = match obj.and_then(|o| o.as_stream().ok()) {
+                                        Some(s) => s,
+                                        None => continue,
+                                    };
+                                    let subtype = stream
+                                        .dict
+                                        .get(b"Subtype")
+                                        .ok()
+                                        .and_then(|o| o.as_name().ok());
+                                    if subtype == Some(b"Image") {
+                                        let w = stream
+                                            .dict
+                                            .get(b"Width")
+                                            .ok()
+                                            .and_then(|o| o.as_i64().ok())
+                                            .unwrap_or(0)
+                                            as u32;
+                                        let h = stream
+                                            .dict
+                                            .get(b"Height")
+                                            .ok()
+                                            .and_then(|o| o.as_i64().ok())
+                                            .unwrap_or(0)
+                                            as u32;
+                                        let cs = stream
+                                            .dict
+                                            .get(b"ColorSpace")
+                                            .ok()
+                                            .and_then(|o| {
+                                                o.as_name()
+                                                    .map(|n| String::from_utf8_lossy(n).to_string())
+                                                    .ok()
+                                            })
+                                            .unwrap_or_else(|| "Unknown".into());
+                                        imgs.push((xn.clone(), w, h, cs));
+                                    }
                                 }
                                 imgs
                             };
 
                             process_content_stream(
-                                doc, &form_content, &form_image_defs,
-                                page, findings, ctm, &form_xobject_dict, depth + 1,
+                                doc,
+                                &form_content,
+                                &form_image_defs,
+                                page,
+                                findings,
+                                ctm,
+                                &form_xobject_dict,
+                                depth + 1,
                             );
                         }
                         continue;
@@ -268,9 +385,11 @@ fn process_content_stream(
                     for (img_name, pw, ph, cs) in image_defs {
                         let img_name_utf8 = String::from_utf8_lossy(img_name);
                         if img_name_utf8 == name || format!("/{}", img_name_utf8) == name {
-                            let usage_key = (img_name_utf8.to_string(),
+                            let usage_key = (
+                                img_name_utf8.to_string(),
                                 (display_w_pts * 100.0) as i64,
-                                (display_h_pts * 100.0) as i64);
+                                (display_h_pts * 100.0) as i64,
+                            );
                             if seen_usages.contains(&usage_key) {
                                 break;
                             }
@@ -285,28 +404,41 @@ fn process_content_stream(
                                 } else if dpi < 300.0 {
                                     ("warning".into(), format!("{:.0} DPI — marginal", dpi))
                                 } else if dpi > 1200.0 {
-                                    ("info".into(), format!("{:.0} DPI — excessive (will slow RIP)", dpi))
+                                    (
+                                        "info".into(),
+                                        format!("{:.0} DPI — excessive (will slow RIP)", dpi),
+                                    )
                                 } else {
                                     ("ok".into(), format!("{:.0} DPI", dpi))
                                 };
                                 findings.push(ImageResolutionFinding {
-                                    page, image_name: img_name_utf8.to_string(),
-                                    pixel_width: *pw, pixel_height: *ph,
+                                    page,
+                                    image_name: img_name_utf8.to_string(),
+                                    pixel_width: *pw,
+                                    pixel_height: *ph,
                                     rendered_width_pts: display_w_pts,
                                     rendered_height_pts: display_h_pts,
                                     effective_dpi: dpi,
-                                    color_space: cs.clone(), severity, message,
+                                    color_space: cs.clone(),
+                                    severity,
+                                    message,
                                 });
                             } else {
                                 let estimated_dpi = (*pw as f64).min(*ph as f64) / 2.0;
                                 findings.push(ImageResolutionFinding {
-                                    page, image_name: img_name_utf8.to_string(),
-                                    pixel_width: *pw, pixel_height: *ph,
-                                    rendered_width_pts: 0.0, rendered_height_pts: 0.0,
+                                    page,
+                                    image_name: img_name_utf8.to_string(),
+                                    pixel_width: *pw,
+                                    pixel_height: *ph,
+                                    rendered_width_pts: 0.0,
+                                    rendered_height_pts: 0.0,
                                     effective_dpi: estimated_dpi,
                                     color_space: cs.clone(),
                                     severity: "info".into(),
-                                    message: format!("Est. {:.0} DPI (no transform found)", estimated_dpi),
+                                    message: format!(
+                                        "Est. {:.0} DPI (no transform found)",
+                                        estimated_dpi
+                                    ),
                                 });
                             }
                             break;
@@ -338,14 +470,18 @@ pub fn check_image_resolution(doc: &Document) -> Vec<ImageResolutionFinding> {
             Some(r) => r,
             None => continue,
         };
-        let xobject_dict = find_xobject_dict(doc, &resources)
-            .unwrap_or_else(|| lopdf::Dictionary::new());
+        let xobject_dict =
+            find_xobject_dict(doc, &resources).unwrap_or_else(|| lopdf::Dictionary::new());
 
         process_content_stream(
-            doc, &content_bytes, &image_defs,
-            page, &mut findings,
+            doc,
+            &content_bytes,
+            &image_defs,
+            page,
+            &mut findings,
             [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
-            &xobject_dict, 0,
+            &xobject_dict,
+            0,
         );
     }
 

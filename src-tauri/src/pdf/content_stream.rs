@@ -1,8 +1,8 @@
-use lopdf::Object;
-use lopdf::Stream;
 use flate2::read::ZlibDecoder;
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
+use lopdf::Object;
+use lopdf::Stream;
 use std::io::{Read, Write};
 
 #[derive(Debug, Clone)]
@@ -23,7 +23,8 @@ pub fn decode_stream(stream: &Stream) -> Result<Vec<u8>, String> {
         Ok(Object::Name(name)) if name == b"FlateDecode" => {
             let mut d = ZlibDecoder::new(stream.content.as_slice());
             let mut buf = Vec::new();
-            d.read_to_end(&mut buf).map_err(|e| format!("FlateDecode error: {e}"))?;
+            d.read_to_end(&mut buf)
+                .map_err(|e| format!("FlateDecode error: {e}"))?;
             Ok(buf)
         }
         Ok(Object::Array(arr)) => {
@@ -34,7 +35,8 @@ pub fn decode_stream(stream: &Stream) -> Result<Vec<u8>, String> {
                         b"FlateDecode" | b"Fl" => {
                             let mut d = ZlibDecoder::new(data.as_slice());
                             let mut buf = Vec::new();
-                            d.read_to_end(&mut buf).map_err(|e| format!("FlateDecode error: {e}"))?;
+                            d.read_to_end(&mut buf)
+                                .map_err(|e| format!("FlateDecode error: {e}"))?;
                             data = buf;
                         }
                         b"ASCII85Decode" | b"A85" => {
@@ -67,9 +69,10 @@ pub fn encode_stream(data: &[u8]) -> Stream {
     encoder.write_all(data).unwrap();
     let compressed = encoder.finish().unwrap();
     Stream::new(
-        lopdf::Dictionary::from_iter(vec![
-            (b"Filter".to_vec(), Object::Name(b"FlateDecode".to_vec())),
-        ]),
+        lopdf::Dictionary::from_iter(vec![(
+            b"Filter".to_vec(),
+            Object::Name(b"FlateDecode".to_vec()),
+        )]),
         compressed,
     )
 }
@@ -112,7 +115,9 @@ pub fn tokenize_content(data: &[u8]) -> Vec<ContentToken> {
         // ── Literal string: `( ... )` with parenthesis balancing + escapes ──
         if ch == b'(' {
             if !current.is_empty() {
-                tokens.push(ContentToken::Operand(String::from_utf8_lossy(&current).to_string()));
+                tokens.push(ContentToken::Operand(
+                    String::from_utf8_lossy(&current).to_string(),
+                ));
                 current.clear();
             }
             // Walk the string tracking paren depth and honouring `\` escapes.
@@ -125,21 +130,52 @@ pub fn tokenize_content(data: &[u8]) -> Vec<ContentToken> {
                 let c = data[i];
                 if c == b'\\' {
                     i += 1;
-                    if i >= len { break; }
+                    if i >= len {
+                        break;
+                    }
                     let esc = data[i];
                     match esc {
-                        b'n' => { buf.push('\n'); i += 1; }
-                        b'r' => { buf.push('\r'); i += 1; }
-                        b't' => { buf.push('\t'); i += 1; }
-                        b'b' => { buf.push('\u{08}'); i += 1; }
-                        b'f' => { buf.push('\u{0C}'); i += 1; }
-                        b'(' => { buf.push('('); i += 1; }
-                        b')' => { buf.push(')'); i += 1; }
-                        b'\\' => { buf.push('\\'); i += 1; }
-                        b'\n' => { /* line continuation */ i += 1; }
+                        b'n' => {
+                            buf.push('\n');
+                            i += 1;
+                        }
+                        b'r' => {
+                            buf.push('\r');
+                            i += 1;
+                        }
+                        b't' => {
+                            buf.push('\t');
+                            i += 1;
+                        }
+                        b'b' => {
+                            buf.push('\u{08}');
+                            i += 1;
+                        }
+                        b'f' => {
+                            buf.push('\u{0C}');
+                            i += 1;
+                        }
+                        b'(' => {
+                            buf.push('(');
+                            i += 1;
+                        }
+                        b')' => {
+                            buf.push(')');
+                            i += 1;
+                        }
+                        b'\\' => {
+                            buf.push('\\');
+                            i += 1;
+                        }
+                        b'\n' => {
+                            /* line continuation */
+                            i += 1;
+                        }
                         b'\r' => {
                             i += 1;
-                            if i < len && data[i] == b'\n' { i += 1; }
+                            if i < len && data[i] == b'\n' {
+                                i += 1;
+                            }
                         }
                         d if d.is_ascii_digit() => {
                             // Up to 3 octal digits
@@ -193,7 +229,9 @@ pub fn tokenize_content(data: &[u8]) -> Vec<ContentToken> {
         // ── `<<` dict-open vs `<` hex-string-open ──
         if ch == b'<' {
             if !current.is_empty() {
-                tokens.push(ContentToken::Operand(String::from_utf8_lossy(&current).to_string()));
+                tokens.push(ContentToken::Operand(
+                    String::from_utf8_lossy(&current).to_string(),
+                ));
                 current.clear();
             }
             if i + 1 < len && data[i + 1] == b'<' {
@@ -211,7 +249,9 @@ pub fn tokenize_content(data: &[u8]) -> Vec<ContentToken> {
                 }
                 i += 1;
             }
-            if i < len { i += 1; } // consume '>'
+            if i < len {
+                i += 1;
+            } // consume '>'
             tokens.push(ContentToken::Operand(format!("<{hex_buf}>")));
             continue;
         }
@@ -219,7 +259,9 @@ pub fn tokenize_content(data: &[u8]) -> Vec<ContentToken> {
         // ── `>>` dict-close ──
         if ch == b'>' && i + 1 < len && data[i + 1] == b'>' {
             if !current.is_empty() {
-                tokens.push(ContentToken::Operand(String::from_utf8_lossy(&current).to_string()));
+                tokens.push(ContentToken::Operand(
+                    String::from_utf8_lossy(&current).to_string(),
+                ));
                 current.clear();
             }
             tokens.push(ContentToken::Operand(">>".to_string()));
@@ -230,7 +272,9 @@ pub fn tokenize_content(data: &[u8]) -> Vec<ContentToken> {
         // ── Name token `/Name` with `#XX` hex escapes (#176) ──
         if ch == b'/' {
             if !current.is_empty() {
-                tokens.push(ContentToken::Operand(String::from_utf8_lossy(&current).to_string()));
+                tokens.push(ContentToken::Operand(
+                    String::from_utf8_lossy(&current).to_string(),
+                ));
                 current.clear();
             }
             i += 1;
@@ -240,17 +284,20 @@ pub fn tokenize_content(data: &[u8]) -> Vec<ContentToken> {
             name.push(b'/');
             while i < len {
                 let c = data[i];
-                if c.is_ascii_whitespace() { break; }
-                if matches!(c, b'(' | b')' | b'<' | b'>' | b'[' | b']' | b'{' | b'}' | b'/' | b'%') {
+                if c.is_ascii_whitespace() {
+                    break;
+                }
+                if matches!(
+                    c,
+                    b'(' | b')' | b'<' | b'>' | b'[' | b']' | b'{' | b'}' | b'/' | b'%'
+                ) {
                     break;
                 }
                 if c == b'#' && i + 2 < len {
                     let h = &data[i + 1..i + 3];
                     let hex_ok = h[0].is_ascii_hexdigit() && h[1].is_ascii_hexdigit();
                     if hex_ok {
-                        let val = u8::from_str_radix(
-                            &String::from_utf8_lossy(h), 16,
-                        ).unwrap_or(0);
+                        let val = u8::from_str_radix(&String::from_utf8_lossy(h), 16).unwrap_or(0);
                         name.push(val);
                         i += 3;
                         continue;
@@ -259,13 +306,17 @@ pub fn tokenize_content(data: &[u8]) -> Vec<ContentToken> {
                 name.push(c);
                 i += 1;
             }
-            tokens.push(ContentToken::Operand(String::from_utf8_lossy(&name).to_string()));
+            tokens.push(ContentToken::Operand(
+                String::from_utf8_lossy(&name).to_string(),
+            ));
             continue;
         }
 
         if ch == b'%' {
             if !current.is_empty() {
-                tokens.push(ContentToken::Operand(String::from_utf8_lossy(&current).to_string()));
+                tokens.push(ContentToken::Operand(
+                    String::from_utf8_lossy(&current).to_string(),
+                ));
                 current.clear();
             }
             in_comment = true;
@@ -275,7 +326,9 @@ pub fn tokenize_content(data: &[u8]) -> Vec<ContentToken> {
 
         if ch == b'[' || ch == b']' || ch == b'{' || ch == b'}' {
             if !current.is_empty() {
-                tokens.push(ContentToken::Operand(String::from_utf8_lossy(&current).to_string()));
+                tokens.push(ContentToken::Operand(
+                    String::from_utf8_lossy(&current).to_string(),
+                ));
                 current.clear();
             }
             tokens.push(ContentToken::Operand((ch as char).to_string()));
@@ -285,7 +338,9 @@ pub fn tokenize_content(data: &[u8]) -> Vec<ContentToken> {
 
         if ch.is_ascii_whitespace() {
             if !current.is_empty() {
-                tokens.push(ContentToken::Operand(String::from_utf8_lossy(&current).to_string()));
+                tokens.push(ContentToken::Operand(
+                    String::from_utf8_lossy(&current).to_string(),
+                ));
                 current.clear();
             }
             i += 1;
@@ -295,16 +350,21 @@ pub fn tokenize_content(data: &[u8]) -> Vec<ContentToken> {
         }
     }
     if !current.is_empty() {
-        tokens.push(ContentToken::Operand(String::from_utf8_lossy(&current).to_string()));
+        tokens.push(ContentToken::Operand(
+            String::from_utf8_lossy(&current).to_string(),
+        ));
     }
 
     let operators: std::collections::HashSet<&str> = [
         "b", "B", "b*", "B*", "BDC", "BMC", "BT", "BX", "c", "cm", "cs", "CS", "d", "d0", "d1",
-        "Do", "DP", "EI", "EMC", "ET", "EX", "f", "F", "f*", "g", "G", "gs", "h", "i", "ID",
-        "j", "J", "k", "K", "l", "m", "M", "MP", "n", "q", "Q", "re", "rg", "RG", "ri", "s",
-        "S", "sc", "SC", "sh", "T*", "Tc", "Td", "TD", "Tf", "Tj", "TJ", "TL", "Tm", "Tr",
-        "Ts", "Tw", "Tz", "v", "w", "W", "W*", "x", "y", "'", "\"",
-    ].iter().copied().collect();
+        "Do", "DP", "EI", "EMC", "ET", "EX", "f", "F", "f*", "g", "G", "gs", "h", "i", "ID", "j",
+        "J", "k", "K", "l", "m", "M", "MP", "n", "q", "Q", "re", "rg", "RG", "ri", "s", "S", "sc",
+        "SC", "sh", "T*", "Tc", "Td", "TD", "Tf", "Tj", "TJ", "TL", "Tm", "Tr", "Ts", "Tw", "Tz",
+        "v", "w", "W", "W*", "x", "y", "'", "\"",
+    ]
+    .iter()
+    .copied()
+    .collect();
 
     let mut result = Vec::new();
     let mut i = 0;
@@ -317,7 +377,9 @@ pub fn tokenize_content(data: &[u8]) -> Vec<ContentToken> {
                 if i > 0 {
                     if let ContentToken::Operand(tag) = &tokens[i - 1] {
                         let tag_clean = tag.trim_start_matches('/');
-                        result.push(ContentToken::BeginMarkedContent { tag: tag_clean.to_string() });
+                        result.push(ContentToken::BeginMarkedContent {
+                            tag: tag_clean.to_string(),
+                        });
                     }
                 }
             }
@@ -343,19 +405,27 @@ fn ascii85_decode(data: &[u8]) -> Result<Vec<u8>, String> {
     let mut buf: [u8; 5] = [0u8; 5];
     let mut buf_len = 0;
     for ch in s.chars() {
-        if ch.is_whitespace() { continue; }
-        if ch == '~' { break; }
+        if ch.is_whitespace() {
+            continue;
+        }
+        if ch == '~' {
+            break;
+        }
         if ch == 'z' {
             result.extend_from_slice(&[0, 0, 0, 0]);
             continue;
         }
         let val = (ch as u8).wrapping_sub(33);
-        if val > 84 { return Err(format!("Invalid ASCII85 character: {ch}")); }
+        if val > 84 {
+            return Err(format!("Invalid ASCII85 character: {ch}"));
+        }
         buf[buf_len] = val;
         buf_len += 1;
         if buf_len == 5 {
             let mut code: u32 = 0;
-            for j in 0..5 { code = code * 85 + buf[j] as u32; }
+            for j in 0..5 {
+                code = code * 85 + buf[j] as u32;
+            }
             result.extend_from_slice(&[
                 (code >> 24) as u8,
                 (code >> 16) as u8,
@@ -366,9 +436,13 @@ fn ascii85_decode(data: &[u8]) -> Result<Vec<u8>, String> {
         }
     }
     if buf_len > 1 {
-        for j in buf_len..5 { buf[j] = 84; }
+        for j in buf_len..5 {
+            buf[j] = 84;
+        }
         let mut code: u32 = 0;
-        for j in 0..5 { code = code * 85 + buf[j] as u32; }
+        for j in 0..5 {
+            code = code * 85 + buf[j] as u32;
+        }
         result.extend_from_slice(&[
             (code >> 24) as u8,
             (code >> 16) as u8,
@@ -382,12 +456,20 @@ fn ascii85_decode(data: &[u8]) -> Result<Vec<u8>, String> {
 
 fn ascii_hex_decode(data: &[u8]) -> Result<Vec<u8>, String> {
     let s = String::from_utf8_lossy(data);
-    let hex_part: String = s.chars().filter(|c| !c.is_whitespace()).take_while(|c| *c != '>').collect();
+    let hex_part: String = s
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .take_while(|c| *c != '>')
+        .collect();
     let bytes: Result<Vec<u8>, _> = (0..hex_part.len())
         .step_by(2)
         .map(|i| {
             let end = (i + 2).min(hex_part.len());
-            let p = if end - i == 1 { format!("{}0", &hex_part[i..end]) } else { hex_part[i..end].to_string() };
+            let p = if end - i == 1 {
+                format!("{}0", &hex_part[i..end])
+            } else {
+                hex_part[i..end].to_string()
+            };
             u8::from_str_radix(&p, 16).map_err(|e| format!("Hex decode error: {e}"))
         })
         .collect();

@@ -17,7 +17,9 @@ pub struct BleedFinding {
 const POINTS_TO_MM: f64 = 0.3528;
 
 fn parse_rect(arr: &[lopdf::Object]) -> Option<(f64, f64, f64, f64)> {
-    if arr.len() != 4 { return None }
+    if arr.len() != 4 {
+        return None;
+    }
     let to_f64 = |o: &lopdf::Object| -> Option<f64> {
         match o {
             lopdf::Object::Integer(i) => Some(*i as f64),
@@ -37,15 +39,19 @@ fn parse_rect(arr: &[lopdf::Object]) -> Option<(f64, f64, f64, f64)> {
     Some((x1.min(x2), y1.min(y2), (x2 - x1).abs(), (y2 - y1).abs()))
 }
 
-fn get_box(page_dict: &lopdf::Dictionary, doc: &Document, key: &[u8]) -> Option<(f64, f64, f64, f64)> {
-    page_dict.get(key).ok().and_then(|o| {
-        match o {
-            lopdf::Object::Array(a) => parse_rect(a),
-            lopdf::Object::Reference(id) => {
-                doc.get_object(*id).ok().and_then(|o| o.as_array().ok()).and_then(|a| parse_rect(a))
-            }
-            _ => None,
-        }
+fn get_box(
+    page_dict: &lopdf::Dictionary,
+    doc: &Document,
+    key: &[u8],
+) -> Option<(f64, f64, f64, f64)> {
+    page_dict.get(key).ok().and_then(|o| match o {
+        lopdf::Object::Array(a) => parse_rect(a),
+        lopdf::Object::Reference(id) => doc
+            .get_object(*id)
+            .ok()
+            .and_then(|o| o.as_array().ok())
+            .and_then(|a| parse_rect(a)),
+        _ => None,
     })
 }
 
@@ -80,26 +86,28 @@ pub fn check_bleed(doc: &Document, min_bleed_mm: f64) -> Vec<BleedFinding> {
                 //   bleed_right  = (bx + bw) - (tx + tw)   must be >= 0
                 //   bleed_bottom = ty - by                  must be >= 0
                 //   bleed_left   = tx - bx                  must be >= 0
-                let top_pts    = (by + bh) - (ty + th);
-                let right_pts  = (bx + bw) - (tx + tw);
+                let top_pts = (by + bh) - (ty + th);
+                let right_pts = (bx + bw) - (tx + tw);
                 let bottom_pts = ty - by;
-                let left_pts   = tx - bx;
+                let left_pts = tx - bx;
 
-                let top_mm    = top_pts    * POINTS_TO_MM;
-                let right_mm  = right_pts  * POINTS_TO_MM;
+                let top_mm = top_pts * POINTS_TO_MM;
+                let right_mm = right_pts * POINTS_TO_MM;
                 let bottom_mm = bottom_pts * POINTS_TO_MM;
-                let left_mm   = left_pts   * POINTS_TO_MM;
+                let left_mm = left_pts * POINTS_TO_MM;
 
                 // Negative bleed on any side is a structural violation (TrimBox
                 // extends past BleedBox), reported separately from "insufficient
                 // bleed" so the operator can tell the difference.
-                let any_negative = top_pts < 0.0 || right_pts < 0.0
-                    || bottom_pts < 0.0 || left_pts < 0.0;
+                let any_negative =
+                    top_pts < 0.0 || right_pts < 0.0 || bottom_pts < 0.0 || left_pts < 0.0;
 
                 if any_negative {
                     let offending = [
-                        ("top", top_mm), ("right", right_mm),
-                        ("bottom", bottom_mm), ("left", left_mm),
+                        ("top", top_mm),
+                        ("right", right_mm),
+                        ("bottom", bottom_mm),
+                        ("left", left_mm),
                     ]
                     .iter()
                     .filter(|(_, v)| *v < 0.0)
@@ -124,11 +132,18 @@ pub fn check_bleed(doc: &Document, min_bleed_mm: f64) -> Vec<BleedFinding> {
                     }
                 }
             }
-            (Some((_bx, _by, bw, bh)), None) => {
-                (true, 0.0, 0.0, 0.0, 0.0,
-                 "warning".into(),
-                 format!("BleedBox present ({:.0}×{:.0} pts) but no TrimBox to validate against", bw, bh))
-            }
+            (Some((_bx, _by, bw, bh)), None) => (
+                true,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                "warning".into(),
+                format!(
+                    "BleedBox present ({:.0}×{:.0} pts) but no TrimBox to validate against",
+                    bw, bh
+                ),
+            ),
             (None, Some((_tx, _ty, tw, th))) => {
                 let w_mm = tw * POINTS_TO_MM;
                 let h_mm = th * POINTS_TO_MM;
@@ -137,11 +152,15 @@ pub fn check_bleed(doc: &Document, min_bleed_mm: f64) -> Vec<BleedFinding> {
                  format!("No BleedBox found. TrimBox is {:.0}×{:.0}mm — content may extend to edge without bleed margin",
                          w_mm, h_mm))
             }
-            (None, None) => {
-                (false, 0.0, 0.0, 0.0, 0.0,
-                 "error".into(),
-                 "No BleedBox or TrimBox found on this page".into())
-            }
+            (None, None) => (
+                false,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                "error".into(),
+                "No BleedBox or TrimBox found on this page".into(),
+            ),
         };
 
         findings.push(BleedFinding {

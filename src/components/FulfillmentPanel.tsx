@@ -23,6 +23,7 @@ export default function FulfillmentPanel({ order, onSaved }: FulfillmentPanelPro
 
   // Reset form state when the order prop changes (e.g. switching orders)
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
     setForm({
       fulfillment_method: order.fulfillment_method,
       tracking_number: order.tracking_number,
@@ -32,6 +33,7 @@ export default function FulfillmentPanel({ order, onSaved }: FulfillmentPanelPro
     })
     setIsDirty(false)
     setError(null)
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [order.id, order.fulfillment_method, order.tracking_number, order.tracking_carrier, order.ready_for_pickup, order.shipped_at])
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {

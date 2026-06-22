@@ -1,4 +1,4 @@
-use lopdf::{Document, Object, Dictionary};
+use lopdf::{Dictionary, Document, Object};
 use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize)]
@@ -60,17 +60,30 @@ fn find_xobject_dict(doc: &Document, resources: &Dictionary) -> Option<Dictionar
     })
 }
 
-fn collect_xobject_subtype(doc: &Document, xobject_dict: &Dictionary, name: &[u8]) -> Option<Vec<u8>> {
+fn collect_xobject_subtype(
+    doc: &Document,
+    xobject_dict: &Dictionary,
+    name: &[u8],
+) -> Option<Vec<u8>> {
     xobject_dict.get(name).ok().and_then(|value| {
         let stream = match value {
             Object::Reference(id) => doc.get_object(*id).ok().and_then(|o| o.as_stream().ok())?,
             _ => return None,
         };
-        stream.dict.get(b"Subtype").ok().and_then(|o| o.as_name().ok()).map(|n| n.to_vec())
+        stream
+            .dict
+            .get(b"Subtype")
+            .ok()
+            .and_then(|o| o.as_name().ok())
+            .map(|n| n.to_vec())
     })
 }
 
-fn collect_form_xobject_stream(doc: &Document, xobject_dict: &Dictionary, name: &[u8]) -> Option<Vec<u8>> {
+fn collect_form_xobject_stream(
+    doc: &Document,
+    xobject_dict: &Dictionary,
+    name: &[u8],
+) -> Option<Vec<u8>> {
     xobject_dict.get(name).ok().and_then(|value| {
         let stream = match value {
             Object::Reference(id) => doc.get_object(*id).ok().and_then(|o| o.as_stream().ok())?,
@@ -80,7 +93,11 @@ fn collect_form_xobject_stream(doc: &Document, xobject_dict: &Dictionary, name: 
     })
 }
 
-fn collect_form_xobject_resources(doc: &Document, xobject_dict: &Dictionary, name: &[u8]) -> Option<Dictionary> {
+fn collect_form_xobject_resources(
+    doc: &Document,
+    xobject_dict: &Dictionary,
+    name: &[u8],
+) -> Option<Dictionary> {
     xobject_dict.get(name).ok().and_then(|value| {
         let stream = match value {
             Object::Reference(id) => doc.get_object(*id).ok().and_then(|o| o.as_stream().ok())?,
@@ -121,7 +138,9 @@ fn walk_overprint_stream(
     findings: &mut Vec<OverprintFinding>,
     depth: usize,
 ) {
-    if depth > 10 { return; }
+    if depth > 10 {
+        return;
+    }
 
     let content_bytes = match doc.get_page_content(page_id) {
         Ok(c) => c,
@@ -135,15 +154,31 @@ fn walk_overprint_stream(
         if op == "gs" {
             if let Some(name_bytes) = names.first() {
                 if let Some(gs_dict) = find_extgstate(doc, resources, name_bytes) {
-                    let op_stroke = gs_dict.get(b"OP").ok().and_then(|o| o.as_bool().ok()).unwrap_or(false);
-                    let op_fill = gs_dict.get(b"op").ok().and_then(|o| o.as_bool().ok()).unwrap_or(false);
-                    let opm = gs_dict.get(b"OPM").ok().and_then(|o| o.as_i64().ok()).unwrap_or(0);
+                    let op_stroke = gs_dict
+                        .get(b"OP")
+                        .ok()
+                        .and_then(|o| o.as_bool().ok())
+                        .unwrap_or(false);
+                    let op_fill = gs_dict
+                        .get(b"op")
+                        .ok()
+                        .and_then(|o| o.as_bool().ok())
+                        .unwrap_or(false);
+                    let opm = gs_dict
+                        .get(b"OPM")
+                        .ok()
+                        .and_then(|o| o.as_i64().ok())
+                        .unwrap_or(0);
 
                     if op_stroke || op_fill {
                         // Check if the color just before was 0% ink
                         // We can't track the exact color here (needs full graphics state),
                         // so we flag all overprint usage and note the context
-                        let sev = if op_stroke && op_fill { "warning" } else { "info" };
+                        let sev = if op_stroke && op_fill {
+                            "warning"
+                        } else {
+                            "info"
+                        };
                         findings.push(OverprintFinding {
                             page,
                             object_context: format!("gs /{}", String::from_utf8_lossy(name_bytes)),
@@ -165,17 +200,28 @@ fn walk_overprint_stream(
             if let Some(name_bytes) = names.first() {
                 let subtype = collect_xobject_subtype(doc, &xobject_dict, name_bytes);
                 if subtype.as_deref() == Some(b"Form") {
-                    if let Some(form_content) = collect_form_xobject_stream(doc, &xobject_dict, name_bytes) {
-                        let form_resources = collect_form_xobject_resources(doc, &xobject_dict, name_bytes)
-                            .unwrap_or_else(|| resources.clone());
+                    if let Some(form_content) =
+                        collect_form_xobject_stream(doc, &xobject_dict, name_bytes)
+                    {
+                        let form_resources =
+                            collect_form_xobject_resources(doc, &xobject_dict, name_bytes)
+                                .unwrap_or_else(|| resources.clone());
                         // Walk form content inline
                         let form_ops = parse_content_operations(&form_content);
                         for (op2, _n2, names2) in &form_ops {
                             if op2 == "gs" {
                                 if let Some(name2) = names2.first() {
                                     if let Some(gs2) = find_extgstate(doc, &form_resources, name2) {
-                                        let os = gs2.get(b"OP").ok().and_then(|o| o.as_bool().ok()).unwrap_or(false);
-                                        let of = gs2.get(b"op").ok().and_then(|o| o.as_bool().ok()).unwrap_or(false);
+                                        let os = gs2
+                                            .get(b"OP")
+                                            .ok()
+                                            .and_then(|o| o.as_bool().ok())
+                                            .unwrap_or(false);
+                                        let of = gs2
+                                            .get(b"op")
+                                            .ok()
+                                            .and_then(|o| o.as_bool().ok())
+                                            .unwrap_or(false);
                                         if os || of {
                                             findings.push(OverprintFinding {
                                                 page,
@@ -216,7 +262,10 @@ pub fn check_transparency(doc: &Document) -> Vec<TransparencyFinding> {
             if let Ok(group_dict) = group.as_dict() {
                 if let Ok(s) = group_dict.get(b"S").and_then(|o| o.as_name()) {
                     if s == b"Transparency" {
-                        let cs = group_dict.get(b"CS").ok().and_then(|o| o.as_name().ok())
+                        let cs = group_dict
+                            .get(b"CS")
+                            .ok()
+                            .and_then(|o| o.as_name().ok())
                             .map(|n| String::from_utf8_lossy(n).to_string())
                             .unwrap_or_else(|| "unknown".into());
                         findings.push(TransparencyFinding {
@@ -251,14 +300,20 @@ pub fn check_transparency(doc: &Document) -> Vec<TransparencyFinding> {
 
         let gs_dict = match resources.get(b"ExtGState") {
             Ok(Object::Dictionary(d)) => d.clone(),
-            Ok(Object::Reference(id)) => match doc.get_dictionary(*id) { Ok(d) => d.clone(), _ => continue },
+            Ok(Object::Reference(id)) => match doc.get_dictionary(*id) {
+                Ok(d) => d.clone(),
+                _ => continue,
+            },
             _ => continue,
         };
 
         for (name, value) in gs_dict.iter() {
             let gs = match value {
                 Object::Dictionary(d) => d.clone(),
-                Object::Reference(id) => match doc.get_dictionary(*id) { Ok(d) => d.clone(), _ => continue },
+                Object::Reference(id) => match doc.get_dictionary(*id) {
+                    Ok(d) => d.clone(),
+                    _ => continue,
+                },
                 _ => continue,
             };
 
@@ -317,7 +372,12 @@ pub fn check_hidden_content(doc: &Document) -> Vec<HiddenContentFinding> {
     let mut findings = Vec::new();
 
     // Check for Optional Content Groups (OCGs) in the catalog
-    let catalog_ref = doc.trailer.get(b"Root").ok().and_then(|r| r.as_reference().ok()).unwrap_or((0, 0));
+    let catalog_ref = doc
+        .trailer
+        .get(b"Root")
+        .ok()
+        .and_then(|r| r.as_reference().ok())
+        .unwrap_or((0, 0));
     if let Ok(catalog) = doc.get_dictionary(catalog_ref) {
         if let Ok(ocprops) = catalog.get(b"OCProperties") {
             if let Ok(ocp_dict) = ocprops.as_dict() {
@@ -350,7 +410,10 @@ pub fn check_hidden_content(doc: &Document) -> Vec<HiddenContentFinding> {
         };
 
         // Check for off-page objects by examining MediaBox
-        let media_box = page_dict.get(b"MediaBox").ok().and_then(|o| o.as_array().ok());
+        let media_box = page_dict
+            .get(b"MediaBox")
+            .ok()
+            .and_then(|o| o.as_array().ok());
         if let Some(mb) = media_box {
             if mb.len() >= 4 {
                 let w = mb[2].as_float().unwrap_or(0.0) - mb[0].as_float().unwrap_or(0.0);
@@ -368,8 +431,10 @@ pub fn check_hidden_content(doc: &Document) -> Vec<HiddenContentFinding> {
                                 let bw = bbox[2].as_float().unwrap_or(0.0);
                                 let bh = bbox[3].as_float().unwrap_or(0.0);
                                 let bname = String::from_utf8_lossy(box_name);
-                                if bx < mb[0].as_float().unwrap_or(0.0) || by < mb[1].as_float().unwrap_or(0.0)
-                                    || bw > mb[2].as_float().unwrap_or(0.0) || bh > mb[3].as_float().unwrap_or(0.0)
+                                if bx < mb[0].as_float().unwrap_or(0.0)
+                                    || by < mb[1].as_float().unwrap_or(0.0)
+                                    || bw > mb[2].as_float().unwrap_or(0.0)
+                                    || bh > mb[3].as_float().unwrap_or(0.0)
                                 {
                                     findings.push(HiddenContentFinding {
                                         page,
@@ -446,27 +511,40 @@ fn parse_content_operations(content: &[u8]) -> Vec<(String, Vec<f64>, Vec<Vec<u8
     let mut i = 0;
 
     while i < len {
-        if is_whitespace(content[i]) { i += 1; continue; }
+        if is_whitespace(content[i]) {
+            i += 1;
+            continue;
+        }
         if content[i] == b'%' {
-            while i < len && content[i] != b'\n' && content[i] != b'\r' { i += 1; }
+            while i < len && content[i] != b'\n' && content[i] != b'\r' {
+                i += 1;
+            }
             continue;
         }
 
         if content[i] == b'/' {
             let start = i;
             i += 1;
-            while i < len && !is_whitespace(content[i]) && content[i] != b'%' { i += 1; }
+            while i < len && !is_whitespace(content[i]) && content[i] != b'%' {
+                i += 1;
+            }
             operands_name.push(content[start..i].to_vec());
             continue;
         }
 
         if content[i] == b'-' || content[i] == b'+' || is_digit(content[i]) || content[i] == b'.' {
             let start = i;
-            if content[i] == b'-' || content[i] == b'+' { i += 1; }
-            while i < len && is_digit(content[i]) { i += 1; }
+            if content[i] == b'-' || content[i] == b'+' {
+                i += 1;
+            }
+            while i < len && is_digit(content[i]) {
+                i += 1;
+            }
             if i < len && content[i] == b'.' {
                 i += 1;
-                while i < len && is_digit(content[i]) { i += 1; }
+                while i < len && is_digit(content[i]) {
+                    i += 1;
+                }
             }
             let s = std::str::from_utf8(&content[start..i]).unwrap_or("0");
             if let Ok(n) = s.parse::<f64>() {
@@ -477,26 +555,46 @@ fn parse_content_operations(content: &[u8]) -> Vec<(String, Vec<f64>, Vec<Vec<u8
 
         if is_operator_char(content[i]) {
             let start = i;
-            while i < len && is_operator_char(content[i]) { i += 1; }
+            while i < len && is_operator_char(content[i]) {
+                i += 1;
+            }
             let op = String::from_utf8_lossy(&content[start..i]).to_string();
-            ops.push((op, std::mem::take(&mut operands_num), std::mem::take(&mut operands_name)));
+            ops.push((
+                op,
+                std::mem::take(&mut operands_num),
+                std::mem::take(&mut operands_name),
+            ));
             continue;
         }
 
         if content[i] == b'(' {
             let mut depth = 0;
             while i < len {
-                if content[i] == b'(' { depth += 1; }
-                if content[i] == b')' { depth -= 1; if depth == 0 { i += 1; break; } }
-                if content[i] == b'\\' { i += 1; }
+                if content[i] == b'(' {
+                    depth += 1;
+                }
+                if content[i] == b')' {
+                    depth -= 1;
+                    if depth == 0 {
+                        i += 1;
+                        break;
+                    }
+                }
+                if content[i] == b'\\' {
+                    i += 1;
+                }
                 i += 1;
             }
             continue;
         }
 
         if content[i] == b'<' && i + 1 < len && content[i + 1] != b'<' {
-            while i < len && content[i] != b'>' { i += 1; }
-            if i < len { i += 1; }
+            while i < len && content[i] != b'>' {
+                i += 1;
+            }
+            if i < len {
+                i += 1;
+            }
             continue;
         }
 

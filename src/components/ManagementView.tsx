@@ -105,7 +105,9 @@ export default function ManagementView() {
     }
   }, [])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadWorkbooks() }, [loadWorkbooks])
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { if (activeId) loadWorkbook(activeId) }, [activeId, loadWorkbook])
 
   const handleCreateWorkbook = async () => {

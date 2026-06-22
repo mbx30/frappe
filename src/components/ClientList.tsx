@@ -40,7 +40,6 @@ export default function ClientList({ onSelectClient, onNewClient }: ClientListPr
   }, [search, statusFilter])
 
   useEffect(() => {
-    setIsLoading(true)
     const t = setTimeout(load, 150)
     return () => clearTimeout(t)
   }, [load])

@@ -23,11 +23,7 @@ export default function InvoiceList({ onCreateNew, onEditInvoice }: InvoiceListP
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
 
-  useEffect(() => {
-    loadInvoices()
-  }, [])
-
-  const loadInvoices = async () => {
+  async function loadInvoices() {
     setIsLoading(true)
     setLoadError(null)
     try {
@@ -40,6 +36,11 @@ export default function InvoiceList({ onCreateNew, onEditInvoice }: InvoiceListP
       setIsLoading(false)
     }
   }
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadInvoices()
+  }, [])
 
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString()

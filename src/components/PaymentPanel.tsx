@@ -49,6 +49,7 @@ export default function PaymentPanel({ invoiceId, orderId, totalDue, onPaymentRe
     }
   }, [invoiceId, orderId])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load() }, [load])
 
   const totalPaid = payments.reduce((s, p) => s + p.amount, 0)

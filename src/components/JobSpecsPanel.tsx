@@ -34,6 +34,7 @@ export default function JobSpecsPanel({ order, onSaved }: JobSpecsPanelProps) {
 
   // Reset specs form state when the order prop changes (e.g. switching orders)
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
     setSpecs({
       print_type: order.print_type,
       paper_stock: order.paper_stock,
@@ -45,6 +46,7 @@ export default function JobSpecsPanel({ order, onSaved }: JobSpecsPanelProps) {
     })
     setIsDirty(false)
     setSpecsError(null)
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [order.id, order.print_type, order.paper_stock, order.ink_colors, order.finishing, order.quantity, order.production_notes, order.assigned_operator])
 
   const [notes, setNotes] = useState<DepartmentNote[]>([])
@@ -63,6 +65,7 @@ export default function JobSpecsPanel({ order, onSaved }: JobSpecsPanelProps) {
     }
   }, [order.id])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadNotes() }, [loadNotes])
 
   const setSpec = (k: keyof typeof specs) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {

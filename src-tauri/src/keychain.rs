@@ -11,8 +11,14 @@ pub struct SecretValue {
 pub fn read_secret(service: &str, key: &str) -> Result<SecretValue, String> {
     match keyring::Entry::new(service, key) {
         Ok(entry) => match entry.get_password() {
-            Ok(password) => Ok(SecretValue { exists: true, value: Some(password) }),
-            Err(keyring::Error::NoEntry) => Ok(SecretValue { exists: false, value: None }),
+            Ok(password) => Ok(SecretValue {
+                exists: true,
+                value: Some(password),
+            }),
+            Err(keyring::Error::NoEntry) => Ok(SecretValue {
+                exists: false,
+                value: None,
+            }),
             Err(e) => {
                 log::warn!("keyring read failed for {service}/{key}: {e}, falling back to config");
                 read_fallback(service, key)
@@ -29,7 +35,9 @@ pub fn read_secret(service: &str, key: &str) -> Result<SecretValue, String> {
 pub fn write_secret(service: &str, key: &str, value: &str) -> Result<(), String> {
     match keyring::Entry::new(service, key) {
         Ok(entry) => {
-            entry.set_password(value).map_err(|e| format!("keyring write failed: {e}"))?;
+            entry
+                .set_password(value)
+                .map_err(|e| format!("keyring write failed: {e}"))?;
             Ok(())
         }
         Err(_) => {
@@ -43,7 +51,9 @@ pub fn write_secret(service: &str, key: &str, value: &str) -> Result<(), String>
 pub fn delete_secret(service: &str, key: &str) -> Result<(), String> {
     match keyring::Entry::new(service, key) {
         Ok(entry) => {
-            entry.delete_credential().map_err(|e| format!("keyring delete failed: {e}"))?;
+            entry
+                .delete_credential()
+                .map_err(|e| format!("keyring delete failed: {e}"))?;
             Ok(())
         }
         Err(_) => {
@@ -66,9 +76,14 @@ fn secrets_path() -> Result<std::path::PathBuf, String> {
     let base = if let Some(home) = dirs::config_local_dir() {
         home.join("frappe")
     } else if let Ok(home) = std::env::var("HOME") {
-        std::path::PathBuf::from(home).join(".config").join("frappe")
+        std::path::PathBuf::from(home)
+            .join(".config")
+            .join("frappe")
     } else if let Ok(home) = std::env::var("USERPROFILE") {
-        std::path::PathBuf::from(home).join("AppData").join("Local").join("Frappe")
+        std::path::PathBuf::from(home)
+            .join("AppData")
+            .join("Local")
+            .join("Frappe")
     } else {
         return Err("cannot determine config directory".to_string());
     };
@@ -79,12 +94,18 @@ fn secrets_path() -> Result<std::path::PathBuf, String> {
 fn read_fallback(service: &str, key: &str) -> Result<SecretValue, String> {
     let path = secrets_path()?;
     if !path.exists() {
-        return Ok(SecretValue { exists: false, value: None });
+        return Ok(SecretValue {
+            exists: false,
+            value: None,
+        });
     }
     let data = std::fs::read_to_string(&path).map_err(|e| format!("read fallback failed: {e}"))?;
     let store: std::collections::HashMap<String, std::collections::HashMap<String, String>> =
         serde_json::from_str(&data).map_err(|e| {
-            log::error!("secrets.json is corrupt ({}); refusing to wipe. Rename or delete manually.", e);
+            log::error!(
+                "secrets.json is corrupt ({}); refusing to wipe. Rename or delete manually.",
+                e
+            );
             format!("secrets.json is corrupt: {}", e)
         })?;
     let exists = store.get(service).and_then(|m| m.get(key)).is_some();
@@ -103,14 +124,21 @@ fn write_fallback(service: &str, key: &str, value: &str) -> Result<(), String> {
                 Ok(s) => s,
                 Err(e) => {
                     log::error!("secrets.json is corrupt ({}); refusing to overwrite. Aborting write of {}/{} to avoid wiping existing secrets.", e, service, key);
-                    return Err(format!("secrets.json is corrupt, refusing to overwrite: {}", e));
+                    return Err(format!(
+                        "secrets.json is corrupt, refusing to overwrite: {}",
+                        e
+                    ));
                 }
             }
         } else {
             std::collections::HashMap::new()
         };
-    store.entry(service.to_string()).or_default().insert(key.to_string(), value.to_string());
-    let data = serde_json::to_string_pretty(&store).map_err(|e| format!("serialize fallback: {e}"))?;
+    store
+        .entry(service.to_string())
+        .or_default()
+        .insert(key.to_string(), value.to_string());
+    let data =
+        serde_json::to_string_pretty(&store).map_err(|e| format!("serialize fallback: {e}"))?;
     std::fs::write(&path, data).map_err(|e| format!("write fallback: {e}"))?;
     Ok(())
 }
@@ -129,7 +157,8 @@ fn delete_fallback(service: &str, key: &str) -> Result<(), String> {
     if let Some(map) = store.get_mut(service) {
         map.remove(key);
     }
-    let data = serde_json::to_string_pretty(&store).map_err(|e| format!("serialize fallback: {e}"))?;
+    let data =
+        serde_json::to_string_pretty(&store).map_err(|e| format!("serialize fallback: {e}"))?;
     std::fs::write(&path, data).map_err(|e| format!("write fallback: {e}"))?;
     Ok(())
 }

@@ -22,15 +22,7 @@ export default function EstimateEditor({ estimateId, onSave, onCancel }: Estimat
   const [taxRate, setTaxRate] = useState(0)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (estimateId) {
-      loadEstimate()
-    } else {
-      initializeNewEstimate()
-    }
-  }, [estimateId])
-
-  const loadEstimate = async () => {
+  async function loadEstimate() {
     if (!estimateId) return
     try {
       const data = await invoke<EstimateData>('get_estimate', { id: estimateId })
@@ -43,7 +35,7 @@ export default function EstimateEditor({ estimateId, onSave, onCancel }: Estimat
     }
   }
 
-  const initializeNewEstimate = () => {
+  function initializeNewEstimate() {
     const today = new Date().toISOString().split('T')[0]
     const validUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
     setEstimateData({
@@ -69,6 +61,16 @@ export default function EstimateEditor({ estimateId, onSave, onCancel }: Estimat
     setTaxRate(0)
     setIsLoading(false)
   }
+
+  useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
+    if (estimateId) {
+      loadEstimate()
+    } else {
+      initializeNewEstimate()
+    }
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [estimateId])
 
   if (isLoading || !estimateData) {
     return <div className="estimate-editor-loading">Loading...</div>

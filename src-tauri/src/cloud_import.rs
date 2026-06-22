@@ -1,6 +1,10 @@
 use serde_json::Value;
 
-pub async fn import_google_sheet(spreadsheet_id: &str, api_key: &str, range: &str) -> Result<(Vec<String>, Vec<Vec<String>>), String> {
+pub async fn import_google_sheet(
+    spreadsheet_id: &str,
+    api_key: &str,
+    range: &str,
+) -> Result<(Vec<String>, Vec<Vec<String>>), String> {
     let url = format!(
         "https://sheets.googleapis.com/v4/spreadsheets/{}/values/{}",
         spreadsheet_id, range
@@ -22,14 +26,18 @@ pub async fn import_google_sheet(spreadsheet_id: &str, api_key: &str, range: &st
         return Err(format!("Google Sheets API error ({}): {}", status, body));
     }
 
-    let data: Value = resp.json().await.map_err(|e| format!("Failed to parse response: {}", e))?;
+    let data: Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse response: {}", e))?;
 
     let values = data["values"].as_array().ok_or("No data found in sheet")?;
     if values.is_empty() {
         return Err("Sheet is empty".to_string());
     }
 
-    let headers: Vec<String> = values[0].as_array()
+    let headers: Vec<String> = values[0]
+        .as_array()
         .ok_or("Invalid header row")?
         .iter()
         .map(|v| {
@@ -45,7 +53,8 @@ pub async fn import_google_sheet(spreadsheet_id: &str, api_key: &str, range: &st
 
     let mut rows = Vec::new();
     for row in values.iter().skip(1) {
-        let cells: Vec<String> = row.as_array()
+        let cells: Vec<String> = row
+            .as_array()
             .ok_or("Invalid row data")?
             .iter()
             .map(|v| {
@@ -64,7 +73,10 @@ pub async fn import_google_sheet(spreadsheet_id: &str, api_key: &str, range: &st
     Ok((headers, rows))
 }
 
-pub async fn import_notion_database(database_id: &str, api_key: &str) -> Result<(Vec<String>, Vec<Vec<String>>), String> {
+pub async fn import_notion_database(
+    database_id: &str,
+    api_key: &str,
+) -> Result<(Vec<String>, Vec<Vec<String>>), String> {
     let url = format!("https://api.notion.com/v1/databases/{}/query", database_id);
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
@@ -97,7 +109,10 @@ pub async fn import_notion_database(database_id: &str, api_key: &str) -> Result<
             return Err(format!("Notion API error ({}): {}", status, body));
         }
 
-        let data: Value = resp.json().await.map_err(|e| format!("Failed to parse response: {}", e))?;
+        let data: Value = resp
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse response: {}", e))?;
 
         // Build column names. The query response does NOT include a
         // top-level `properties` key (that's only in the GET database
@@ -123,7 +138,10 @@ pub async fn import_notion_database(database_id: &str, api_key: &str) -> Result<
         }
 
         if all_results.len() > MAX_ROWS {
-            return Err(format!("Notion import exceeds {} rows; refine your query", MAX_ROWS));
+            return Err(format!(
+                "Notion import exceeds {} rows; refine your query",
+                MAX_ROWS
+            ));
         }
 
         if data["has_more"].as_bool() == Some(true) {
@@ -160,17 +178,22 @@ pub async fn import_notion_database(database_id: &str, api_key: &str) -> Result<
 fn extract_notion_value(prop: &Value) -> String {
     let ptype = prop["type"].as_str().unwrap_or("");
     match ptype {
-        "title" => prop["title"].as_array()
+        "title" => prop["title"]
+            .as_array()
             .and_then(|a| a.first())
             .and_then(|v| v["plain_text"].as_str())
             .unwrap_or("")
             .to_string(),
-        "rich_text" => prop["rich_text"].as_array()
+        "rich_text" => prop["rich_text"]
+            .as_array()
             .and_then(|a| a.first())
             .and_then(|v| v["plain_text"].as_str())
             .unwrap_or("")
             .to_string(),
-        "number" => prop["number"].as_f64().map(|n| n.to_string()).unwrap_or_default(),
+        "number" => prop["number"]
+            .as_f64()
+            .map(|n| n.to_string())
+            .unwrap_or_default(),
         "select" => prop["select"]["name"].as_str().unwrap_or("").to_string(),
         "multi_select" => {
             let names: Vec<&str> = prop["multi_select"]
@@ -180,7 +203,10 @@ fn extract_notion_value(prop: &Value) -> String {
             names.join(", ")
         }
         "date" => prop["date"]["start"].as_str().unwrap_or("").to_string(),
-        "checkbox" => prop["checkbox"].as_bool().map(|b| b.to_string()).unwrap_or_default(),
+        "checkbox" => prop["checkbox"]
+            .as_bool()
+            .map(|b| b.to_string())
+            .unwrap_or_default(),
         "email" => prop["email"].as_str().unwrap_or("").to_string(),
         "phone_number" => prop["phone_number"].as_str().unwrap_or("").to_string(),
         "url" => prop["url"].as_str().unwrap_or("").to_string(),

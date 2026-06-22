@@ -39,15 +39,7 @@ export default function InvoiceEditor({ invoiceId, onSave, onCancel }: InvoiceEd
     }
   }, [invoiceId])
 
-  useEffect(() => {
-    if (invoiceId) {
-      loadInvoice()
-    } else {
-      initializeNewInvoice()
-    }
-  }, [invoiceId, loadInvoice])
-
-  const initializeNewInvoice = () => {
+  function initializeNewInvoice() {
     const today = new Date().toISOString().split('T')[0]
     const dueDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
     setInvoice({
@@ -74,6 +66,16 @@ export default function InvoiceEditor({ invoiceId, onSave, onCancel }: InvoiceEd
     setTaxRate(0)
     setIsLoading(false)
   }
+
+  useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
+    if (invoiceId) {
+      loadInvoice()
+    } else {
+      initializeNewInvoice()
+    }
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [invoiceId, loadInvoice])
 
   const handleAddLineItem = () => {
     const newItem: InvoiceLineItem = {

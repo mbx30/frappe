@@ -20,7 +20,8 @@ fn obj_to_string(o: &Object) -> String {
 }
 
 fn deref_string(doc: &Document, obj: &Object) -> String {
-    doc.dereference(obj).ok()
+    doc.dereference(obj)
+        .ok()
         .and_then(|(_, o)| Some(obj_to_string(&o)))
         .unwrap_or_default()
 }
@@ -62,34 +63,44 @@ pub fn get_output_intents(doc: &Document) -> Vec<OutputIntent> {
             Err(_) => continue,
         };
 
-        let s_key = dict.get(b"S").ok()
+        let s_key = dict
+            .get(b"S")
+            .ok()
             .and_then(|o| doc.dereference(o).ok())
             .map(|(_, o)| obj_to_string(&o))
             .unwrap_or_default();
 
-        let output_condition = dict.get(b"OutputCondition").ok()
+        let output_condition = dict
+            .get(b"OutputCondition")
+            .ok()
             .and_then(|o| Some(deref_string(doc, o)))
             .unwrap_or_default();
 
-        let output_condition_id = dict.get(b"OutputConditionIdentifier").ok()
+        let output_condition_id = dict
+            .get(b"OutputConditionIdentifier")
+            .ok()
             .and_then(|o| Some(deref_string(doc, o)))
             .unwrap_or_default();
 
-        let registry_name = dict.get(b"RegistryName").ok()
+        let registry_name = dict
+            .get(b"RegistryName")
+            .ok()
             .and_then(|o| Some(deref_string(doc, o)))
             .unwrap_or_default();
 
         let (has_embedded_icc, icc_num_channels) = match dict.get(b"DestOutputProfile") {
-            Ok(o) => {
-                match doc.dereference(o).ok() {
-                    Some((_, Object::Stream(stream))) => {
-                        let channels = stream.dict.get(b"N")
-                            .ok().and_then(|n| n.as_i64().ok()).unwrap_or(0) as i32;
-                        (true, channels)
-                    }
-                    _ => (false, 0),
+            Ok(o) => match doc.dereference(o).ok() {
+                Some((_, Object::Stream(stream))) => {
+                    let channels = stream
+                        .dict
+                        .get(b"N")
+                        .ok()
+                        .and_then(|n| n.as_i64().ok())
+                        .unwrap_or(0) as i32;
+                    (true, channels)
                 }
-            }
+                _ => (false, 0),
+            },
             Err(_) => (false, 0),
         };
 

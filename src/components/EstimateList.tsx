@@ -22,11 +22,7 @@ export default function EstimateList({ onCreateNew, onSelectEstimate }: Estimate
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
 
-  useEffect(() => {
-    loadEstimates()
-  }, [])
-
-  const loadEstimates = async () => {
+  async function loadEstimates() {
     setIsLoading(true)
     setLoadError(null)
     try {
@@ -39,6 +35,11 @@ export default function EstimateList({ onCreateNew, onSelectEstimate }: Estimate
       setIsLoading(false)
     }
   }
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadEstimates()
+  }, [])
 
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString()

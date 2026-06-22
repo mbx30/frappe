@@ -9,7 +9,8 @@ pub fn import_csv(path: &Path) -> Result<ImportResult, String> {
         .from_path(path)
         .map_err(|e| format!("Failed to read CSV: {}", e))?;
 
-    let headers: Vec<String> = reader.headers()
+    let headers: Vec<String> = reader
+        .headers()
         .map_err(|e| format!("Failed to read CSV headers: {}", e))?
         .iter()
         .map(|h| h.to_string())
@@ -29,7 +30,11 @@ pub fn import_csv(path: &Path) -> Result<ImportResult, String> {
     Ok(ImportResult {
         rows_imported,
         columns: headers,
-        sheet_name: path.file_stem().unwrap_or_default().to_string_lossy().to_string(),
+        sheet_name: path
+            .file_stem()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string(),
     })
 }
 
@@ -40,7 +45,8 @@ fn preview_csv(path: &Path) -> Result<(Vec<String>, Vec<Vec<String>>), String> {
         .from_path(path)
         .map_err(|e| format!("Failed to read CSV: {}", e))?;
 
-    let headers: Vec<String> = reader.headers()
+    let headers: Vec<String> = reader
+        .headers()
         .map_err(|e| format!("Failed to read CSV headers: {}", e))?
         .iter()
         .map(|h| h.to_string())
@@ -59,13 +65,17 @@ fn preview_csv(path: &Path) -> Result<(Vec<String>, Vec<Vec<String>>), String> {
 pub fn import_excel(path: &Path) -> Result<(String, Vec<String>, Vec<Vec<String>>), String> {
     use calamine::{open_workbook, Reader, Xlsx};
 
-    let mut workbook: Xlsx<std::io::BufReader<std::fs::File>> = open_workbook(path)
-        .map_err(|e| format!("Failed to open Excel file: {}", e))?;
+    let mut workbook: Xlsx<std::io::BufReader<std::fs::File>> =
+        open_workbook(path).map_err(|e| format!("Failed to open Excel file: {}", e))?;
 
     let sheet_names = workbook.sheet_names().to_vec();
-    let first_sheet = sheet_names.first().cloned().unwrap_or_else(|| "Sheet1".to_string());
+    let first_sheet = sheet_names
+        .first()
+        .cloned()
+        .unwrap_or_else(|| "Sheet1".to_string());
 
-    let range = workbook.worksheet_range(&first_sheet)
+    let range = workbook
+        .worksheet_range(&first_sheet)
         .map_err(|e| format!("Failed to read Excel sheet '{}': {}", first_sheet, e))?;
 
     let mut rows_iter = range.rows();
@@ -86,6 +96,10 @@ pub fn import_excel(path: &Path) -> Result<(String, Vec<String>, Vec<Vec<String>
 
 pub fn import_csv_data(path: &Path) -> Result<(String, Vec<String>, Vec<Vec<String>>), String> {
     let (headers, rows) = preview_csv(path)?;
-    let name = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
+    let name = path
+        .file_stem()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
     Ok((name, headers, rows))
 }

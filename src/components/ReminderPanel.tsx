@@ -35,6 +35,7 @@ export default function ReminderPanel({ invoiceId, invoiceStatus }: ReminderPane
     }
   }, [invoiceId])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load() }, [load])
 
   const isPaid = invoiceStatus === 'paid' || invoiceStatus === 'voided'

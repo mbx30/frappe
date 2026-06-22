@@ -22,7 +22,9 @@ fn obj_to_f64(o: &Object) -> Option<f64> {
 }
 
 fn parse_rect(arr: &[Object]) -> Option<(f64, f64, f64, f64)> {
-    if arr.len() != 4 { return None }
+    if arr.len() != 4 {
+        return None;
+    }
     let x1 = obj_to_f64(&arr[0])?;
     let y1 = obj_to_f64(&arr[1])?;
     let x2 = obj_to_f64(&arr[2])?;
@@ -31,7 +33,11 @@ fn parse_rect(arr: &[Object]) -> Option<(f64, f64, f64, f64)> {
 }
 
 fn get_box(page_dict: &lopdf::Dictionary, key: &[u8]) -> Option<(f64, f64, f64, f64)> {
-    page_dict.get(key).ok().and_then(|o| o.as_array().ok()).and_then(|a| parse_rect(a))
+    page_dict
+        .get(key)
+        .ok()
+        .and_then(|o| o.as_array().ok())
+        .and_then(|a| parse_rect(a))
 }
 
 pub fn check_page_boxes(doc: &Document) -> Vec<PageBoxFinding> {
@@ -46,8 +52,12 @@ pub fn check_page_boxes(doc: &Document) -> Vec<PageBoxFinding> {
             Ok(d) => d,
             Err(_) => {
                 findings.push(PageBoxFinding {
-                    page, box_type: "Page".into(),
-                    x: 0.0, y: 0.0, w: 0.0, h: 0.0,
+                    page,
+                    box_type: "Page".into(),
+                    x: 0.0,
+                    y: 0.0,
+                    w: 0.0,
+                    h: 0.0,
                     severity: "error".into(),
                     message: "Could not read page dictionary".into(),
                 });
@@ -64,16 +74,24 @@ pub fn check_page_boxes(doc: &Document) -> Vec<PageBoxFinding> {
         match media_box {
             Some((x, y, w, h)) => {
                 findings.push(PageBoxFinding {
-                    page, box_type: "MediaBox".into(),
-                    x, y, w, h,
+                    page,
+                    box_type: "MediaBox".into(),
+                    x,
+                    y,
+                    w,
+                    h,
                     severity: "ok".into(),
                     message: format!("MediaBox: {:.0} x {:.0} pts at ({:.0}, {:.0})", w, h, x, y),
                 });
             }
             None => {
                 findings.push(PageBoxFinding {
-                    page, box_type: "MediaBox".into(),
-                    x: 0.0, y: 0.0, w: 0.0, h: 0.0,
+                    page,
+                    box_type: "MediaBox".into(),
+                    x: 0.0,
+                    y: 0.0,
+                    w: 0.0,
+                    h: 0.0,
                     severity: "error".into(),
                     message: "MediaBox missing — page may not render correctly".into(),
                 });
@@ -118,12 +136,25 @@ pub fn check_page_boxes(doc: &Document) -> Vec<PageBoxFinding> {
                 } else {
                     format!("BleedBox: {:.0} x {:.0} pts — {}", w, h, issues.join("; "))
                 };
-                findings.push(PageBoxFinding { page, box_type: "BleedBox".into(), x: *x, y: *y, w: *w, h: *h, severity: sev.into(), message: msg });
+                findings.push(PageBoxFinding {
+                    page,
+                    box_type: "BleedBox".into(),
+                    x: *x,
+                    y: *y,
+                    w: *w,
+                    h: *h,
+                    severity: sev.into(),
+                    message: msg,
+                });
             }
             None => {
                 findings.push(PageBoxFinding {
-                    page, box_type: "BleedBox".into(),
-                    x: 0.0, y: 0.0, w: 0.0, h: 0.0,
+                    page,
+                    box_type: "BleedBox".into(),
+                    x: 0.0,
+                    y: 0.0,
+                    w: 0.0,
+                    h: 0.0,
                     severity: "info".into(),
                     message: "BleedBox absent — content may extend to edge without bleed".into(),
                 });
@@ -134,22 +165,39 @@ pub fn check_page_boxes(doc: &Document) -> Vec<PageBoxFinding> {
             Some((x, y, w, h)) => {
                 if *x > mx + mw || *y > my + mh || x + w > mx + mw || y + h > my + mh {
                     findings.push(PageBoxFinding {
-                        page, box_type: "TrimBox".into(), x: *x, y: *y, w: *w, h: *h,
+                        page,
+                        box_type: "TrimBox".into(),
+                        x: *x,
+                        y: *y,
+                        w: *w,
+                        h: *h,
                         severity: "error".into(),
                         message: "TrimBox extends beyond MediaBox".into(),
                     });
                 } else {
                     findings.push(PageBoxFinding {
-                        page, box_type: "TrimBox".into(), x: *x, y: *y, w: *w, h: *h,
+                        page,
+                        box_type: "TrimBox".into(),
+                        x: *x,
+                        y: *y,
+                        w: *w,
+                        h: *h,
                         severity: "ok".into(),
-                        message: format!("TrimBox: {:.0} x {:.0} pts at ({:.0}, {:.0})", w, h, x, y),
+                        message: format!(
+                            "TrimBox: {:.0} x {:.0} pts at ({:.0}, {:.0})",
+                            w, h, x, y
+                        ),
                     });
                 }
             }
             None => {
                 findings.push(PageBoxFinding {
-                    page, box_type: "TrimBox".into(),
-                    x: 0.0, y: 0.0, w: 0.0, h: 0.0,
+                    page,
+                    box_type: "TrimBox".into(),
+                    x: 0.0,
+                    y: 0.0,
+                    w: 0.0,
+                    h: 0.0,
                     severity: "warning".into(),
                     message: "TrimBox missing — required for proper print registration".into(),
                 });
@@ -159,7 +207,12 @@ pub fn check_page_boxes(doc: &Document) -> Vec<PageBoxFinding> {
         if let Some((x, y, w, h)) = &crop_box {
             if (w - mw).abs() > 0.5 || (h - mh).abs() > 0.5 {
                 findings.push(PageBoxFinding {
-                    page, box_type: "CropBox".into(), x: *x, y: *y, w: *w, h: *h,
+                    page,
+                    box_type: "CropBox".into(),
+                    x: *x,
+                    y: *y,
+                    w: *w,
+                    h: *h,
                     severity: "info".into(),
                     message: format!("CropBox differs from MediaBox: {:.0} x {:.0} pts", w, h),
                 });
@@ -167,10 +220,18 @@ pub fn check_page_boxes(doc: &Document) -> Vec<PageBoxFinding> {
         }
 
         if let Some((x, y, w, h)) = &art_box {
-            let matches_trim = trim_box.as_ref().map(|(_, _, tw, th)| (tw - *w).abs() < 0.5 && (th - *h).abs() < 0.5).unwrap_or(false);
+            let matches_trim = trim_box
+                .as_ref()
+                .map(|(_, _, tw, th)| (tw - *w).abs() < 0.5 && (th - *h).abs() < 0.5)
+                .unwrap_or(false);
             if !matches_trim {
                 findings.push(PageBoxFinding {
-                    page, box_type: "ArtBox".into(), x: *x, y: *y, w: *w, h: *h,
+                    page,
+                    box_type: "ArtBox".into(),
+                    x: *x,
+                    y: *y,
+                    w: *w,
+                    h: *h,
                     severity: "info".into(),
                     message: format!("ArtBox: {:.0} x {:.0} pts at ({:.0}, {:.0})", w, h, x, y),
                 });

@@ -67,8 +67,14 @@ fn parse_version(v: &str) -> f64 {
     }
     // Keep at most the first two dot-separated numeric components.
     let parts: Vec<&str> = digits_dots.split('.').collect();
-    let major = parts.first().and_then(|s| s.parse::<u32>().ok()).unwrap_or(0);
-    let minor = parts.get(1).and_then(|s| s.parse::<u32>().ok()).unwrap_or(0);
+    let major = parts
+        .first()
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(0);
+    let minor = parts
+        .get(1)
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(0);
     // Combine into a single f64: 1.6 -> 1.6, 2.0 -> 2.0, 1.10 -> 1.10
     let combined = format!("{major}.{minor}");
     combined.parse::<f64>().unwrap_or(0.0)
@@ -84,14 +90,12 @@ pub fn check_metadata(doc: &Document) -> Vec<PdfXFinding> {
         Some(dict.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
     })();
 
-    let info_dict: std::collections::HashMap<Vec<u8>, Object> = info
-        .unwrap_or_default()
-        .into_iter()
-        .collect();
+    let info_dict: std::collections::HashMap<Vec<u8>, Object> =
+        info.unwrap_or_default().into_iter().collect();
 
-    let gts_pdfx = info_dict.get(&b"GTS_PDFXVersion".to_vec()).and_then(|o| {
-        doc.dereference(o).ok().map(|(_, o)| obj_to_string(&o))
-    });
+    let gts_pdfx = info_dict
+        .get(&b"GTS_PDFXVersion".to_vec())
+        .and_then(|o| doc.dereference(o).ok().map(|(_, o)| obj_to_string(&o)));
 
     match gts_pdfx {
         Some(ref ver) if !ver.is_empty() => {
@@ -114,9 +118,9 @@ pub fn check_metadata(doc: &Document) -> Vec<PdfXFinding> {
         }
     }
 
-    let trapped = info_dict.get(&b"Trapped".to_vec()).and_then(|o| {
-        doc.dereference(o).ok().map(|(_, o)| obj_to_string(&o))
-    });
+    let trapped = info_dict
+        .get(&b"Trapped".to_vec())
+        .and_then(|o| doc.dereference(o).ok().map(|(_, o)| obj_to_string(&o)));
 
     match trapped.as_deref() {
         Some(v @ ("True" | "False" | "Unknown")) => {
@@ -133,8 +137,13 @@ pub fn check_metadata(doc: &Document) -> Vec<PdfXFinding> {
                 category: "trapped".into(),
                 detail: format!("Trapped: /{}", v),
                 severity: "warning".into(),
-                message: format!("Trapped key has unrecognized value: /{}. Expected /True, /False, or /Unknown.", v),
-                fix_hint: "Set Trapped to /True, /False, or /Unknown in the document Info dictionary.".into(),
+                message: format!(
+                    "Trapped key has unrecognized value: /{}. Expected /True, /False, or /Unknown.",
+                    v
+                ),
+                fix_hint:
+                    "Set Trapped to /True, /False, or /Unknown in the document Info dictionary."
+                        .into(),
             });
         }
         None => {
@@ -151,10 +160,7 @@ pub fn check_metadata(doc: &Document) -> Vec<PdfXFinding> {
     findings
 }
 
-pub fn check_version_compatibility(
-    path: &str,
-    profile: &str,
-) -> Vec<PdfXFinding> {
+pub fn check_version_compatibility(path: &str, profile: &str) -> Vec<PdfXFinding> {
     let mut findings = Vec::new();
     let version_str = read_pdf_version_from_header(path);
     let version = parse_version(&version_str);
@@ -194,7 +200,10 @@ pub fn check_version_compatibility(
             category: "pdf_version".into(),
             detail: format!("PDF version {} (≥ {})", version_str, min_version),
             severity: "ok".into(),
-            message: format!("PDF version {} meets {} minimum of {}.", version_str, profile_name, min_version),
+            message: format!(
+                "PDF version {} meets {} minimum of {}.",
+                version_str, profile_name, min_version
+            ),
             fix_hint: String::new(),
         });
     }

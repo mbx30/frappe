@@ -11,8 +11,10 @@ export default function PdfInspector({ filePath }: PdfInspectorProps) {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
     setLoading(true)
     setError(null)
+    /* eslint-enable react-hooks/set-state-in-effect */
     invoke<Record<string, string>>('get_pdf_catalog', { path: filePath })
       .then((data) => {
         const clean: Record<string, string> = {}

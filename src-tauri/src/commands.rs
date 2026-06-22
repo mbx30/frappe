@@ -1,23 +1,23 @@
 use std::path::PathBuf;
 
-use std::io::{Read, BufReader};
 use lopdf::Object;
+use std::io::{BufReader, Read};
 use tauri::State;
 
 use crate::cloud_import;
 use crate::db::{Database, VerificationResult};
-use crate::models::{*, BusinessInfo, CertifiedVersion};
-use crate::pdf::engine::PdfEngine;
+use crate::models::{BusinessInfo, CertifiedVersion, *};
+use crate::pdf::bleed::BleedFinding;
 use crate::pdf::boxes::PageBoxFinding;
+use crate::pdf::color::{ColorSpaceFinding, InkCoverageFinding, SpotColorFinding};
+use crate::pdf::engine::PdfEngine;
 use crate::pdf::fonts::FontFinding;
 use crate::pdf::images::ImageResolutionFinding;
-use crate::pdf::bleed::BleedFinding;
 use crate::pdf::metadata::OutputIntent;
-use crate::pdf::security::SecurityFinding;
-use crate::pdf::color::{ColorSpaceFinding, SpotColorFinding, InkCoverageFinding};
-use crate::pdf::transforms::{IccProfileInfo, ConversionResult};
-use crate::pdf::overprint::{OverprintFinding, TransparencyFinding, HiddenContentFinding};
+use crate::pdf::overprint::{HiddenContentFinding, OverprintFinding, TransparencyFinding};
 use crate::pdf::pdfx::PdfXFinding;
+use crate::pdf::security::SecurityFinding;
+use crate::pdf::transforms::{ConversionResult, IccProfileInfo};
 
 fn validate_read_path(path: &str) -> Result<PathBuf, String> {
     if path.contains('\0') {
@@ -48,26 +48,44 @@ fn validate_write_path(path: &str) -> Result<PathBuf, String> {
         return Err("Output path is empty".to_string());
     }
     let p = PathBuf::from(path);
-    let parent = p.parent().ok_or_else(|| "Output path has no parent directory".to_string())?;
+    let parent = p
+        .parent()
+        .ok_or_else(|| "Output path has no parent directory".to_string())?;
     if !parent.exists() {
-        return Err(format!("Output parent directory does not exist: {}", parent.display()));
+        return Err(format!(
+            "Output parent directory does not exist: {}",
+            parent.display()
+        ));
     }
     // Reject system locations on Windows and Unix.
     #[cfg(windows)]
     {
         let s = parent.to_string_lossy().to_lowercase();
-        for blocked in ["c:\\windows", "c:\\program files", "c:\\program files (x86)", "c:\\programdata"] {
+        for blocked in [
+            "c:\\windows",
+            "c:\\program files",
+            "c:\\program files (x86)",
+            "c:\\programdata",
+        ] {
             if s.starts_with(blocked) {
-                return Err(format!("Output path is inside a system location: {}", parent.display()));
+                return Err(format!(
+                    "Output path is inside a system location: {}",
+                    parent.display()
+                ));
             }
         }
     }
     #[cfg(unix)]
     {
         let s = parent.to_string_lossy();
-        for blocked in ["/etc", "/usr", "/bin", "/sbin", "/var", "/boot", "/sys", "/proc", "/root"] {
+        for blocked in [
+            "/etc", "/usr", "/bin", "/sbin", "/var", "/boot", "/sys", "/proc", "/root",
+        ] {
             if s == blocked || s.starts_with(&format!("{}/", blocked)) {
-                return Err(format!("Output path is inside a system location: {}", parent.display()));
+                return Err(format!(
+                    "Output path is inside a system location: {}",
+                    parent.display()
+                ));
             }
         }
     }
@@ -116,18 +134,36 @@ pub fn get_workbook(db: State<'_, Database>, id: i64) -> Result<WorkbookData, St
 }
 
 #[tauri::command]
-pub fn create_sheet(db: State<'_, Database>, workbook_id: i64, name: String) -> Result<Sheet, String> {
-    db.create_sheet(workbook_id, &name).map_err(|e| e.to_string())
+pub fn create_sheet(
+    db: State<'_, Database>,
+    workbook_id: i64,
+    name: String,
+) -> Result<Sheet, String> {
+    db.create_sheet(workbook_id, &name)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn add_column(db: State<'_, Database>, sheet_id: i64, name: String, col_type: String) -> Result<SheetColumn, String> {
-    db.add_column(sheet_id, &name, &col_type).map_err(|e| e.to_string())
+pub fn add_column(
+    db: State<'_, Database>,
+    sheet_id: i64,
+    name: String,
+    col_type: String,
+) -> Result<SheetColumn, String> {
+    db.add_column(sheet_id, &name, &col_type)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn update_cell_value(db: State<'_, Database>, sheet_id: i64, row_index: i64, column_id: i64, value: String) -> Result<(), String> {
-    db.update_cell(sheet_id, row_index, column_id, &value).map_err(|e| e.to_string())
+pub fn update_cell_value(
+    db: State<'_, Database>,
+    sheet_id: i64,
+    row_index: i64,
+    column_id: i64,
+    value: String,
+) -> Result<(), String> {
+    db.update_cell(sheet_id, row_index, column_id, &value)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -137,64 +173,129 @@ pub fn add_row(db: State<'_, Database>, sheet_id: i64) -> Result<i64, String> {
 
 #[tauri::command]
 pub fn update_workbook_name(db: State<'_, Database>, id: i64, name: String) -> Result<(), String> {
-    db.update_workbook_name(id, &name).map_err(|e| e.to_string())
+    db.update_workbook_name(id, &name)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn import_csv_file(db: State<'_, Database>, workbook_id: i64, file_path: String) -> Result<SheetData, String> {
+pub fn import_csv_file(
+    db: State<'_, Database>,
+    workbook_id: i64,
+    file_path: String,
+) -> Result<SheetData, String> {
     let _ = validate_read_path(&file_path)?;
     let path = PathBuf::from(&file_path);
     let (sheet_name, headers, rows) = crate::import::import_csv_data(&path)?;
 
-    let sheet = db.create_sheet(workbook_id, &sheet_name).map_err(|e| e.to_string())?;
+    let sheet = db
+        .create_sheet(workbook_id, &sheet_name)
+        .map_err(|e| e.to_string())?;
     let col_types: Vec<(&str, &str)> = headers.iter().map(|h| (h.as_str(), "text")).collect();
-    let rows_data: Vec<Vec<&str>> = rows.iter().map(|r| r.iter().map(|v| v.as_str()).collect()).collect();
-    db.replace_sheet_data(sheet.id, &col_types, &rows_data).map_err(|e| e.to_string())?;
+    let rows_data: Vec<Vec<&str>> = rows
+        .iter()
+        .map(|r| r.iter().map(|v| v.as_str()).collect())
+        .collect();
+    db.replace_sheet_data(sheet.id, &col_types, &rows_data)
+        .map_err(|e| e.to_string())?;
 
-    let wb_data = db.get_workbook_data(workbook_id).map_err(|e| e.to_string())?;
-    wb_data.sheets.into_iter().find(|s| s.sheet.id == sheet.id)
+    let wb_data = db
+        .get_workbook_data(workbook_id)
+        .map_err(|e| e.to_string())?;
+    wb_data
+        .sheets
+        .into_iter()
+        .find(|s| s.sheet.id == sheet.id)
         .ok_or_else(|| "Sheet not found after import".to_string())
 }
 
 #[tauri::command]
-pub fn import_excel_file(db: State<'_, Database>, workbook_id: i64, file_path: String) -> Result<SheetData, String> {
+pub fn import_excel_file(
+    db: State<'_, Database>,
+    workbook_id: i64,
+    file_path: String,
+) -> Result<SheetData, String> {
     let _ = validate_read_path(&file_path)?;
     let path = PathBuf::from(&file_path);
     let (sheet_name, headers, rows) = crate::import::import_excel(&path)?;
 
-    let sheet = db.create_sheet(workbook_id, &sheet_name).map_err(|e| e.to_string())?;
+    let sheet = db
+        .create_sheet(workbook_id, &sheet_name)
+        .map_err(|e| e.to_string())?;
     let col_types: Vec<(&str, &str)> = headers.iter().map(|h| (h.as_str(), "text")).collect();
-    let rows_data: Vec<Vec<&str>> = rows.iter().map(|r| r.iter().map(|v| v.as_str()).collect()).collect();
-    db.replace_sheet_data(sheet.id, &col_types, &rows_data).map_err(|e| e.to_string())?;
+    let rows_data: Vec<Vec<&str>> = rows
+        .iter()
+        .map(|r| r.iter().map(|v| v.as_str()).collect())
+        .collect();
+    db.replace_sheet_data(sheet.id, &col_types, &rows_data)
+        .map_err(|e| e.to_string())?;
 
-    let wb_data = db.get_workbook_data(workbook_id).map_err(|e| e.to_string())?;
-    wb_data.sheets.into_iter().find(|s| s.sheet.id == sheet.id)
+    let wb_data = db
+        .get_workbook_data(workbook_id)
+        .map_err(|e| e.to_string())?;
+    wb_data
+        .sheets
+        .into_iter()
+        .find(|s| s.sheet.id == sheet.id)
         .ok_or_else(|| "Sheet not found after import".to_string())
 }
 
 #[tauri::command]
-pub async fn import_google_sheet(db: State<'_, Database>, workbook_id: i64, spreadsheet_id: String, api_key: String, range: String) -> Result<SheetData, String> {
-    let (headers, rows) = cloud_import::import_google_sheet(&spreadsheet_id, &api_key, &range).await?;
+pub async fn import_google_sheet(
+    db: State<'_, Database>,
+    workbook_id: i64,
+    spreadsheet_id: String,
+    api_key: String,
+    range: String,
+) -> Result<SheetData, String> {
+    let (headers, rows) =
+        cloud_import::import_google_sheet(&spreadsheet_id, &api_key, &range).await?;
     let sheet_name = format!("Google-{}", &spreadsheet_id[..spreadsheet_id.len().min(8)]);
-    let sheet = db.create_sheet(workbook_id, &sheet_name).map_err(|e| e.to_string())?;
+    let sheet = db
+        .create_sheet(workbook_id, &sheet_name)
+        .map_err(|e| e.to_string())?;
     let col_types: Vec<(&str, &str)> = headers.iter().map(|h| (h.as_str(), "text")).collect();
-    let rows_data: Vec<Vec<&str>> = rows.iter().map(|r| r.iter().map(|v| v.as_str()).collect()).collect();
-    db.replace_sheet_data(sheet.id, &col_types, &rows_data).map_err(|e| e.to_string())?;
-    let wb_data = db.get_workbook_data(workbook_id).map_err(|e| e.to_string())?;
-    wb_data.sheets.into_iter().find(|s| s.sheet.id == sheet.id)
+    let rows_data: Vec<Vec<&str>> = rows
+        .iter()
+        .map(|r| r.iter().map(|v| v.as_str()).collect())
+        .collect();
+    db.replace_sheet_data(sheet.id, &col_types, &rows_data)
+        .map_err(|e| e.to_string())?;
+    let wb_data = db
+        .get_workbook_data(workbook_id)
+        .map_err(|e| e.to_string())?;
+    wb_data
+        .sheets
+        .into_iter()
+        .find(|s| s.sheet.id == sheet.id)
         .ok_or_else(|| "Sheet not found after import".to_string())
 }
 
 #[tauri::command]
-pub async fn import_notion_database(db: State<'_, Database>, workbook_id: i64, database_id: String, api_key: String) -> Result<SheetData, String> {
+pub async fn import_notion_database(
+    db: State<'_, Database>,
+    workbook_id: i64,
+    database_id: String,
+    api_key: String,
+) -> Result<SheetData, String> {
     let (headers, rows) = cloud_import::import_notion_database(&database_id, &api_key).await?;
     let sheet_name = format!("Notion-{}", &database_id[..database_id.len().min(8)]);
-    let sheet = db.create_sheet(workbook_id, &sheet_name).map_err(|e| e.to_string())?;
+    let sheet = db
+        .create_sheet(workbook_id, &sheet_name)
+        .map_err(|e| e.to_string())?;
     let col_types: Vec<(&str, &str)> = headers.iter().map(|h| (h.as_str(), "text")).collect();
-    let rows_data: Vec<Vec<&str>> = rows.iter().map(|r| r.iter().map(|v| v.as_str()).collect()).collect();
-    db.replace_sheet_data(sheet.id, &col_types, &rows_data).map_err(|e| e.to_string())?;
-    let wb_data = db.get_workbook_data(workbook_id).map_err(|e| e.to_string())?;
-    wb_data.sheets.into_iter().find(|s| s.sheet.id == sheet.id)
+    let rows_data: Vec<Vec<&str>> = rows
+        .iter()
+        .map(|r| r.iter().map(|v| v.as_str()).collect())
+        .collect();
+    db.replace_sheet_data(sheet.id, &col_types, &rows_data)
+        .map_err(|e| e.to_string())?;
+    let wb_data = db
+        .get_workbook_data(workbook_id)
+        .map_err(|e| e.to_string())?;
+    wb_data
+        .sheets
+        .into_iter()
+        .find(|s| s.sheet.id == sheet.id)
         .ok_or_else(|| "Sheet not found after import".to_string())
 }
 
@@ -207,7 +308,11 @@ pub fn preview_import(path: String) -> Result<crate::models::ImportResult, Strin
         Some("xlsx") | Some("xls") => {
             let (sheet_name, columns, rows) = crate::import::import_excel(&p)?;
             let rows_imported = rows.len();
-            Ok(ImportResult { rows_imported, columns, sheet_name })
+            Ok(ImportResult {
+                rows_imported,
+                columns,
+                sheet_name,
+            })
         }
         _ => Err("Unsupported file format. Use CSV or Excel files.".to_string()),
     }
@@ -224,19 +329,34 @@ pub fn get_business_info(db: State<'_, Database>) -> Result<Option<BusinessInfo>
 }
 
 #[tauri::command]
-pub fn save_business_info(db: State<'_, Database>, business_name: String, industry: String, company_size: String) -> Result<(), String> {
-    db.save_business_info(&business_name, &industry, &company_size).map_err(|e| e.to_string())
+pub fn save_business_info(
+    db: State<'_, Database>,
+    business_name: String,
+    industry: String,
+    company_size: String,
+) -> Result<(), String> {
+    db.save_business_info(&business_name, &industry, &company_size)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn create_invoice(db: State<'_, Database>, invoice_number: String, due_date: String, payment_terms: String) -> Result<Invoice, String> {
-    db.create_invoice(&invoice_number, &due_date, &payment_terms).map_err(|e| {
-        if matches!(e, rusqlite::Error::QueryReturnedNoRows) {
-            format!("Invoice number '{}' is already in use. Choose a different number.", invoice_number)
-        } else {
-            e.to_string()
-        }
-    })
+pub fn create_invoice(
+    db: State<'_, Database>,
+    invoice_number: String,
+    due_date: String,
+    payment_terms: String,
+) -> Result<Invoice, String> {
+    db.create_invoice(&invoice_number, &due_date, &payment_terms)
+        .map_err(|e| {
+            if matches!(e, rusqlite::Error::QueryReturnedNoRows) {
+                format!(
+                    "Invoice number '{}' is already in use. Choose a different number.",
+                    invoice_number
+                )
+            } else {
+                e.to_string()
+            }
+        })
 }
 
 #[tauri::command]
@@ -250,8 +370,15 @@ pub fn get_invoice(db: State<'_, Database>, id: i64) -> Result<InvoiceData, Stri
 }
 
 #[tauri::command]
-pub fn add_invoice_line_item(db: State<'_, Database>, invoice_id: i64, description: String, quantity: f64, unit_price: f64) -> Result<InvoiceLineItem, String> {
-    db.add_line_item(invoice_id, &description, quantity, unit_price).map_err(|e| e.to_string())
+pub fn add_invoice_line_item(
+    db: State<'_, Database>,
+    invoice_id: i64,
+    description: String,
+    quantity: f64,
+    unit_price: f64,
+) -> Result<InvoiceLineItem, String> {
+    db.add_line_item(invoice_id, &description, quantity, unit_price)
+        .map_err(|e| e.to_string())
 }
 
 #[derive(serde::Deserialize)]
@@ -262,21 +389,53 @@ pub struct InvoiceLineItemInput {
 }
 
 #[tauri::command]
-pub fn replace_invoice_line_items(db: State<'_, Database>, invoice_id: i64, items: Vec<InvoiceLineItemInput>) -> Result<(), String> {
-    let items_data: Vec<(String, f64, f64)> = items.into_iter()
+pub fn replace_invoice_line_items(
+    db: State<'_, Database>,
+    invoice_id: i64,
+    items: Vec<InvoiceLineItemInput>,
+) -> Result<(), String> {
+    let items_data: Vec<(String, f64, f64)> = items
+        .into_iter()
         .map(|i| (i.description, i.quantity, i.unit_price))
         .collect();
-    db.replace_invoice_line_items(invoice_id, &items_data).map_err(|e| e.to_string())
+    db.replace_invoice_line_items(invoice_id, &items_data)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn update_invoice(db: State<'_, Database>, id: i64, status: String, subtotal: f64, tax_rate: f64, tax_amount: f64, total: f64, internal_notes: String, customer_notes: String) -> Result<(), String> {
-    db.update_invoice(id, &status, subtotal, tax_rate, tax_amount, total, &internal_notes, &customer_notes).map_err(|e| e.to_string())
+pub fn update_invoice(
+    db: State<'_, Database>,
+    id: i64,
+    status: String,
+    subtotal: f64,
+    tax_rate: f64,
+    tax_amount: f64,
+    total: f64,
+    internal_notes: String,
+    customer_notes: String,
+) -> Result<(), String> {
+    db.update_invoice(
+        id,
+        &status,
+        subtotal,
+        tax_rate,
+        tax_amount,
+        total,
+        &internal_notes,
+        &customer_notes,
+    )
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn create_order(db: State<'_, Database>, order_number: String, due_date: String, description: String) -> Result<Order, String> {
-    db.create_order(&order_number, &due_date, &description).map_err(|e| e.to_string())
+pub fn create_order(
+    db: State<'_, Database>,
+    order_number: String,
+    due_date: String,
+    description: String,
+) -> Result<Order, String> {
+    db.create_order(&order_number, &due_date, &description)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -290,24 +449,58 @@ pub fn get_order(db: State<'_, Database>, id: i64) -> Result<OrderData, String> 
 }
 
 #[tauri::command]
-pub fn update_order_status(db: State<'_, Database>, order_id: i64, new_status: String, notes: String) -> Result<(), String> {
-    db.update_order_status(order_id, &new_status, &notes).map_err(|e| e.to_string())
+pub fn update_order_status(
+    db: State<'_, Database>,
+    order_id: i64,
+    new_status: String,
+    notes: String,
+) -> Result<(), String> {
+    db.update_order_status(order_id, &new_status, &notes)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn update_order(db: State<'_, Database>, id: i64, priority: String, description: String, artwork_notes: String, artwork_approved: bool, deposit_requested: bool, deposit_amount: f64, total_value: f64) -> Result<(), String> {
-    db.update_order(id, &priority, &description, &artwork_notes, artwork_approved, deposit_requested, deposit_amount, total_value).map_err(|e| e.to_string())
+pub fn update_order(
+    db: State<'_, Database>,
+    id: i64,
+    priority: String,
+    description: String,
+    artwork_notes: String,
+    artwork_approved: bool,
+    deposit_requested: bool,
+    deposit_amount: f64,
+    total_value: f64,
+) -> Result<(), String> {
+    db.update_order(
+        id,
+        &priority,
+        &description,
+        &artwork_notes,
+        artwork_approved,
+        deposit_requested,
+        deposit_amount,
+        total_value,
+    )
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn create_estimate(db: State<'_, Database>, estimate_number: String, valid_until: String) -> Result<Estimate, String> {
-    db.create_estimate(&estimate_number, &valid_until).map_err(|e| {
-        if matches!(e, rusqlite::Error::QueryReturnedNoRows) {
-            format!("Estimate number '{}' is already in use. Choose a different number.", estimate_number)
-        } else {
-            e.to_string()
-        }
-    })
+pub fn create_estimate(
+    db: State<'_, Database>,
+    estimate_number: String,
+    valid_until: String,
+) -> Result<Estimate, String> {
+    db.create_estimate(&estimate_number, &valid_until)
+        .map_err(|e| {
+            if matches!(e, rusqlite::Error::QueryReturnedNoRows) {
+                format!(
+                    "Estimate number '{}' is already in use. Choose a different number.",
+                    estimate_number
+                )
+            } else {
+                e.to_string()
+            }
+        })
 }
 
 #[tauri::command]
@@ -321,8 +514,16 @@ pub fn get_estimate(db: State<'_, Database>, id: i64) -> Result<EstimateData, St
 }
 
 #[tauri::command]
-pub fn add_estimate_line_item(db: State<'_, Database>, estimate_id: i64, description: String, category: String, quantity: f64, unit_price: f64) -> Result<EstimateLineItem, String> {
-    db.add_estimate_line_item(estimate_id, &description, &category, quantity, unit_price).map_err(|e| e.to_string())
+pub fn add_estimate_line_item(
+    db: State<'_, Database>,
+    estimate_id: i64,
+    description: String,
+    category: String,
+    quantity: f64,
+    unit_price: f64,
+) -> Result<EstimateLineItem, String> {
+    db.add_estimate_line_item(estimate_id, &description, &category, quantity, unit_price)
+        .map_err(|e| e.to_string())
 }
 
 #[derive(serde::Deserialize)]
@@ -334,21 +535,67 @@ pub struct EstimateLineItemInput {
 }
 
 #[tauri::command]
-pub fn replace_estimate_line_items(db: State<'_, Database>, estimate_id: i64, items: Vec<EstimateLineItemInput>) -> Result<(), String> {
-    let items_data: Vec<(String, String, f64, f64)> = items.into_iter()
+pub fn replace_estimate_line_items(
+    db: State<'_, Database>,
+    estimate_id: i64,
+    items: Vec<EstimateLineItemInput>,
+) -> Result<(), String> {
+    let items_data: Vec<(String, String, f64, f64)> = items
+        .into_iter()
         .map(|i| (i.description, i.category, i.quantity, i.unit_price))
         .collect();
-    db.replace_estimate_line_items(estimate_id, &items_data).map_err(|e| e.to_string())
+    db.replace_estimate_line_items(estimate_id, &items_data)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn update_estimate(db: State<'_, Database>, id: i64, status: String, subtotal: f64, tax_rate: f64, tax_amount: f64, total: f64, notes: String, artwork_requirements: String) -> Result<(), String> {
-    db.update_estimate(id, &status, subtotal, tax_rate, tax_amount, total, &notes, &artwork_requirements).map_err(|e| e.to_string())
+pub fn update_estimate(
+    db: State<'_, Database>,
+    id: i64,
+    status: String,
+    subtotal: f64,
+    tax_rate: f64,
+    tax_amount: f64,
+    total: f64,
+    notes: String,
+    artwork_requirements: String,
+) -> Result<(), String> {
+    db.update_estimate(
+        id,
+        &status,
+        subtotal,
+        tax_rate,
+        tax_amount,
+        total,
+        &notes,
+        &artwork_requirements,
+    )
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn add_inventory_item(db: State<'_, Database>, material_type: String, size: String, attributes: String, quantity: f64, unit: String, reorder_level: f64, alert_type: String, alert_threshold: f64) -> Result<InventoryItem, String> {
-    db.add_inventory_item(&material_type, &size, &attributes, quantity, &unit, reorder_level, &alert_type, alert_threshold).map_err(|e| e.to_string())
+pub fn add_inventory_item(
+    db: State<'_, Database>,
+    material_type: String,
+    size: String,
+    attributes: String,
+    quantity: f64,
+    unit: String,
+    reorder_level: f64,
+    alert_type: String,
+    alert_threshold: f64,
+) -> Result<InventoryItem, String> {
+    db.add_inventory_item(
+        &material_type,
+        &size,
+        &attributes,
+        quantity,
+        &unit,
+        reorder_level,
+        &alert_type,
+        alert_threshold,
+    )
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -362,8 +609,15 @@ pub fn get_inventory_item(db: State<'_, Database>, id: i64) -> Result<InventoryI
 }
 
 #[tauri::command]
-pub fn adjust_inventory(db: State<'_, Database>, inventory_item_id: i64, quantity_change: f64, reason: String, order_id: Option<i64>) -> Result<(), String> {
-    db.adjust_inventory(inventory_item_id, quantity_change, &reason, order_id).map_err(|e| e.to_string())
+pub fn adjust_inventory(
+    db: State<'_, Database>,
+    inventory_item_id: i64,
+    quantity_change: f64,
+    reason: String,
+    order_id: Option<i64>,
+) -> Result<(), String> {
+    db.adjust_inventory(inventory_item_id, quantity_change, &reason, order_id)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -379,13 +633,27 @@ pub fn acknowledge_alert(db: State<'_, Database>, alert_id: i64) -> Result<(), S
 // ── Clients ───────────────────────────────────────────────────────────────────
 
 #[tauri::command]
-pub fn create_client(db: State<'_, Database>, name: String, company: String, email: String, phone: String, address: String, tags: String) -> Result<Client, String> {
-    db.create_client(&name, &company, &email, &phone, &address, &tags).map_err(|e| e.to_string())
+pub fn create_client(
+    db: State<'_, Database>,
+    name: String,
+    company: String,
+    email: String,
+    phone: String,
+    address: String,
+    tags: String,
+) -> Result<Client, String> {
+    db.create_client(&name, &company, &email, &phone, &address, &tags)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn list_clients(db: State<'_, Database>, search: Option<String>, status_filter: Option<String>) -> Result<Vec<Client>, String> {
-    db.list_clients(search.as_deref(), status_filter.as_deref()).map_err(|e| e.to_string())
+pub fn list_clients(
+    db: State<'_, Database>,
+    search: Option<String>,
+    status_filter: Option<String>,
+) -> Result<Vec<Client>, String> {
+    db.list_clients(search.as_deref(), status_filter.as_deref())
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -394,8 +662,22 @@ pub fn get_client(db: State<'_, Database>, id: i64) -> Result<Client, String> {
 }
 
 #[tauri::command]
-pub fn update_client(db: State<'_, Database>, id: i64, name: String, company: String, email: String, phone: String, address: String, tags: String, status: String, notes: String) -> Result<(), String> {
-    db.update_client(id, &name, &company, &email, &phone, &address, &tags, &status, &notes).map_err(|e| e.to_string())
+pub fn update_client(
+    db: State<'_, Database>,
+    id: i64,
+    name: String,
+    company: String,
+    email: String,
+    phone: String,
+    address: String,
+    tags: String,
+    status: String,
+    notes: String,
+) -> Result<(), String> {
+    db.update_client(
+        id, &name, &company, &email, &phone, &address, &tags, &status, &notes,
+    )
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -406,35 +688,74 @@ pub fn delete_client(db: State<'_, Database>, id: i64) -> Result<(), String> {
 // ── Art Approvals ─────────────────────────────────────────────────────────────
 
 #[tauri::command]
-pub fn create_art_approval(db: State<'_, Database>, order_id: i64, file_path: String, staff_notes: String, follow_up_hours: i64) -> Result<ArtApproval, String> {
-    db.create_art_approval(order_id, &file_path, &staff_notes, follow_up_hours).map_err(|e| e.to_string())
+pub fn create_art_approval(
+    db: State<'_, Database>,
+    order_id: i64,
+    file_path: String,
+    staff_notes: String,
+    follow_up_hours: i64,
+) -> Result<ArtApproval, String> {
+    db.create_art_approval(order_id, &file_path, &staff_notes, follow_up_hours)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn get_art_approvals_for_order(db: State<'_, Database>, order_id: i64) -> Result<Vec<ArtApproval>, String> {
-    db.get_art_approvals_for_order(order_id).map_err(|e| e.to_string())
+pub fn get_art_approvals_for_order(
+    db: State<'_, Database>,
+    order_id: i64,
+) -> Result<Vec<ArtApproval>, String> {
+    db.get_art_approvals_for_order(order_id)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn respond_to_art_approval(db: State<'_, Database>, token: String, status: String, customer_notes: String) -> Result<ArtApproval, String> {
-    db.respond_to_art_approval(&token, &status, &customer_notes).map_err(|e| e.to_string())
+pub fn respond_to_art_approval(
+    db: State<'_, Database>,
+    token: String,
+    status: String,
+    customer_notes: String,
+) -> Result<ArtApproval, String> {
+    db.respond_to_art_approval(&token, &status, &customer_notes)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn increment_art_approval_follow_up(db: State<'_, Database>, id: i64) -> Result<(), String> {
-    db.increment_art_approval_follow_up(id).map_err(|e| e.to_string())
+    db.increment_art_approval_follow_up(id)
+        .map_err(|e| e.to_string())
 }
 
 // ── Payments (#10, #11) ───────────────────────────────────────────────────────
 
 #[tauri::command]
-pub fn record_payment(db: State<'_, Database>, invoice_id: Option<i64>, order_id: Option<i64>, amount: f64, payment_method: String, reference: String, notes: String) -> Result<Payment, String> {
-    db.record_payment(invoice_id, order_id, amount, &payment_method, &reference, &notes).map_err(|e| e.to_string())
+pub fn record_payment(
+    db: State<'_, Database>,
+    invoice_id: Option<i64>,
+    order_id: Option<i64>,
+    amount: f64,
+    payment_method: String,
+    reference: String,
+    notes: String,
+) -> Result<Payment, String> {
+    db.record_payment(
+        invoice_id,
+        order_id,
+        amount,
+        &payment_method,
+        &reference,
+        &notes,
+    )
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn list_payments(db: State<'_, Database>, invoice_id: Option<i64>, order_id: Option<i64>) -> Result<Vec<Payment>, String> {
-    db.list_payments(invoice_id, order_id).map_err(|e| e.to_string())
+pub fn list_payments(
+    db: State<'_, Database>,
+    invoice_id: Option<i64>,
+    order_id: Option<i64>,
+) -> Result<Vec<Payment>, String> {
+    db.list_payments(invoice_id, order_id)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -443,51 +764,116 @@ pub fn delete_payment(db: State<'_, Database>, id: i64) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn search_invoices_and_orders(db: State<'_, Database>, query: String) -> Result<Vec<serde_json::Value>, String> {
-    db.search_invoices_and_orders(&query).map_err(|e| e.to_string())
+pub fn search_invoices_and_orders(
+    db: State<'_, Database>,
+    query: String,
+) -> Result<Vec<serde_json::Value>, String> {
+    db.search_invoices_and_orders(&query)
+        .map_err(|e| e.to_string())
 }
 
 // ── Invoice reminders (#9) ────────────────────────────────────────────────────
 
 #[tauri::command]
-pub fn log_invoice_reminder(db: State<'_, Database>, invoice_id: i64, method: String, notes: String) -> Result<InvoiceReminder, String> {
-    db.log_invoice_reminder(invoice_id, &method, &notes).map_err(|e| e.to_string())
+pub fn log_invoice_reminder(
+    db: State<'_, Database>,
+    invoice_id: i64,
+    method: String,
+    notes: String,
+) -> Result<InvoiceReminder, String> {
+    db.log_invoice_reminder(invoice_id, &method, &notes)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn list_invoice_reminders(db: State<'_, Database>, invoice_id: i64) -> Result<Vec<InvoiceReminder>, String> {
-    db.list_invoice_reminders(invoice_id).map_err(|e| e.to_string())
+pub fn list_invoice_reminders(
+    db: State<'_, Database>,
+    invoice_id: i64,
+) -> Result<Vec<InvoiceReminder>, String> {
+    db.list_invoice_reminders(invoice_id)
+        .map_err(|e| e.to_string())
 }
 
 // ── QuickBooks sync (#7) ──────────────────────────────────────────────────────
 
 #[tauri::command]
-pub fn update_invoice_qb_status(db: State<'_, Database>, id: i64, status: String) -> Result<(), String> {
-    db.update_invoice_qb_status(id, &status).map_err(|e| e.to_string())
+pub fn update_invoice_qb_status(
+    db: State<'_, Database>,
+    id: i64,
+    status: String,
+) -> Result<(), String> {
+    db.update_invoice_qb_status(id, &status)
+        .map_err(|e| e.to_string())
 }
 
 // ── Job specs + production + fulfillment (#15, #16, #18) ─────────────────────
 
 #[tauri::command]
-pub fn update_order_job_specs(db: State<'_, Database>, id: i64, print_type: String, paper_stock: String, ink_colors: String, finishing: String, quantity: i64, production_notes: String, assigned_operator: String) -> Result<(), String> {
-    db.update_order_job_specs(id, &print_type, &paper_stock, &ink_colors, &finishing, quantity, &production_notes, &assigned_operator).map_err(|e| e.to_string())
+pub fn update_order_job_specs(
+    db: State<'_, Database>,
+    id: i64,
+    print_type: String,
+    paper_stock: String,
+    ink_colors: String,
+    finishing: String,
+    quantity: i64,
+    production_notes: String,
+    assigned_operator: String,
+) -> Result<(), String> {
+    db.update_order_job_specs(
+        id,
+        &print_type,
+        &paper_stock,
+        &ink_colors,
+        &finishing,
+        quantity,
+        &production_notes,
+        &assigned_operator,
+    )
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn update_order_fulfillment(db: State<'_, Database>, id: i64, fulfillment_method: String, tracking_number: String, tracking_carrier: String, ready_for_pickup: bool, shipped_at: Option<String>) -> Result<(), String> {
-    db.update_order_fulfillment(id, &fulfillment_method, &tracking_number, &tracking_carrier, ready_for_pickup, shipped_at.as_deref()).map_err(|e| e.to_string())
+pub fn update_order_fulfillment(
+    db: State<'_, Database>,
+    id: i64,
+    fulfillment_method: String,
+    tracking_number: String,
+    tracking_carrier: String,
+    ready_for_pickup: bool,
+    shipped_at: Option<String>,
+) -> Result<(), String> {
+    db.update_order_fulfillment(
+        id,
+        &fulfillment_method,
+        &tracking_number,
+        &tracking_carrier,
+        ready_for_pickup,
+        shipped_at.as_deref(),
+    )
+    .map_err(|e| e.to_string())
 }
 
 // ── Department notes (#18) ────────────────────────────────────────────────────
 
 #[tauri::command]
-pub fn add_department_note(db: State<'_, Database>, order_id: i64, note: String, department: String) -> Result<DepartmentNote, String> {
-    db.add_department_note(order_id, &note, &department).map_err(|e| e.to_string())
+pub fn add_department_note(
+    db: State<'_, Database>,
+    order_id: i64,
+    note: String,
+    department: String,
+) -> Result<DepartmentNote, String> {
+    db.add_department_note(order_id, &note, &department)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn list_department_notes(db: State<'_, Database>, order_id: i64) -> Result<Vec<DepartmentNote>, String> {
-    db.list_department_notes(order_id).map_err(|e| e.to_string())
+pub fn list_department_notes(
+    db: State<'_, Database>,
+    order_id: i64,
+) -> Result<Vec<DepartmentNote>, String> {
+    db.list_department_notes(order_id)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -536,9 +922,7 @@ pub fn open_pdf(engine: State<'_, PdfEngine>, path: String) -> Result<PdfSummary
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_default();
-    let file_size_bytes = std::fs::metadata(&path)
-        .map(|m| m.len())
-        .unwrap_or(0);
+    let file_size_bytes = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
 
     let doc = engine.open_document(&path)?;
     let page_count = doc.pages().len() as usize;
@@ -590,29 +974,56 @@ pub fn delete_pdf_job(db: State<'_, Database>, id: i64) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn create_certified_version(db: State<'_, Database>, job_id: i64, file_path: String, author: String, comment: String) -> Result<i64, String> {
+pub fn create_certified_version(
+    db: State<'_, Database>,
+    job_id: i64,
+    file_path: String,
+    author: String,
+    comment: String,
+) -> Result<i64, String> {
     let metadata = std::fs::metadata(&file_path).map_err(|e| format!("File not found: {}", e))?;
-    db.save_certified_version(job_id, &file_path, metadata.len(), &author, &comment).map_err(|e| e.to_string())
+    db.save_certified_version(job_id, &file_path, metadata.len(), &author, &comment)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn list_certified_versions(db: State<'_, Database>, job_id: i64) -> Result<Vec<CertifiedVersion>, String> {
-    db.list_certified_versions(job_id).map_err(|e| e.to_string())
+pub fn list_certified_versions(
+    db: State<'_, Database>,
+    job_id: i64,
+) -> Result<Vec<CertifiedVersion>, String> {
+    db.list_certified_versions(job_id)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn render_page_thumbnail(engine: State<'_, PdfEngine>, path: String, page_index: usize, width_px: Option<u32>) -> Result<String, String> {
+pub fn render_page_thumbnail(
+    engine: State<'_, PdfEngine>,
+    path: String,
+    page_index: usize,
+    width_px: Option<u32>,
+) -> Result<String, String> {
     let _ = validate_read_path(&path)?;
     use image::RgbaImage;
     let doc = engine.open_document(&path)?;
-    let idx: i32 = page_index.try_into().map_err(|_| format!("Page index too large: {page_index}"))?;
-    let page = doc.pages().get(idx).map_err(|e| format!("Page {page_index} not found: {e}"))?;
+    let idx: i32 = page_index
+        .try_into()
+        .map_err(|_| format!("Page index too large: {page_index}"))?;
+    let page = doc
+        .pages()
+        .get(idx)
+        .map_err(|e| format!("Page {page_index} not found: {e}"))?;
     let width: i32 = width_px.unwrap_or(120) as i32;
     let config = pdfium_render::prelude::PdfRenderConfig::new().set_target_width(width);
-    let bitmap = page.render_with_config(&config).map_err(|e| format!("Render error: {}", e))?;
+    let bitmap = page
+        .render_with_config(&config)
+        .map_err(|e| format!("Render error: {}", e))?;
     let temp_dir = std::env::temp_dir().join("frappe_pdf");
     std::fs::create_dir_all(&temp_dir).map_err(|e| format!("Temp dir error: {}", e))?;
-    let out_path = temp_dir.join(format!("thumb_{page_index}_{}_{}.png", std::process::id(), chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)));
+    let out_path = temp_dir.join(format!(
+        "thumb_{page_index}_{}_{}.png",
+        std::process::id(),
+        chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+    ));
     let pw = bitmap.width() as u32;
     let ph = bitmap.height() as u32;
     let bytes = bitmap.as_raw_bytes();
@@ -623,29 +1034,50 @@ pub fn render_page_thumbnail(engine: State<'_, PdfEngine>, path: String, page_in
     for y in 0..ph {
         for x in 0..pw {
             let i = ((y * pw + x) * 4) as usize;
-            img.put_pixel(x, y, image::Rgba([bytes[i + 2], bytes[i + 1], bytes[i], bytes[i + 3]]));
+            img.put_pixel(
+                x,
+                y,
+                image::Rgba([bytes[i + 2], bytes[i + 1], bytes[i], bytes[i + 3]]),
+            );
         }
     }
-    img.save(&out_path).map_err(|e| format!("Save error: {}", e))?;
+    img.save(&out_path)
+        .map_err(|e| format!("Save error: {}", e))?;
     Ok(out_path.to_string_lossy().to_string())
 }
 
 #[tauri::command]
-pub fn render_page(engine: State<'_, PdfEngine>, path: String, page_index: usize, dpi: Option<f32>) -> Result<String, String> {
+pub fn render_page(
+    engine: State<'_, PdfEngine>,
+    path: String,
+    page_index: usize,
+    dpi: Option<f32>,
+) -> Result<String, String> {
     let _ = validate_read_path(&path)?;
     use image::RgbaImage;
     use pdfium_render::prelude::PdfRenderConfig;
     let doc = engine.open_document(&path)?;
-    let idx: i32 = page_index.try_into().map_err(|_| format!("Page index too large: {page_index}"))?;
-    let page = doc.pages().get(idx).map_err(|e| format!("Page {page_index} not found: {e}"))?;
+    let idx: i32 = page_index
+        .try_into()
+        .map_err(|_| format!("Page index too large: {page_index}"))?;
+    let page = doc
+        .pages()
+        .get(idx)
+        .map_err(|e| format!("Page {page_index} not found: {e}"))?;
     let dpi_val = dpi.unwrap_or(144.0) as f64;
     let page_width = page.width().value as f64;
     let px_width = (page_width * dpi_val / 72.0) as i32;
     let config = PdfRenderConfig::new().set_target_width(px_width);
-    let bitmap = page.render_with_config(&config).map_err(|e| format!("Render error: {}", e))?;
+    let bitmap = page
+        .render_with_config(&config)
+        .map_err(|e| format!("Render error: {}", e))?;
     let temp_dir = std::env::temp_dir().join("frappe_pdf");
     std::fs::create_dir_all(&temp_dir).map_err(|e| format!("Temp dir error: {}", e))?;
-    let out_path = temp_dir.join(format!("page_{page_index}_{}_{}.png", std::process::id(), chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)));
+    let out_path = temp_dir.join(format!(
+        "page_{page_index}_{}_{}.png",
+        std::process::id(),
+        chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+    ));
     let pw = bitmap.width() as u32;
     let ph = bitmap.height() as u32;
     let bytes = bitmap.as_raw_bytes();
@@ -656,10 +1088,15 @@ pub fn render_page(engine: State<'_, PdfEngine>, path: String, page_index: usize
     for y in 0..ph {
         for x in 0..pw {
             let i = ((y * pw + x) * 4) as usize;
-            img.put_pixel(x, y, image::Rgba([bytes[i + 2], bytes[i + 1], bytes[i], bytes[i + 3]]));
+            img.put_pixel(
+                x,
+                y,
+                image::Rgba([bytes[i + 2], bytes[i + 1], bytes[i], bytes[i + 3]]),
+            );
         }
     }
-    img.save(&out_path).map_err(|e| format!("Save error: {}", e))?;
+    img.save(&out_path)
+        .map_err(|e| format!("Save error: {}", e))?;
     Ok(out_path.to_string_lossy().to_string())
 }
 
@@ -672,21 +1109,39 @@ pub struct PageDimensions {
 }
 
 #[tauri::command]
-pub fn render_page_with_overprint(engine: State<'_, PdfEngine>, path: String, page_index: usize, dpi: Option<f32>) -> Result<String, String> {
+pub fn render_page_with_overprint(
+    engine: State<'_, PdfEngine>,
+    path: String,
+    page_index: usize,
+    dpi: Option<f32>,
+) -> Result<String, String> {
     let _ = validate_read_path(&path)?;
     use image::RgbaImage;
     use pdfium_render::prelude::PdfRenderConfig;
     let doc = engine.open_document(&path)?;
-    let idx: i32 = page_index.try_into().map_err(|_| format!("Page index too large: {page_index}"))?;
-    let page = doc.pages().get(idx).map_err(|e| format!("Page {page_index} not found: {e}"))?;
+    let idx: i32 = page_index
+        .try_into()
+        .map_err(|_| format!("Page index too large: {page_index}"))?;
+    let page = doc
+        .pages()
+        .get(idx)
+        .map_err(|e| format!("Page {page_index} not found: {e}"))?;
     let dpi_val = dpi.unwrap_or(144.0) as f64;
     let page_width = page.width().value as f64;
     let px_width = (page_width * dpi_val / 72.0) as i32;
-    let config = PdfRenderConfig::new().set_target_width(px_width).use_print_quality(true);
-    let bitmap = page.render_with_config(&config).map_err(|e| format!("Render error: {}", e))?;
+    let config = PdfRenderConfig::new()
+        .set_target_width(px_width)
+        .use_print_quality(true);
+    let bitmap = page
+        .render_with_config(&config)
+        .map_err(|e| format!("Render error: {}", e))?;
     let temp_dir = std::env::temp_dir().join("frappe_pdf");
     std::fs::create_dir_all(&temp_dir).map_err(|e| format!("Temp dir error: {}", e))?;
-    let out_path = temp_dir.join(format!("page_{page_index}_overprint_{}_{}.png", std::process::id(), chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)));
+    let out_path = temp_dir.join(format!(
+        "page_{page_index}_overprint_{}_{}.png",
+        std::process::id(),
+        chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+    ));
     let pw = bitmap.width() as u32;
     let ph = bitmap.height() as u32;
     let bytes = bitmap.as_raw_bytes();
@@ -697,19 +1152,33 @@ pub fn render_page_with_overprint(engine: State<'_, PdfEngine>, path: String, pa
     for y in 0..ph {
         for x in 0..pw {
             let i = ((y * pw + x) * 4) as usize;
-            img.put_pixel(x, y, image::Rgba([bytes[i + 2], bytes[i + 1], bytes[i], bytes[i + 3]]));
+            img.put_pixel(
+                x,
+                y,
+                image::Rgba([bytes[i + 2], bytes[i + 1], bytes[i], bytes[i + 3]]),
+            );
         }
     }
-    img.save(&out_path).map_err(|e| format!("Save error: {}", e))?;
+    img.save(&out_path)
+        .map_err(|e| format!("Save error: {}", e))?;
     Ok(out_path.to_string_lossy().to_string())
 }
 
 #[tauri::command]
-pub fn get_page_dimensions(engine: State<'_, PdfEngine>, path: String, page_index: usize) -> Result<PageDimensions, String> {
+pub fn get_page_dimensions(
+    engine: State<'_, PdfEngine>,
+    path: String,
+    page_index: usize,
+) -> Result<PageDimensions, String> {
     let _ = validate_read_path(&path)?;
     let doc = engine.open_document(&path)?;
-    let idx: i32 = page_index.try_into().map_err(|_| format!("Page index too large: {page_index}"))?;
-    let page = doc.pages().get(idx).map_err(|e| format!("Page {page_index} not found: {e}"))?;
+    let idx: i32 = page_index
+        .try_into()
+        .map_err(|_| format!("Page index too large: {page_index}"))?;
+    let page = doc
+        .pages()
+        .get(idx)
+        .map_err(|e| format!("Page {page_index} not found: {e}"))?;
     let w = page.width().value as f64;
     let h = page.height().value as f64;
     Ok(PageDimensions {
@@ -727,10 +1196,19 @@ pub fn extract_pages(path: String, indices: Vec<usize>, output_path: String) -> 
     let mut doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     let pages = doc.get_pages();
     let all_page_numbers: Vec<u32> = pages.keys().copied().collect();
-    let to_keep: std::collections::HashSet<u32> = indices.iter().filter_map(|i| all_page_numbers.get(*i)).copied().collect();
-    let to_remove: Vec<u32> = all_page_numbers.iter().filter(|pn| !to_keep.contains(pn)).copied().collect();
+    let to_keep: std::collections::HashSet<u32> = indices
+        .iter()
+        .filter_map(|i| all_page_numbers.get(*i))
+        .copied()
+        .collect();
+    let to_remove: Vec<u32> = all_page_numbers
+        .iter()
+        .filter(|pn| !to_keep.contains(pn))
+        .copied()
+        .collect();
     doc.delete_pages(&to_remove);
-    doc.save(&output_path).map_err(|e| format!("Failed to save: {}", e))?;
+    doc.save(&output_path)
+        .map_err(|e| format!("Failed to save: {}", e))?;
     Ok(())
 }
 
@@ -741,14 +1219,24 @@ pub fn delete_pages(path: String, indices: Vec<usize>, output_path: String) -> R
     let mut doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     let pages = doc.get_pages();
     let all_page_numbers: Vec<u32> = pages.keys().copied().collect();
-    let to_remove: Vec<u32> = indices.iter().filter_map(|i| all_page_numbers.get(*i)).copied().collect();
+    let to_remove: Vec<u32> = indices
+        .iter()
+        .filter_map(|i| all_page_numbers.get(*i))
+        .copied()
+        .collect();
     doc.delete_pages(&to_remove);
-    doc.save(&output_path).map_err(|e| format!("Failed to save: {}", e))?;
+    doc.save(&output_path)
+        .map_err(|e| format!("Failed to save: {}", e))?;
     Ok(())
 }
 
 #[tauri::command]
-pub fn rotate_page(path: String, page_index: usize, degrees: i64, output_path: String) -> Result<(), String> {
+pub fn rotate_page(
+    path: String,
+    page_index: usize,
+    degrees: i64,
+    output_path: String,
+) -> Result<(), String> {
     let _ = validate_read_path(&path)?;
     let _ = validate_write_path(&output_path)?;
     let mut doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
@@ -760,7 +1248,8 @@ pub fn rotate_page(path: String, page_index: usize, degrees: i64, output_path: S
     if let Ok(page) = doc.get_dictionary_mut(obj_id) {
         page.set("Rotate", Object::Integer(degrees));
     }
-    doc.save(&output_path).map_err(|e| format!("Failed to save: {}", e))?;
+    doc.save(&output_path)
+        .map_err(|e| format!("Failed to save: {}", e))?;
     Ok(())
 }
 
@@ -808,7 +1297,11 @@ pub fn add_bleed(path: String, amount_mm: f64, output_path: String) -> Result<()
         page_dict.get(key).ok().and_then(|o| {
             if let lopdf::Object::Array(a) = o {
                 let vals: Vec<f64> = a.iter().filter_map(obj_to_f64).collect();
-                if vals.len() == 4 { Some(vals) } else { None }
+                if vals.len() == 4 {
+                    Some(vals)
+                } else {
+                    None
+                }
             } else {
                 None
             }
@@ -816,24 +1309,38 @@ pub fn add_bleed(path: String, amount_mm: f64, output_path: String) -> Result<()
     }
 
     for obj_id in &page_ids {
-        let page_dict = doc.get_dictionary_mut(*obj_id)
+        let page_dict = doc
+            .get_dictionary_mut(*obj_id)
             .map_err(|e| format!("Failed to get page dict: {}", e))?;
 
         let bleed_vals = get_array_vals(page_dict, b"BleedBox");
         let new_bleed = if let Some(bb) = bleed_vals {
-            vec![bb[0] - amount_pts, bb[1] - amount_pts, bb[2] + amount_pts, bb[3] + amount_pts]
+            vec![
+                bb[0] - amount_pts,
+                bb[1] - amount_pts,
+                bb[2] + amount_pts,
+                bb[3] + amount_pts,
+            ]
         } else if let Some(trim) = get_array_vals(page_dict, b"TrimBox") {
-            vec![trim[0] - amount_pts, trim[1] - amount_pts, trim[2] + amount_pts, trim[3] + amount_pts]
+            vec![
+                trim[0] - amount_pts,
+                trim[1] - amount_pts,
+                trim[2] + amount_pts,
+                trim[3] + amount_pts,
+            ]
         } else {
             continue;
         };
 
-        page_dict.set("BleedBox", lopdf::Object::Array(vec![
-            lopdf::Object::Real(new_bleed[0] as f32),
-            lopdf::Object::Real(new_bleed[1] as f32),
-            lopdf::Object::Real(new_bleed[2] as f32),
-            lopdf::Object::Real(new_bleed[3] as f32),
-        ]));
+        page_dict.set(
+            "BleedBox",
+            lopdf::Object::Array(vec![
+                lopdf::Object::Real(new_bleed[0] as f32),
+                lopdf::Object::Real(new_bleed[1] as f32),
+                lopdf::Object::Real(new_bleed[2] as f32),
+                lopdf::Object::Real(new_bleed[3] as f32),
+            ]),
+        );
 
         // Expand MediaBox if needed
         if let Some(media) = get_array_vals(page_dict, b"MediaBox") {
@@ -844,17 +1351,21 @@ pub fn add_bleed(path: String, amount_mm: f64, output_path: String) -> Result<()
                 media[3].max(new_bleed[3]),
             ];
             if new_media != media {
-                page_dict.set("MediaBox", lopdf::Object::Array(vec![
-                    lopdf::Object::Real(new_media[0] as f32),
-                    lopdf::Object::Real(new_media[1] as f32),
-                    lopdf::Object::Real(new_media[2] as f32),
-                    lopdf::Object::Real(new_media[3] as f32),
-                ]));
+                page_dict.set(
+                    "MediaBox",
+                    lopdf::Object::Array(vec![
+                        lopdf::Object::Real(new_media[0] as f32),
+                        lopdf::Object::Real(new_media[1] as f32),
+                        lopdf::Object::Real(new_media[2] as f32),
+                        lopdf::Object::Real(new_media[3] as f32),
+                    ]),
+                );
             }
         }
     }
 
-    doc.save(&output_path).map_err(|e| format!("Failed to save PDF: {}", e))?;
+    doc.save(&output_path)
+        .map_err(|e| format!("Failed to save PDF: {}", e))?;
     Ok(())
 }
 
@@ -961,7 +1472,10 @@ pub fn check_pdfx(path: String, profile: String) -> Result<CombinedPreflightResu
 }
 
 #[tauri::command]
-pub fn check_color_spaces(path: String, target_profile: String) -> Result<Vec<ColorSpaceFinding>, String> {
+pub fn check_color_spaces(
+    path: String,
+    target_profile: String,
+) -> Result<Vec<ColorSpaceFinding>, String> {
     let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     Ok(crate::pdf::color::check_color_spaces(&doc, &target_profile))
 }
@@ -1014,28 +1528,45 @@ pub fn convert_rgb_to_cmyk(
     let mut doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     let scope = scope.as_deref().unwrap_or("both");
     let result = crate::pdf::transforms::convert_rgb_to_cmyk(&mut doc, scope)?;
-    doc.save(&output_path).map_err(|e| format!("Failed to save converted PDF: {}", e))?;
+    doc.save(&output_path)
+        .map_err(|e| format!("Failed to save converted PDF: {}", e))?;
     Ok(result)
 }
 
 #[tauri::command]
-pub fn add_output_intent(path: String, output_path: String, icc_profile: String, condition_id: String, condition: String) -> Result<(), String> {
+pub fn add_output_intent(
+    path: String,
+    output_path: String,
+    icc_profile: String,
+    condition_id: String,
+    condition: String,
+) -> Result<(), String> {
     let _ = validate_write_path(&output_path)?;
     let mut doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     // The ICC profile file path is passed; read it
-    let icc_data = std::fs::read(&icc_profile).map_err(|e| format!("Failed to read ICC profile: {}", e))?;
+    let icc_data =
+        std::fs::read(&icc_profile).map_err(|e| format!("Failed to read ICC profile: {}", e))?;
     crate::pdf::transforms::add_output_intent(&mut doc, &icc_data, &condition_id, &condition)?;
-    doc.save(&output_path).map_err(|e| format!("Failed to save PDF: {}", e))?;
+    doc.save(&output_path)
+        .map_err(|e| format!("Failed to save PDF: {}", e))?;
     Ok(())
 }
 
 #[tauri::command]
 pub fn get_pdf_catalog(path: String) -> Result<serde_json::Value, String> {
     let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
-    let root_ref = doc.trailer.get(b"Root").ok().and_then(|o| o.as_reference().ok())
+    let root_ref = doc
+        .trailer
+        .get(b"Root")
+        .ok()
+        .and_then(|o| o.as_reference().ok())
         .ok_or_else(|| "Failed to find Root reference in trailer".to_string())?;
-    let catalog = doc.get_object(root_ref).map_err(|e| format!("Failed to get catalog: {}", e))?;
-    let dict = catalog.as_dict().map_err(|_| "Catalog is not a dictionary".to_string())?;
+    let catalog = doc
+        .get_object(root_ref)
+        .map_err(|e| format!("Failed to get catalog: {}", e))?;
+    let dict = catalog
+        .as_dict()
+        .map_err(|_| "Catalog is not a dictionary".to_string())?;
 
     let mut result = serde_json::Map::new();
     for (key, value) in dict.iter() {
@@ -1057,7 +1588,10 @@ pub fn get_pdf_catalog(path: String) -> Result<serde_json::Value, String> {
 
     // Add page count
     let page_count = doc.get_pages().len();
-    result.insert("PageCount".to_string(), serde_json::Value::Number(serde_json::Number::from(page_count as u64)));
+    result.insert(
+        "PageCount".to_string(),
+        serde_json::Value::Number(serde_json::Number::from(page_count as u64)),
+    );
 
     // Add PDF version
     let pdf_version = {
@@ -1067,13 +1601,28 @@ pub fn get_pdf_catalog(path: String) -> Result<serde_json::Value, String> {
             use std::io::Read;
             let mut reader = std::io::BufReader::new(file);
             if reader.read(&mut header).is_ok() {
-                String::from_utf8_lossy(&header).lines().next()
-                    .and_then(|l| if l.trim().starts_with("%PDF-") { Some(l.trim()[5..].to_string()) } else { None })
+                String::from_utf8_lossy(&header)
+                    .lines()
+                    .next()
+                    .and_then(|l| {
+                        if l.trim().starts_with("%PDF-") {
+                            Some(l.trim()[5..].to_string())
+                        } else {
+                            None
+                        }
+                    })
                     .unwrap_or_else(|| "unknown".to_string())
-            } else { "unknown".to_string() }
-        } else { "unknown".to_string() }
+            } else {
+                "unknown".to_string()
+            }
+        } else {
+            "unknown".to_string()
+        }
     };
-    result.insert("PDFVersion".to_string(), serde_json::Value::String(pdf_version));
+    result.insert(
+        "PDFVersion".to_string(),
+        serde_json::Value::String(pdf_version),
+    );
 
     Ok(serde_json::Value::Object(result))
 }
@@ -1081,17 +1630,29 @@ pub fn get_pdf_catalog(path: String) -> Result<serde_json::Value, String> {
 // ── Preflight findings persistence (Days 43-44) ────────────────────────────
 
 #[tauri::command]
-pub fn save_preflight_run(db: State<'_, Database>, job_id: i64, profile: String, findings: Vec<PreflightFindingInput>) -> Result<i64, String> {
-    db.save_preflight_run(job_id, &profile, &findings).map_err(|e| e.to_string())
+pub fn save_preflight_run(
+    db: State<'_, Database>,
+    job_id: i64,
+    profile: String,
+    findings: Vec<PreflightFindingInput>,
+) -> Result<i64, String> {
+    db.save_preflight_run(job_id, &profile, &findings)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn list_preflight_runs(db: State<'_, Database>, job_id: i64) -> Result<Vec<PreflightRunSummary>, String> {
+pub fn list_preflight_runs(
+    db: State<'_, Database>,
+    job_id: i64,
+) -> Result<Vec<PreflightRunSummary>, String> {
     db.list_preflight_runs(job_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn list_findings_for_run(db: State<'_, Database>, run_id: i64) -> Result<Vec<PreflightFinding>, String> {
+pub fn list_findings_for_run(
+    db: State<'_, Database>,
+    run_id: i64,
+) -> Result<Vec<PreflightFinding>, String> {
     db.list_findings_for_run(run_id).map_err(|e| e.to_string())
 }
 
@@ -1100,20 +1661,37 @@ pub fn list_findings_for_run(db: State<'_, Database>, run_id: i64) -> Result<Vec
 // ═══════════════════════════════════════════════════════════════════════════
 
 #[tauri::command]
-pub fn reorder_pages(path: String, new_order: Vec<usize>, output_path: String) -> Result<(), String> {
+pub fn reorder_pages(
+    path: String,
+    new_order: Vec<usize>,
+    output_path: String,
+) -> Result<(), String> {
     use lopdf::Object;
     let _ = validate_write_path(&output_path)?;
     let mut doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {e}"))?;
     let pages = doc.get_pages();
     let all_page_numbers: Vec<u32> = pages.keys().copied().collect();
     if new_order.len() != all_page_numbers.len() {
-        return Err(format!("New order length ({}) does not match page count ({})", new_order.len(), all_page_numbers.len()));
+        return Err(format!(
+            "New order length ({}) does not match page count ({})",
+            new_order.len(),
+            all_page_numbers.len()
+        ));
     }
     // Get pages tree intermediary ref
-    let root_ref = doc.trailer.get(b"Root").ok().and_then(|o| o.as_reference().ok())
+    let root_ref = doc
+        .trailer
+        .get(b"Root")
+        .ok()
+        .and_then(|o| o.as_reference().ok())
         .ok_or_else(|| "No Root reference".to_string())?;
-    let catalog = doc.get_dictionary(root_ref).map_err(|e| format!("Catalog error: {e}"))?;
-    let pages_ref = catalog.get(b"Pages").ok().and_then(|o| o.as_reference().ok())
+    let catalog = doc
+        .get_dictionary(root_ref)
+        .map_err(|e| format!("Catalog error: {e}"))?;
+    let pages_ref = catalog
+        .get(b"Pages")
+        .ok()
+        .and_then(|o| o.as_reference().ok())
         .ok_or_else(|| "No Pages reference".to_string())?;
     let mut new_kids: Vec<Object> = Vec::new();
     for idx in &new_order {
@@ -1126,21 +1704,37 @@ pub fn reorder_pages(path: String, new_order: Vec<usize>, output_path: String) -
     if let Ok(pages_dict) = doc.get_dictionary_mut(pages_ref) {
         pages_dict.set("Kids", Object::Array(new_kids));
     }
-    doc.save(&output_path).map_err(|e| format!("Failed to save: {e}"))?;
+    doc.save(&output_path)
+        .map_err(|e| format!("Failed to save: {e}"))?;
     Ok(())
 }
 
 #[tauri::command]
-pub fn insert_blank_page(path: String, after_index: usize, width_mm: f64, height_mm: f64, output_path: String) -> Result<(), String> {
+pub fn insert_blank_page(
+    path: String,
+    after_index: usize,
+    width_mm: f64,
+    height_mm: f64,
+    output_path: String,
+) -> Result<(), String> {
     use lopdf::Object;
     let _ = validate_write_path(&output_path)?;
     let mut doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {e}"))?;
     let width_pts = width_mm / 0.3528;
     let height_pts = height_mm / 0.3528;
-    let root_ref = doc.trailer.get(b"Root").ok().and_then(|o| o.as_reference().ok())
+    let root_ref = doc
+        .trailer
+        .get(b"Root")
+        .ok()
+        .and_then(|o| o.as_reference().ok())
         .ok_or_else(|| "Cannot find Root".to_string())?;
-    let catalog = doc.get_dictionary(root_ref).map_err(|e| format!("Catalog: {e}"))?;
-    let pages_ref = catalog.get(b"Pages").ok().and_then(|o| o.as_reference().ok())
+    let catalog = doc
+        .get_dictionary(root_ref)
+        .map_err(|e| format!("Catalog: {e}"))?;
+    let pages_ref = catalog
+        .get(b"Pages")
+        .ok()
+        .and_then(|o| o.as_reference().ok())
         .ok_or_else(|| "Cannot find Pages ref".to_string())?;
     let media_box = Object::Array(vec![
         Object::Real(0.0),
@@ -1153,7 +1747,10 @@ pub fn insert_blank_page(path: String, after_index: usize, width_mm: f64, height
         (b"Type".to_vec(), Object::Name(b"Page".to_vec())),
         (b"Parent".to_vec(), Object::Reference(pages_ref)),
         (b"MediaBox".to_vec(), media_box),
-        (b"Resources".to_vec(), Object::Dictionary(lopdf::Dictionary::new())),
+        (
+            b"Resources".to_vec(),
+            Object::Dictionary(lopdf::Dictionary::new()),
+        ),
     ]);
     doc.objects.insert(page_id, Object::Dictionary(page_dict));
 
@@ -1176,7 +1773,8 @@ pub fn insert_blank_page(path: String, after_index: usize, width_mm: f64, height
             }
         }
     }
-    doc.save(&output_path).map_err(|e| format!("Failed to save: {e}"))?;
+    doc.save(&output_path)
+        .map_err(|e| format!("Failed to save: {e}"))?;
     Ok(())
 }
 
@@ -1218,10 +1816,16 @@ pub fn decode_content_stream(path: String, page_index: usize) -> Result<String, 
     use crate::pdf::content_stream;
     let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {e}"))?;
     let pages = doc.get_pages();
-    let obj_id = pages.get(&lopdf_page_id(page_index)).copied()
+    let obj_id = pages
+        .get(&lopdf_page_id(page_index))
+        .copied()
         .ok_or_else(|| format!("Page {page_index} not found"))?;
-    let page_dict = doc.get_dictionary(obj_id).map_err(|e| format!("Page dict error: {e}"))?;
-    let contents = page_dict.get(b"Contents").map_err(|_| "No Contents key".to_string())?;
+    let page_dict = doc
+        .get_dictionary(obj_id)
+        .map_err(|e| format!("Page dict error: {e}"))?;
+    let contents = page_dict
+        .get(b"Contents")
+        .map_err(|_| "No Contents key".to_string())?;
     match contents {
         lopdf::Object::Stream(stream) => {
             let decoded = content_stream::decode_stream(stream)?;
@@ -1267,24 +1871,35 @@ pub fn decode_content_stream(path: String, page_index: usize) -> Result<String, 
             }
             Ok(String::from_utf8_lossy(&combined).to_string())
         }
-        _ => Err(format!("Unexpected Contents type: {:?}", contents.type_name())),
+        _ => Err(format!(
+            "Unexpected Contents type: {:?}",
+            contents.type_name()
+        )),
     }
 }
 
 #[tauri::command]
-pub fn encode_content_stream(path: String, page_index: usize, content: String, output_path: String) -> Result<(), String> {
+pub fn encode_content_stream(
+    path: String,
+    page_index: usize,
+    content: String,
+    output_path: String,
+) -> Result<(), String> {
     use crate::pdf::content_stream;
     let _ = validate_write_path(&output_path)?;
     let mut doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {e}"))?;
     let pages = doc.get_pages();
-    let obj_id = pages.get(&lopdf_page_id(page_index)).copied()
+    let obj_id = pages
+        .get(&lopdf_page_id(page_index))
+        .copied()
         .ok_or_else(|| format!("Page {page_index} not found"))?;
     let stream = content_stream::encode_stream(content.as_bytes());
     let stream_id = doc.add_object(lopdf::Object::Stream(stream));
     if let Ok(page_dict) = doc.get_dictionary_mut(obj_id) {
         page_dict.set("Contents", lopdf::Object::Reference(stream_id));
     }
-    doc.save(&output_path).map_err(|e| format!("Failed to save: {e}"))?;
+    doc.save(&output_path)
+        .map_err(|e| format!("Failed to save: {e}"))?;
     Ok(())
 }
 
@@ -1323,14 +1938,18 @@ fn extract_text_from_page(doc: &lopdf::Document, page_index: usize) -> String {
                     Object::Stream(s) => s.content.clone(),
                     _ => return String::new(),
                 }
-            } else { return String::new(); }
+            } else {
+                return String::new();
+            }
         }
         _ => return String::new(),
     };
     // Try to decode
-    let decoded = crate::pdf::content_stream::decode_stream(
-        &lopdf::Stream::new(lopdf::Dictionary::new(), stream_data)
-    ).unwrap_or_default();
+    let decoded = crate::pdf::content_stream::decode_stream(&lopdf::Stream::new(
+        lopdf::Dictionary::new(),
+        stream_data,
+    ))
+    .unwrap_or_default();
 
     let s = String::from_utf8_lossy(&decoded);
     let mut text = String::new();
@@ -1392,7 +2011,13 @@ pub fn search_text(path: String, query: String) -> Result<Vec<TextMatch>, String
 }
 
 #[tauri::command]
-pub fn replace_text(path: String, page_index: usize, find: String, replace: String, output_path: String) -> Result<ReplaceResult, String> {
+pub fn replace_text(
+    path: String,
+    page_index: usize,
+    find: String,
+    replace: String,
+    output_path: String,
+) -> Result<ReplaceResult, String> {
     if find.is_empty() {
         return Err("`find` string must not be empty".to_string());
     }
@@ -1400,11 +2025,18 @@ pub fn replace_text(path: String, page_index: usize, find: String, replace: Stri
     let mut replacements = 0;
     let new_content = content.replace(&find, &replace);
     if new_content != content {
-        let len_diff = if content.len() > new_content.len() { content.len() - new_content.len() } else { 0 };
+        let len_diff = if content.len() > new_content.len() {
+            content.len() - new_content.len()
+        } else {
+            0
+        };
         replacements = len_diff / find.len();
     }
     encode_content_stream(path.clone(), page_index, new_content, output_path.clone())?;
-    Ok(ReplaceResult { replacements_made: replacements, output_path })
+    Ok(ReplaceResult {
+        replacements_made: replacements,
+        output_path,
+    })
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1412,7 +2044,13 @@ pub fn replace_text(path: String, page_index: usize, find: String, replace: Stri
 // ═══════════════════════════════════════════════════════════════════════════
 
 #[tauri::command]
-pub fn replace_image(path: String, _page_index: usize, _xobject_name: String, _new_image_path: String, output_path: String) -> Result<(), String> {
+pub fn replace_image(
+    path: String,
+    _page_index: usize,
+    _xobject_name: String,
+    _new_image_path: String,
+    output_path: String,
+) -> Result<(), String> {
     let _ = validate_write_path(&output_path)?;
     tracing::warn!("replace_image is a stub — image replacement not yet implemented");
     std::fs::copy(&path, &output_path).map_err(|e| format!("Failed to copy PDF: {e}"))?;
@@ -1421,7 +2059,13 @@ pub fn replace_image(path: String, _page_index: usize, _xobject_name: String, _n
 
 #[tauri::command]
 #[allow(unused_variables)]
-pub fn optimize_image(path: String, page_index: usize, xobject_name: String, settings: OptimizeSettings, output_path: String) -> Result<(), String> {
+pub fn optimize_image(
+    path: String,
+    page_index: usize,
+    xobject_name: String,
+    settings: OptimizeSettings,
+    output_path: String,
+) -> Result<(), String> {
     let _ = validate_write_path(&output_path)?;
     tracing::warn!("optimize_image is a stub — image optimization not yet implemented");
     std::fs::copy(&path, &output_path).map_err(|e| format!("Copy failed: {e}"))?;
@@ -1433,8 +2077,12 @@ pub fn optimize_image(path: String, page_index: usize, xobject_name: String, set
 // ═══════════════════════════════════════════════════════════════════════════
 
 #[tauri::command]
-pub fn create_preflight_profile(db: State<'_, Database>, input: PreflightProfileInput) -> Result<PreflightProfile, String> {
-    db.create_preflight_profile(&input).map_err(|e| e.to_string())
+pub fn create_preflight_profile(
+    db: State<'_, Database>,
+    input: PreflightProfileInput,
+) -> Result<PreflightProfile, String> {
+    db.create_preflight_profile(&input)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1453,23 +2101,43 @@ pub fn delete_preflight_profile(db: State<'_, Database>, id: i64) -> Result<(), 
 }
 
 #[tauri::command]
-pub fn list_profile_checks(db: State<'_, Database>, profile_id: i64) -> Result<Vec<ProfileCheck>, String> {
-    db.list_profile_checks(profile_id).map_err(|e| e.to_string())
+pub fn list_profile_checks(
+    db: State<'_, Database>,
+    profile_id: i64,
+) -> Result<Vec<ProfileCheck>, String> {
+    db.list_profile_checks(profile_id)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn update_profile_check(db: State<'_, Database>, check_id: i64, enabled: bool, severity: String) -> Result<(), String> {
-    db.update_profile_check(check_id, enabled, &severity).map_err(|e| e.to_string())
+pub fn update_profile_check(
+    db: State<'_, Database>,
+    check_id: i64,
+    enabled: bool,
+    severity: String,
+) -> Result<(), String> {
+    db.update_profile_check(check_id, enabled, &severity)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn list_profile_fixups(db: State<'_, Database>, profile_id: i64) -> Result<Vec<ProfileFixup>, String> {
-    db.list_profile_fixups(profile_id).map_err(|e| e.to_string())
+pub fn list_profile_fixups(
+    db: State<'_, Database>,
+    profile_id: i64,
+) -> Result<Vec<ProfileFixup>, String> {
+    db.list_profile_fixups(profile_id)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn update_profile_fixup(db: State<'_, Database>, fixup_id: i64, enabled: bool, params: String) -> Result<(), String> {
-    db.update_profile_fixup(fixup_id, enabled, &params).map_err(|e| e.to_string())
+pub fn update_profile_fixup(
+    db: State<'_, Database>,
+    fixup_id: i64,
+    enabled: bool,
+    params: String,
+) -> Result<(), String> {
+    db.update_profile_fixup(fixup_id, enabled, &params)
+        .map_err(|e| e.to_string())
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1477,7 +2145,10 @@ pub fn update_profile_fixup(db: State<'_, Database>, fixup_id: i64, enabled: boo
 // ═══════════════════════════════════════════════════════════════════════════
 
 #[tauri::command]
-pub fn create_action_list(db: State<'_, Database>, input: ActionListInput) -> Result<ActionList, String> {
+pub fn create_action_list(
+    db: State<'_, Database>,
+    input: ActionListInput,
+) -> Result<ActionList, String> {
     db.create_action_list(&input).map_err(|e| e.to_string())
 }
 
@@ -1497,13 +2168,22 @@ pub fn delete_action_list(db: State<'_, Database>, id: i64) -> Result<(), String
 }
 
 #[tauri::command]
-pub fn add_action_list_step(db: State<'_, Database>, action_list_id: i64, input: ActionListStepInput) -> Result<ActionListStep, String> {
-    db.add_action_list_step(action_list_id, &input).map_err(|e| e.to_string())
+pub fn add_action_list_step(
+    db: State<'_, Database>,
+    action_list_id: i64,
+    input: ActionListStepInput,
+) -> Result<ActionListStep, String> {
+    db.add_action_list_step(action_list_id, &input)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn list_action_list_steps(db: State<'_, Database>, action_list_id: i64) -> Result<Vec<ActionListStep>, String> {
-    db.list_action_list_steps(action_list_id).map_err(|e| e.to_string())
+pub fn list_action_list_steps(
+    db: State<'_, Database>,
+    action_list_id: i64,
+) -> Result<Vec<ActionListStep>, String> {
+    db.list_action_list_steps(action_list_id)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1512,8 +2192,13 @@ pub fn delete_action_list_step(db: State<'_, Database>, id: i64) -> Result<(), S
 }
 
 #[tauri::command]
-pub fn reorder_action_list_steps(db: State<'_, Database>, action_list_id: i64, step_ids: Vec<i64>) -> Result<(), String> {
-    db.reorder_action_list_steps(action_list_id, &step_ids).map_err(|e| e.to_string())
+pub fn reorder_action_list_steps(
+    db: State<'_, Database>,
+    action_list_id: i64,
+    step_ids: Vec<i64>,
+) -> Result<(), String> {
+    db.reorder_action_list_steps(action_list_id, &step_ids)
+        .map_err(|e| e.to_string())
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1521,8 +2206,13 @@ pub fn reorder_action_list_steps(db: State<'_, Database>, action_list_id: i64, s
 // ═══════════════════════════════════════════════════════════════════════════
 
 #[tauri::command]
-pub fn create_batch_job(db: State<'_, Database>, action_list_id: i64, files: Vec<String>) -> Result<BatchJob, String> {
-    db.create_batch_job(action_list_id, &files).map_err(|e| e.to_string())
+pub fn create_batch_job(
+    db: State<'_, Database>,
+    action_list_id: i64,
+    files: Vec<String>,
+) -> Result<BatchJob, String> {
+    db.create_batch_job(action_list_id, &files)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1541,7 +2231,10 @@ pub fn run_batch(db: State<'_, Database>, batch_id: i64) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn list_batch_results(db: State<'_, Database>, batch_id: i64) -> Result<Vec<BatchResult>, String> {
+pub fn list_batch_results(
+    db: State<'_, Database>,
+    batch_id: i64,
+) -> Result<Vec<BatchResult>, String> {
     db.list_batch_results(batch_id).map_err(|e| e.to_string())
 }
 
@@ -1550,7 +2243,10 @@ pub fn list_batch_results(db: State<'_, Database>, batch_id: i64) -> Result<Vec<
 // ═══════════════════════════════════════════════════════════════════════════
 
 #[tauri::command]
-pub fn create_hot_folder(db: State<'_, Database>, input: HotFolderInput) -> Result<HotFolder, String> {
+pub fn create_hot_folder(
+    db: State<'_, Database>,
+    input: HotFolderInput,
+) -> Result<HotFolder, String> {
     db.create_hot_folder(&input).map_err(|e| e.to_string())
 }
 
@@ -1566,7 +2262,8 @@ pub fn delete_hot_folder(db: State<'_, Database>, id: i64) -> Result<(), String>
 
 #[tauri::command]
 pub fn toggle_hot_folder(db: State<'_, Database>, id: i64, is_active: bool) -> Result<(), String> {
-    db.toggle_hot_folder(id, is_active).map_err(|e| e.to_string())
+    db.toggle_hot_folder(id, is_active)
+        .map_err(|e| e.to_string())
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1578,8 +2275,8 @@ pub fn compress_pdf(path: String, output_path: String) -> Result<(), String> {
     let _ = validate_write_path(&output_path)?;
     use flate2::write::ZlibEncoder;
     use flate2::Compression;
-    use std::io::Write;
     use lopdf::Object;
+    use std::io::Write;
 
     let mut doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {e}"))?;
     let mut compressed = 0u32;
@@ -1591,8 +2288,10 @@ pub fn compress_pdf(path: String, output_path: String) -> Result<(), String> {
             // single Name or an Array of Names (filter pipeline). (#165)
             let has_flate = match stream.dict.get(b"Filter") {
                 Ok(Object::Name(n)) => n == b"FlateDecode" || n == b"Fl",
-                Ok(Object::Array(arr)) => arr.iter().any(|f| matches!(f,
-                    Object::Name(n) if n == b"FlateDecode" || n == b"Fl")),
+                Ok(Object::Array(arr)) => arr.iter().any(|f| {
+                    matches!(f,
+                    Object::Name(n) if n == b"FlateDecode" || n == b"Fl")
+                }),
                 _ => false,
             };
             if !has_flate {
@@ -1601,8 +2300,12 @@ pub fn compress_pdf(path: String, output_path: String) -> Result<(), String> {
                 if encoder.write_all(&data).is_err() {
                     return Err("Zlib write failed".to_string());
                 }
-                stream.content = encoder.finish().map_err(|e| format!("Zlib finish failed: {e}"))?;
-                stream.dict.set("Filter", Object::Name(b"FlateDecode".to_vec()));
+                stream.content = encoder
+                    .finish()
+                    .map_err(|e| format!("Zlib finish failed: {e}"))?;
+                stream
+                    .dict
+                    .set("Filter", Object::Name(b"FlateDecode".to_vec()));
                 // Remove length as it'll be recalculated
                 stream.dict.remove(b"Length");
                 compressed += 1;
@@ -1610,7 +2313,8 @@ pub fn compress_pdf(path: String, output_path: String) -> Result<(), String> {
         }
     }
     log::info!("Compressed {compressed} streams in PDF");
-    doc.save(&output_path).map_err(|e| format!("Failed to save: {e}"))?;
+    doc.save(&output_path)
+        .map_err(|e| format!("Failed to save: {e}"))?;
     Ok(())
 }
 
@@ -1638,7 +2342,11 @@ pub fn get_analytics_summary(db: State<'_, Database>) -> Result<AnalyticsSummary
 // ═══════════════════════════════════════════════════════════════════════════
 
 #[tauri::command]
-pub fn generate_approval_sheet(_path: String, _config: ApprovalSheetConfig, _output_path: String) -> Result<(), String> {
+pub fn generate_approval_sheet(
+    _path: String,
+    _config: ApprovalSheetConfig,
+    _output_path: String,
+) -> Result<(), String> {
     Err("generate_approval_sheet is not implemented. Tracked in v2 polish issue #135.".to_string())
 }
 
@@ -1681,7 +2389,11 @@ pub fn get_ftp_settings(db: State<'_, Database>) -> Result<Option<FtpSettings>, 
 }
 
 #[tauri::command]
-pub fn create_webhook(db: State<'_, Database>, url: String, event: String) -> Result<WebhookEntry, String> {
+pub fn create_webhook(
+    db: State<'_, Database>,
+    url: String,
+    event: String,
+) -> Result<WebhookEntry, String> {
     if !url.starts_with("https://") {
         return Err("Webhook URL must use HTTPS".to_string());
     }
@@ -1694,12 +2406,15 @@ pub fn create_webhook(db: State<'_, Database>, url: String, event: String) -> Re
 
 fn validate_webhook_url(url: &str) -> Result<(), String> {
     let parsed = url::Url::parse(url).map_err(|e| format!("Invalid webhook URL: {}", e))?;
-    let host = parsed.host_str().ok_or_else(|| "Webhook URL missing host".to_string())?;
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| "Webhook URL missing host".to_string())?;
     let resolved: Vec<std::net::IpAddr> = match host.parse::<std::net::IpAddr>() {
         Ok(ip) => vec![ip],
         Err(_) => {
             use std::net::ToSocketAddrs;
-            (host, 443).to_socket_addrs()
+            (host, 443)
+                .to_socket_addrs()
                 .map_err(|e| format!("Cannot resolve webhook host: {}", e))?
                 .map(|sa| sa.ip())
                 .collect()
@@ -1722,7 +2437,8 @@ fn is_blocked_ip(ip: std::net::IpAddr) -> bool {
             || v4.is_link_local()                   // 169.254.0.0/16
             || v4.is_unspecified()                  // 0.0.0.0
             || v4.is_multicast()
-            || v4.octets()[0] == 100 && (v4.octets()[1] >= 64 && v4.octets()[1] <= 127) // 100.64.0.0/10 carrier-grade NAT
+            || v4.octets()[0] == 100 && (v4.octets()[1] >= 64 && v4.octets()[1] <= 127)
+            // 100.64.0.0/10 carrier-grade NAT
         }
         IpAddr::V6(v6) => {
             v6.is_loopback()                        // ::1
@@ -1781,8 +2497,14 @@ pub fn generate_job_ticket(
 // ═══════════════════════════════════════════════════════════════════════════
 
 #[tauri::command]
-pub async fn upload_event_batch_cmd(db: State<'_, Database>, tenant_id: String, _last_event_id: i64) -> Result<String, String> {
-    let events = db.list_events(&tenant_id, None, None, 1000).map_err(|e| e.to_string())?;
+pub async fn upload_event_batch_cmd(
+    db: State<'_, Database>,
+    tenant_id: String,
+    _last_event_id: i64,
+) -> Result<String, String> {
+    let events = db
+        .list_events(&tenant_id, None, None, 1000)
+        .map_err(|e| e.to_string())?;
     let batch = crate::cloud_backup::EventBatch { tenant_id, events };
     let result = crate::cloud_backup::upload_event_batch(&batch).await?;
     Ok(result.message)
@@ -1796,7 +2518,11 @@ pub async fn upload_snapshot_cmd(tenant_id: String, file_path: String) -> Result
     // — enough to detect obvious mismatched uploads for the stub backend.
     // (#163)
     let checksum = compute_snapshot_checksum(&file_path);
-    let snapshot = crate::cloud_backup::SnapshotUpload { tenant_id, file_path, checksum };
+    let snapshot = crate::cloud_backup::SnapshotUpload {
+        tenant_id,
+        file_path,
+        checksum,
+    };
     let result = crate::cloud_backup::upload_snapshot(&snapshot).await?;
     Ok(result.message)
 }
@@ -1824,8 +2550,17 @@ fn compute_snapshot_checksum(path: &str) -> String {
         let _ = file.seek(SeekFrom::Start(size - 64));
         let _ = file.read(&mut tail);
     }
-    let to_hex = |bytes: &[u8]| bytes.iter().map(|b| format!("{:02x}", b)).collect::<String>();
-    format!("size:{size}:h{}:t{}", to_hex(&head[..head_len]), to_hex(&tail))
+    let to_hex = |bytes: &[u8]| {
+        bytes
+            .iter()
+            .map(|b| format!("{:02x}", b))
+            .collect::<String>()
+    };
+    format!(
+        "size:{size}:h{}:t{}",
+        to_hex(&head[..head_len]),
+        to_hex(&tail)
+    )
 }
 
 #[tauri::command]
@@ -1862,7 +2597,10 @@ pub fn get_schema_version(db: State<'_, Database>) -> Result<i64, String> {
 }
 
 #[tauri::command]
-pub fn create_backup(db: State<'_, Database>, backup_path: String) -> Result<crate::models::BackupEntry, String> {
+pub fn create_backup(
+    db: State<'_, Database>,
+    backup_path: String,
+) -> Result<crate::models::BackupEntry, String> {
     let path = std::path::PathBuf::from(&backup_path);
     db.create_backup(&path).map_err(|e| e.to_string())
 }
@@ -1874,7 +2612,10 @@ pub fn list_backups(db: State<'_, Database>) -> Result<Vec<crate::models::Backup
 
 // #99 — SQLCipher: export plaintext backup
 #[tauri::command]
-pub fn export_plaintext_backup(db: State<'_, Database>, output_path: String) -> Result<u64, String> {
+pub fn export_plaintext_backup(
+    db: State<'_, Database>,
+    output_path: String,
+) -> Result<u64, String> {
     let _ = validate_write_path(&output_path)?;
     let path = std::path::PathBuf::from(&output_path);
     db.export_plaintext_backup(&path).map_err(|e| e.to_string())
@@ -1887,7 +2628,10 @@ pub fn export_plaintext_backup(db: State<'_, Database>, output_path: String) -> 
 #[tauri::command]
 pub fn reveal_logs(app_handle: tauri::AppHandle) -> Result<(), String> {
     use tauri::Manager;
-    let app_dir = app_handle.path().app_data_dir().map_err(|e| e.to_string())?;
+    let app_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?;
     crate::logging::reveal_logs(&app_dir);
     Ok(())
 }

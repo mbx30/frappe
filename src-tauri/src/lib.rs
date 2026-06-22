@@ -19,7 +19,10 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let app_handle = app.handle();
-            let app_dir: PathBuf = app_handle.path().app_data_dir().expect("failed to get app data dir");
+            let app_dir: PathBuf = app_handle
+                .path()
+                .app_data_dir()
+                .expect("failed to get app data dir");
 
             let logging_guard = logging::init_logging(&app_dir);
             app_handle.manage(logging_guard);

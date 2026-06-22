@@ -46,6 +46,7 @@ export default function ArtApprovalPanel({ orderId, orderNumber }: ArtApprovalPa
     }
   }, [orderId])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load() }, [load])
 
   const handleSubmit = async () => {

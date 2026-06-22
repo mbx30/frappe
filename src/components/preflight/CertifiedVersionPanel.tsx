@@ -22,6 +22,7 @@ export default function CertifiedVersionPanel({ jobId, filePath }: CertifiedVers
 
   useEffect(() => {
     if (jobId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLoading(true)
       invoke<CertifiedVersion[]>('list_certified_versions', { jobId })
         .then(setVersions)

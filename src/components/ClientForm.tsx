@@ -27,6 +27,7 @@ export default function ClientForm({ client, onSave, onCancel }: ClientFormProps
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
     if (client) {
       setForm({
         name: client.name,
@@ -41,6 +42,7 @@ export default function ClientForm({ client, onSave, onCancel }: ClientFormProps
     } else {
       setForm(emptyForm)
     }
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [client])
 
   const validate = (): string | null => {

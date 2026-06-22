@@ -13,7 +13,9 @@ pub fn check_security(doc: &Document) -> Vec<SecurityFinding> {
     let mut findings = Vec::new();
 
     // Check for encryption
-    let is_encrypted = doc.trailer.get(b"Encrypt")
+    let is_encrypted = doc
+        .trailer
+        .get(b"Encrypt")
         .map(|o| !matches!(o, Object::Null))
         .unwrap_or(false);
     if is_encrypted {
@@ -78,11 +80,15 @@ pub fn check_security(doc: &Document) -> Vec<SecurityFinding> {
                         for annot in annots_arr {
                             if let Ok((_, annot_obj)) = doc.dereference(annot) {
                                 if let Ok(annot_dict) = annot_obj.as_dict() {
-                                    let subtype = annot_dict.get(b"Subtype")
-                                        .ok().and_then(|s| s.as_name().ok());
+                                    let subtype = annot_dict
+                                        .get(b"Subtype")
+                                        .ok()
+                                        .and_then(|s| s.as_name().ok());
                                     match subtype {
-                                        Some(b"Movie") | Some(b"Sound") | Some(b"Screen") | Some(b"Widget") => {
-                                            let st = String::from_utf8_lossy(subtype.unwrap()).to_string();
+                                        Some(b"Movie") | Some(b"Sound") | Some(b"Screen")
+                                        | Some(b"Widget") => {
+                                            let st = String::from_utf8_lossy(subtype.unwrap())
+                                                .to_string();
                                             findings.push(SecurityFinding {
                                                 category: "multimedia".into(),
                                                 detail: format!("Annotation type: /{}", st),

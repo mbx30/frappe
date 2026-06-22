@@ -1,4 +1,4 @@
-use lopdf::{Document, Object, Dictionary};
+use lopdf::{Dictionary, Document, Object};
 use serde::Serialize;
 
 #[derive(Debug, Serialize, Clone)]
@@ -14,9 +14,7 @@ pub struct FontFinding {
 
 fn detect_subsetting(name: &str) -> bool {
     let bytes = name.as_bytes();
-    bytes.len() > 7
-        && bytes[6] == b'+'
-        && bytes[..6].iter().all(|b| b.is_ascii_uppercase())
+    bytes.len() > 7 && bytes[6] == b'+' && bytes[..6].iter().all(|b| b.is_ascii_uppercase())
 }
 
 fn obj_to_string(o: &Object) -> String {
@@ -48,7 +46,11 @@ fn check_font_embedded(dict: &Dictionary, doc: &Document) -> bool {
         .unwrap_or(false)
 }
 
-fn collect_fonts_from_dict(dict: &Dictionary, doc: &Document, fonts: &mut Vec<(String, String, bool)>) {
+fn collect_fonts_from_dict(
+    dict: &Dictionary,
+    doc: &Document,
+    fonts: &mut Vec<(String, String, bool)>,
+) {
     for (_key, value) in dict.iter() {
         if let Ok((_, obj)) = doc.dereference(value) {
             if let Ok(font_dict) = obj.as_dict() {
@@ -103,7 +105,8 @@ pub fn collect_fonts(doc: &Document) -> Vec<FontFinding> {
     let page_ids: Vec<(u32, u16)> = doc.get_pages().values().copied().collect();
 
     let mut seen: std::collections::HashMap<String, FontFinding> = std::collections::HashMap::new();
-    let mut page_sets: std::collections::HashMap<String, std::collections::HashSet<usize>> = std::collections::HashMap::new();
+    let mut page_sets: std::collections::HashMap<String, std::collections::HashSet<usize>> =
+        std::collections::HashMap::new();
     for page_num in 0..page_ids.len() {
         let obj_id = page_ids[page_num];
         if let Ok(page_dict) = doc.get_dictionary(obj_id) {
@@ -126,7 +129,7 @@ pub fn collect_fonts(doc: &Document) -> Vec<FontFinding> {
                         ("ok".to_string(), format!("Font '{}' is embedded and subsetted.", name))
                     };
                     FontFinding {
-                        font_name: name,
+                        font_name: name.clone(),
                         font_type,
                         is_embedded,
                         is_subsetted,

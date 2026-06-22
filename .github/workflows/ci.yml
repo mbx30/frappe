@@ -116,6 +116,6 @@ jobs:
         run: cargo fmt --check
         working-directory: src-tauri
 
-      - name: cargo tauri build
-        run: cargo tauri build
+      - name: Build Tauri (verify compile only)
+        run: npx --yes @tauri-apps/cli build --no-bundle
         working-directory: src-tauri

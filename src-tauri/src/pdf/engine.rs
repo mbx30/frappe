@@ -22,7 +22,9 @@ impl PdfEngine {
     fn try_init() -> Result<Self, String> {
         let bindings = Self::load_bindings()?;
         let pdfium = Pdfium::new(bindings);
-        Ok(PdfEngine { inner: Some(pdfium) })
+        Ok(PdfEngine {
+            inner: Some(pdfium),
+        })
     }
 
     fn load_bindings() -> Result<Box<dyn PdfiumLibraryBindings>, String> {
@@ -34,8 +36,7 @@ impl PdfEngine {
                 }
             }
         }
-        Pdfium::bind_to_system_library()
-            .map_err(|e| format!("Failed to load PDFium: {}", e))
+        Pdfium::bind_to_system_library().map_err(|e| format!("Failed to load PDFium: {}", e))
     }
 
     fn bundled_path() -> Option<PathBuf> {
@@ -54,7 +55,9 @@ impl PdfEngine {
     }
 
     pub fn open_document(&self, path: &str) -> Result<PdfDocument<'_>, String> {
-        let pdfium = self.inner.as_ref().ok_or_else(|| "PDFium not available; PDF rendering features are disabled".to_string())?;
+        let pdfium = self.inner.as_ref().ok_or_else(|| {
+            "PDFium not available; PDF rendering features are disabled".to_string()
+        })?;
         pdfium
             .load_pdf_from_file(path, None)
             .map_err(|e| format!("Failed to open PDF: {}", e))

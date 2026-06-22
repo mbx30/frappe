@@ -37,7 +37,7 @@ export default function Spreadsheet({ sheetData, onCellUpdate, onAddRow }: Sprea
       }
     }
     return Array.from(rowMap.values()).sort((a, b) => a.__row_index - b.__row_index)
-  }, [sheetData.rows, sheetData.columns])
+  }, [sheetData.rows])
 
   const onRowsChange = useCallback(
     (changedRows: GridRow[], data: { indexes: number[]; column: Column<GridRow> }) => {

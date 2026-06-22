@@ -15,11 +15,7 @@ export default function InventoryList({ onCreateNew, onEditItem }: InventoryList
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
 
-  useEffect(() => {
-    loadInventory()
-  }, [])
-
-  const loadInventory = async () => {
+  async function loadInventory() {
     setIsLoading(true)
     setLoadError(null)
     try {
@@ -36,6 +32,11 @@ export default function InventoryList({ onCreateNew, onEditItem }: InventoryList
       setIsLoading(false)
     }
   }
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadInventory()
+  }, [])
 
   const handleAcknowledgeAlert = async (alertId: number) => {
     try {

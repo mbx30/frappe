@@ -35,6 +35,7 @@ function ThumbnailStrip({ filePath, pageCount, currentPage, onSelectPage }: {
   const [thumbnails, setThumbnails] = useState<Record<number, string>>({})
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setThumbnails({})
     const max = Math.min(pageCount, 20)
     let cancelled = false
@@ -46,7 +47,7 @@ function ThumbnailStrip({ filePath, pageCount, currentPage, onSelectPage }: {
           const url = await invoke<string>('render_page_thumbnail', { path: filePath, pageIndex: i, widthPx: 120 })
           if (cancelled) break
           results[i] = url
-        } catch (e) {
+        } catch {
           // ignore per-thumbnail errors
         }
       }
@@ -98,15 +99,17 @@ function PageViewer({ filePath, pageIndex }: { filePath: string; pageIndex: numb
 
   useEffect(() => {
     let cancelled = false
+    /* eslint-disable react-hooks/set-state-in-effect */
     setLoading(true)
     setRenderUrl(null)
+    /* eslint-enable react-hooks/set-state-in-effect */
     const dpi = Math.round(72 * zoom / 100)
 
     ;(async () => {
       try {
         const url = await invoke<string>('render_page', { path: filePath, pageIndex, dpi })
         if (!cancelled) setRenderUrl(url)
-      } catch (e) {
+      } catch {
         // ignore render errors
       } finally {
         if (!cancelled) setLoading(false)
@@ -142,8 +145,7 @@ export default function PDFView({ summary, jobs, onOpenFile, onSaveJob, onDelete
   const [showConversion, setShowConversion] = useState(false)
   const [showWizard, setShowWizard] = useState(false)
   const [showCertified, setShowCertified] = useState(false)
-  const [, _setSavedRunId] = useState<number | null>(null)
-
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setCurrentPage(0); setShowViewer(false); setPreflightResult(null); setShowReport(false) }, [summary?.file_path])
 
   const runFullPreflight = useCallback(async () => {

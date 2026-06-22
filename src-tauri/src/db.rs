@@ -1,6 +1,6 @@
 #![allow(unused_mut)] // many functions use `let mut conn` defensively (tx vs non-tx call paths)
 
-use rusqlite::{Connection, Result, params};
+use rusqlite::{params, Connection, Result};
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -40,11 +40,14 @@ fn hex_to_bytes(s: &str) -> Option<Vec<u8>> {
     if s.len() % 2 != 0 {
         return None;
     }
-    (0..s.len()).step_by(2).map(|i| {
-        let hi = (s.as_bytes()[i] as char).to_digit(16)?;
-        let lo = (s.as_bytes()[i + 1] as char).to_digit(16)?;
-        Some((hi * 16 + lo) as u8)
-    }).collect()
+    (0..s.len())
+        .step_by(2)
+        .map(|i| {
+            let hi = (s.as_bytes()[i] as char).to_digit(16)?;
+            let lo = (s.as_bytes()[i + 1] as char).to_digit(16)?;
+            Some((hi * 16 + lo) as u8)
+        })
+        .collect()
 }
 
 /// Validate a file path is safe to interpolate into SQL. Rejects paths containing
@@ -52,7 +55,9 @@ fn hex_to_bytes(s: &str) -> Option<Vec<u8>> {
 /// break out of an ATTACH DATABASE '...' string literal.
 #[cfg(feature = "sqlcipher")]
 fn validate_sql_path(path: &std::path::Path) -> std::result::Result<&str, String> {
-    let s = path.to_str().ok_or_else(|| "path contains invalid UTF-8".to_string())?;
+    let s = path
+        .to_str()
+        .ok_or_else(|| "path contains invalid UTF-8".to_string())?;
     for ch in s.chars() {
         if ch == '\'' || ch == '\0' || ch == '\n' || ch == '\r' {
             return Err(format!("path contains disallowed character: {:?}", ch));
@@ -139,18 +144,20 @@ impl Database {
             .create(true)
             .truncate(true)
             .open(&lock_path)
-            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(
-                format!("Cannot create lock file {}: {}", lock_path.display(), e).into()
-            ))?;
-        lock_file
-            .try_lock_exclusive()
-            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(
+            .map_err(|e| {
+                rusqlite::Error::ToSqlConversionFailure(
+                    format!("Cannot create lock file {}: {}", lock_path.display(), e).into(),
+                )
+            })?;
+        lock_file.try_lock_exclusive().map_err(|e| {
+            rusqlite::Error::ToSqlConversionFailure(
                 format!(
                     "Another Frappe instance is already running. Close it and try again. ({})",
                     e
                 )
-                .into()
-            ))?;
+                .into(),
+            )
+        })?;
 
         #[cfg(feature = "sqlcipher")]
         let db_exists = db_path.exists();
@@ -162,7 +169,8 @@ impl Database {
                     let msg = "Database is encrypted but no encryption key found in OS keychain. \
                                This happens after a full OS reinstall or keychain wipe. \
                                Restore your database from a plaintext backup (if you have one) \
-                               or contact support for recovery options.".to_string();
+                               or contact support for recovery options."
+                        .to_string();
                     rusqlite::Error::ToSqlConversionFailure(msg.into())
                 })?
             } else {
@@ -238,7 +246,11 @@ impl Database {
     /// any failure during migration (so unencrypted PII doesn't linger on disk
     /// if the migration crashes partway through).
     #[cfg(feature = "sqlcipher")]
-    fn migrate_from_plaintext(db_path: &PathBuf, key: &DatabaseKey, lock_file: std::fs::File) -> Result<Self> {
+    fn migrate_from_plaintext(
+        db_path: &PathBuf,
+        key: &DatabaseKey,
+        lock_file: std::fs::File,
+    ) -> Result<Self> {
         let key_hex = key.as_hex();
 
         // Save old plaintext DB
@@ -270,9 +282,8 @@ impl Database {
         )?;
 
         // Create new encrypted DB via ATTACH + sqlcipher_export
-        let enc_path_str = validate_sql_path(db_path).map_err(|e| {
-            rusqlite::Error::ToSqlConversionFailure(e.into())
-        })?;
+        let enc_path_str = validate_sql_path(db_path)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(e.into()))?;
         plain_conn.execute_batch(&format!(
             "ATTACH DATABASE '{}' AS encrypted KEY \"x'{}'\";",
             enc_path_str, key_hex
@@ -301,7 +312,10 @@ impl Database {
     }
 
     fn initialize_schema(&self) -> Result<()> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS schema_version (
                 version INTEGER PRIMARY KEY,
@@ -713,28 +727,65 @@ impl Database {
             );"
         )?;
         // Seed built-in preflight profiles
-        let profile_count: i64 = conn.query_row("SELECT COUNT(*) FROM preflight_profiles", [], |row| row.get(0)).unwrap_or(0);
+        let profile_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM preflight_profiles", [], |row| {
+                row.get(0)
+            })
+            .unwrap_or(0);
         if profile_count == 0 {
             let builtins = vec![
-                ("PDF/X-1a", "Strict PDF/X-1a compliance check", vec![
-                    ("fonts_embedded", "error"), ("page_boxes", "error"), ("image_resolution", "error"),
-                    ("bleed", "error"), ("output_intents", "error"), ("security", "error"),
-                    ("pdfx_version", "error"), ("color_spaces", "error"),
-                ]),
-                ("PDF/X-4", "PDF/X-4 compliance check with transparency support", vec![
-                    ("fonts_embedded", "error"), ("page_boxes", "error"), ("image_resolution", "warning"),
-                    ("bleed", "error"), ("output_intents", "error"), ("security", "error"),
-                    ("pdfx_version", "error"), ("color_spaces", "error"),
-                ]),
-                ("Print Ready", "General print-ready check for commercial printing", vec![
-                    ("fonts_embedded", "error"), ("page_boxes", "warning"), ("image_resolution", "error"),
-                    ("bleed", "error"), ("security", "warning"), ("overprint", "warning"),
-                    ("transparency", "warning"), ("spot_colors", "info"),
-                ]),
-                ("Web/Mobile", "Lightweight check for digital distribution", vec![
-                    ("fonts_embedded", "warning"), ("page_boxes", "info"), ("image_resolution", "warning"),
-                    ("security", "error"),
-                ]),
+                (
+                    "PDF/X-1a",
+                    "Strict PDF/X-1a compliance check",
+                    vec![
+                        ("fonts_embedded", "error"),
+                        ("page_boxes", "error"),
+                        ("image_resolution", "error"),
+                        ("bleed", "error"),
+                        ("output_intents", "error"),
+                        ("security", "error"),
+                        ("pdfx_version", "error"),
+                        ("color_spaces", "error"),
+                    ],
+                ),
+                (
+                    "PDF/X-4",
+                    "PDF/X-4 compliance check with transparency support",
+                    vec![
+                        ("fonts_embedded", "error"),
+                        ("page_boxes", "error"),
+                        ("image_resolution", "warning"),
+                        ("bleed", "error"),
+                        ("output_intents", "error"),
+                        ("security", "error"),
+                        ("pdfx_version", "error"),
+                        ("color_spaces", "error"),
+                    ],
+                ),
+                (
+                    "Print Ready",
+                    "General print-ready check for commercial printing",
+                    vec![
+                        ("fonts_embedded", "error"),
+                        ("page_boxes", "warning"),
+                        ("image_resolution", "error"),
+                        ("bleed", "error"),
+                        ("security", "warning"),
+                        ("overprint", "warning"),
+                        ("transparency", "warning"),
+                        ("spot_colors", "info"),
+                    ],
+                ),
+                (
+                    "Web/Mobile",
+                    "Lightweight check for digital distribution",
+                    vec![
+                        ("fonts_embedded", "warning"),
+                        ("page_boxes", "info"),
+                        ("image_resolution", "warning"),
+                        ("security", "error"),
+                    ],
+                ),
             ];
             for (name, desc, checks) in &builtins {
                 if let Err(e) = conn.execute(
@@ -769,7 +820,11 @@ impl Database {
             !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
         }
 
-        fn add_col_if_missing(conn: &Connection, table: &str, col_def: &str) -> rusqlite::Result<()> {
+        fn add_col_if_missing(
+            conn: &Connection,
+            table: &str,
+            col_def: &str,
+        ) -> rusqlite::Result<()> {
             let col_name = col_def.split_whitespace().next().unwrap_or("");
             if !is_valid_identifier(table) || !is_valid_identifier(col_name) {
                 // Refuse to interpolate an invalid identifier into DDL (#168).
@@ -783,10 +838,7 @@ impl Database {
                 )
                 .unwrap_or(false);
             if !exists {
-                conn.execute(
-                    &format!("ALTER TABLE {} ADD COLUMN {}", table, col_def),
-                    [],
-                )?;
+                conn.execute(&format!("ALTER TABLE {} ADD COLUMN {}", table, col_def), [])?;
             }
             Ok(())
         }
@@ -804,24 +856,75 @@ impl Database {
         add_col_if_missing(&conn, "orders", "tracking_carrier TEXT DEFAULT ''")?;
         add_col_if_missing(&conn, "orders", "ready_for_pickup INTEGER DEFAULT 0")?;
         add_col_if_missing(&conn, "orders", "shipped_at TEXT")?;
-        add_col_if_missing(&conn, "invoices", "tenant_id TEXT NOT NULL DEFAULT 'default'")?;
-        add_col_if_missing(&conn, "invoices", "qb_sync_status TEXT DEFAULT 'not_synced'")?;
+        add_col_if_missing(
+            &conn,
+            "invoices",
+            "tenant_id TEXT NOT NULL DEFAULT 'default'",
+        )?;
+        add_col_if_missing(
+            &conn,
+            "invoices",
+            "qb_sync_status TEXT DEFAULT 'not_synced'",
+        )?;
         add_col_if_missing(&conn, "invoices", "amount_paid REAL DEFAULT 0")?;
-        add_col_if_missing(&conn, "estimates", "tenant_id TEXT NOT NULL DEFAULT 'default'")?;
-        add_col_if_missing(&conn, "clients", "tenant_id TEXT NOT NULL DEFAULT 'default'")?;
-        add_col_if_missing(&conn, "inventory_items", "tenant_id TEXT NOT NULL DEFAULT 'default'")?;
-        add_col_if_missing(&conn, "art_approvals", "tenant_id TEXT NOT NULL DEFAULT 'default'")?;
-        add_col_if_missing(&conn, "payments", "tenant_id TEXT NOT NULL DEFAULT 'default'")?;
-        add_col_if_missing(&conn, "pdf_jobs", "tenant_id TEXT NOT NULL DEFAULT 'default'")?;
-        add_col_if_missing(&conn, "preflight_run_summary", "tenant_id TEXT NOT NULL DEFAULT 'default'")?;
-        add_col_if_missing(&conn, "action_lists", "tenant_id TEXT NOT NULL DEFAULT 'default'")?;
-        add_col_if_missing(&conn, "batch_jobs", "tenant_id TEXT NOT NULL DEFAULT 'default'")?;
-        add_col_if_missing(&conn, "hot_folders", "tenant_id TEXT NOT NULL DEFAULT 'default'")?;
+        add_col_if_missing(
+            &conn,
+            "estimates",
+            "tenant_id TEXT NOT NULL DEFAULT 'default'",
+        )?;
+        add_col_if_missing(
+            &conn,
+            "clients",
+            "tenant_id TEXT NOT NULL DEFAULT 'default'",
+        )?;
+        add_col_if_missing(
+            &conn,
+            "inventory_items",
+            "tenant_id TEXT NOT NULL DEFAULT 'default'",
+        )?;
+        add_col_if_missing(
+            &conn,
+            "art_approvals",
+            "tenant_id TEXT NOT NULL DEFAULT 'default'",
+        )?;
+        add_col_if_missing(
+            &conn,
+            "payments",
+            "tenant_id TEXT NOT NULL DEFAULT 'default'",
+        )?;
+        add_col_if_missing(
+            &conn,
+            "pdf_jobs",
+            "tenant_id TEXT NOT NULL DEFAULT 'default'",
+        )?;
+        add_col_if_missing(
+            &conn,
+            "preflight_run_summary",
+            "tenant_id TEXT NOT NULL DEFAULT 'default'",
+        )?;
+        add_col_if_missing(
+            &conn,
+            "action_lists",
+            "tenant_id TEXT NOT NULL DEFAULT 'default'",
+        )?;
+        add_col_if_missing(
+            &conn,
+            "batch_jobs",
+            "tenant_id TEXT NOT NULL DEFAULT 'default'",
+        )?;
+        add_col_if_missing(
+            &conn,
+            "hot_folders",
+            "tenant_id TEXT NOT NULL DEFAULT 'default'",
+        )?;
         Ok(())
     }
 
     pub fn create_workbook(&self, name: &str) -> Result<Workbook> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute("INSERT INTO workbooks (name) VALUES (?1)", params![name])?;
         let id = conn.last_insert_rowid();
         Ok(Workbook {
@@ -833,8 +936,13 @@ impl Database {
     }
 
     pub fn list_workbooks(&self) -> Result<Vec<Workbook>> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
-        let mut stmt = conn.prepare("SELECT id, name, created_at, updated_at FROM workbooks ORDER BY updated_at DESC")?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let mut stmt = conn.prepare(
+            "SELECT id, name, created_at, updated_at FROM workbooks ORDER BY updated_at DESC",
+        )?;
         let rows = stmt.query_map([], |row| {
             Ok(Workbook {
                 id: row.get(0)?,
@@ -847,14 +955,21 @@ impl Database {
     }
 
     pub fn delete_workbook(&self, id: i64) -> Result<()> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute("DELETE FROM workbooks WHERE id = ?1", params![id])?;
         Ok(())
     }
 
     pub fn get_workbook_data(&self, workbook_id: i64) -> Result<WorkbookData> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
-        let mut stmt = conn.prepare("SELECT id, name, created_at, updated_at FROM workbooks WHERE id = ?1")?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let mut stmt =
+            conn.prepare("SELECT id, name, created_at, updated_at FROM workbooks WHERE id = ?1")?;
         let workbook = stmt.query_row(params![workbook_id], |row| {
             Ok(Workbook {
                 id: row.get(0)?,
@@ -882,35 +997,46 @@ impl Database {
             sheets_data.push(sheet_data);
         }
 
-        Ok(WorkbookData { workbook, sheets: sheets_data })
+        Ok(WorkbookData {
+            workbook,
+            sheets: sheets_data,
+        })
     }
 
     fn load_sheet_data_internal(&self, conn: &Connection, sheet: Sheet) -> Result<SheetData> {
         let mut col_stmt = conn.prepare("SELECT id, sheet_id, name, col_type, sort_order, width FROM sheet_columns WHERE sheet_id = ?1 ORDER BY sort_order")?;
-        let columns: Vec<SheetColumn> = col_stmt.query_map(params![sheet.id], |row| {
-            Ok(SheetColumn {
-                id: row.get(0)?,
-                sheet_id: row.get(1)?,
-                name: row.get(2)?,
-                col_type: row.get(3)?,
-                sort_order: row.get(4)?,
-                width: row.get(5)?,
-            })
-        })?.collect::<Result<Vec<_>>>()?;
+        let columns: Vec<SheetColumn> = col_stmt
+            .query_map(params![sheet.id], |row| {
+                Ok(SheetColumn {
+                    id: row.get(0)?,
+                    sheet_id: row.get(1)?,
+                    name: row.get(2)?,
+                    col_type: row.get(3)?,
+                    sort_order: row.get(4)?,
+                    width: row.get(5)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
 
         let mut cell_stmt = conn.prepare("SELECT id, sheet_id, row_index, column_id, value FROM cell_data WHERE sheet_id = ?1 ORDER BY row_index, column_id")?;
-        let cells: Vec<CellData> = cell_stmt.query_map(params![sheet.id], |row| {
-            Ok(CellData {
-                id: row.get(0)?,
-                sheet_id: row.get(1)?,
-                row_index: row.get(2)?,
-                column_id: row.get(3)?,
-                value: row.get(4)?,
-            })
-        })?.collect::<Result<Vec<_>>>()?;
+        let cells: Vec<CellData> = cell_stmt
+            .query_map(params![sheet.id], |row| {
+                Ok(CellData {
+                    id: row.get(0)?,
+                    sheet_id: row.get(1)?,
+                    row_index: row.get(2)?,
+                    column_id: row.get(3)?,
+                    value: row.get(4)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
 
-        let row_count = if columns.is_empty() { 0 } else {
-            let mut count_stmt = conn.prepare("SELECT COALESCE(MAX(row_index) + 1, 0) FROM cell_data WHERE sheet_id = ?1")?;
+        let row_count = if columns.is_empty() {
+            0
+        } else {
+            let mut count_stmt = conn.prepare(
+                "SELECT COALESCE(MAX(row_index) + 1, 0) FROM cell_data WHERE sheet_id = ?1",
+            )?;
             count_stmt.query_row(params![sheet.id], |row| row.get::<_, i64>(0))?
         };
 
@@ -931,11 +1057,19 @@ impl Database {
             rows.push(current_row);
         }
 
-        Ok(SheetData { sheet, columns, rows, row_count })
+        Ok(SheetData {
+            sheet,
+            columns,
+            rows,
+            row_count,
+        })
     }
 
     pub fn create_sheet(&self, workbook_id: i64, name: &str) -> Result<Sheet> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let max_order: i64 = conn.query_row(
             "SELECT COALESCE(MAX(sort_order), -1) FROM sheets WHERE workbook_id = ?1",
             params![workbook_id],
@@ -946,12 +1080,24 @@ impl Database {
             params![workbook_id, name, max_order + 1],
         )?;
         let id = conn.last_insert_rowid();
-        conn.execute("UPDATE workbooks SET updated_at = datetime('now') WHERE id = ?1", params![workbook_id])?;
-        Ok(Sheet { id, workbook_id, name: name.to_string(), sort_order: max_order + 1, created_at: chrono::Utc::now().to_rfc3339() })
+        conn.execute(
+            "UPDATE workbooks SET updated_at = datetime('now') WHERE id = ?1",
+            params![workbook_id],
+        )?;
+        Ok(Sheet {
+            id,
+            workbook_id,
+            name: name.to_string(),
+            sort_order: max_order + 1,
+            created_at: chrono::Utc::now().to_rfc3339(),
+        })
     }
 
     pub fn add_column(&self, sheet_id: i64, name: &str, col_type: &str) -> Result<SheetColumn> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let max_order: i64 = conn.query_row(
             "SELECT COALESCE(MAX(sort_order), -1) FROM sheet_columns WHERE sheet_id = ?1",
             params![sheet_id],
@@ -962,11 +1108,27 @@ impl Database {
             params![sheet_id, name, col_type, max_order + 1],
         )?;
         let id = conn.last_insert_rowid();
-        Ok(SheetColumn { id, sheet_id, name: name.to_string(), col_type: col_type.to_string(), sort_order: max_order + 1, width: 150 })
+        Ok(SheetColumn {
+            id,
+            sheet_id,
+            name: name.to_string(),
+            col_type: col_type.to_string(),
+            sort_order: max_order + 1,
+            width: 150,
+        })
     }
 
-    pub fn update_cell(&self, sheet_id: i64, row_index: i64, column_id: i64, value: &str) -> Result<()> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+    pub fn update_cell(
+        &self,
+        sheet_id: i64,
+        row_index: i64,
+        column_id: i64,
+        value: &str,
+    ) -> Result<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute(
             "INSERT INTO cell_data (sheet_id, row_index, column_id, value) VALUES (?1, ?2, ?3, ?4)
              ON CONFLICT(sheet_id, row_index, column_id) DO UPDATE SET value = ?4",
@@ -976,17 +1138,24 @@ impl Database {
     }
 
     pub fn add_row(&self, sheet_id: i64) -> Result<i64> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let max_row: i64 = conn.query_row(
             "SELECT COALESCE(MAX(row_index), -1) FROM cell_data WHERE sheet_id = ?1",
             params![sheet_id],
             |row| row.get(0),
         )?;
         let new_row = max_row + 1;
-        let mut col_stmt = conn.prepare("SELECT id, col_type FROM sheet_columns WHERE sheet_id = ?1 ORDER BY sort_order")?;
-        let cols: Vec<(i64, String)> = col_stmt.query_map(params![sheet_id], |row| {
-            Ok((row.get(0)?, row.get::<_, String>(1)?))
-        })?.collect::<Result<Vec<_>>>()?;
+        let mut col_stmt = conn.prepare(
+            "SELECT id, col_type FROM sheet_columns WHERE sheet_id = ?1 ORDER BY sort_order",
+        )?;
+        let cols: Vec<(i64, String)> = col_stmt
+            .query_map(params![sheet_id], |row| {
+                Ok((row.get(0)?, row.get::<_, String>(1)?))
+            })?
+            .collect::<Result<Vec<_>>>()?;
         for (col_id, col_type) in &cols {
             let default_val = match col_type.as_str() {
                 "number" => "0",
@@ -1002,15 +1171,35 @@ impl Database {
     }
 
     pub fn update_workbook_name(&self, id: i64, name: &str) -> Result<()> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
-        conn.execute("UPDATE workbooks SET name = ?1, updated_at = datetime('now') WHERE id = ?2", params![name, id])?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        conn.execute(
+            "UPDATE workbooks SET name = ?1, updated_at = datetime('now') WHERE id = ?2",
+            params![name, id],
+        )?;
         Ok(())
     }
 
-    pub fn replace_sheet_data(&self, sheet_id: i64, columns: &[(&str, &str)], rows_data: &[Vec<&str>]) -> Result<()> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
-        conn.execute("DELETE FROM cell_data WHERE sheet_id = ?1", params![sheet_id])?;
-        conn.execute("DELETE FROM sheet_columns WHERE sheet_id = ?1", params![sheet_id])?;
+    pub fn replace_sheet_data(
+        &self,
+        sheet_id: i64,
+        columns: &[(&str, &str)],
+        rows_data: &[Vec<&str>],
+    ) -> Result<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        conn.execute(
+            "DELETE FROM cell_data WHERE sheet_id = ?1",
+            params![sheet_id],
+        )?;
+        conn.execute(
+            "DELETE FROM sheet_columns WHERE sheet_id = ?1",
+            params![sheet_id],
+        )?;
         let mut col_ids = Vec::new();
         for (i, (name, col_type)) in columns.iter().enumerate() {
             conn.execute(
@@ -1033,7 +1222,10 @@ impl Database {
     }
 
     pub fn get_business_info(&self) -> Result<Option<BusinessInfo>> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
             "SELECT business_name, industry, company_size, completed_onboarding FROM business_info WHERE id = 1"
         )?;
@@ -1052,8 +1244,16 @@ impl Database {
         }
     }
 
-    pub fn save_business_info(&self, business_name: &str, industry: &str, company_size: &str) -> Result<()> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+    pub fn save_business_info(
+        &self,
+        business_name: &str,
+        industry: &str,
+        company_size: &str,
+    ) -> Result<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute(
             "INSERT OR REPLACE INTO business_info (id, business_name, industry, company_size, completed_onboarding, updated_at)
              VALUES (1, ?1, ?2, ?3, 1, datetime('now'))",
@@ -1062,14 +1262,22 @@ impl Database {
         Ok(())
     }
 
-    pub fn create_invoice(&self, invoice_number: &str, due_date: &str, payment_terms: &str) -> Result<Invoice> {
+    pub fn create_invoice(
+        &self,
+        invoice_number: &str,
+        due_date: &str,
+        payment_terms: &str,
+    ) -> Result<Invoice> {
         if invoice_number.trim().is_empty() || due_date.trim().is_empty() {
             return Err(rusqlite::Error::InvalidQuery);
         }
         if invoice_number.len() > 100 || payment_terms.len() > 50 {
             return Err(rusqlite::Error::InvalidQuery);
         }
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
 
         // Check if invoice number already exists
         let mut stmt = conn.prepare("SELECT COUNT(*) FROM invoices WHERE invoice_number = ?1")?;
@@ -1131,7 +1339,10 @@ impl Database {
     }
 
     pub fn list_invoices(&self) -> Result<Vec<Invoice>> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
             "SELECT id, invoice_number, client_id, status, issue_date, due_date, payment_terms,
                     subtotal, tax_rate, tax_amount, total, currency, internal_notes, customer_notes,
@@ -1142,7 +1353,10 @@ impl Database {
     }
 
     pub fn get_invoice_data(&self, invoice_id: i64) -> Result<InvoiceData> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
             "SELECT id, invoice_number, client_id, status, issue_date, due_date, payment_terms,
                     subtotal, tax_rate, tax_amount, total, currency, internal_notes, customer_notes,
@@ -1152,24 +1366,38 @@ impl Database {
 
         let mut stmt = conn.prepare(
             "SELECT id, invoice_id, description, quantity, unit_price, sort_order
-             FROM invoice_line_items WHERE invoice_id = ?1 ORDER BY sort_order"
+             FROM invoice_line_items WHERE invoice_id = ?1 ORDER BY sort_order",
         )?;
-        let line_items = stmt.query_map(params![invoice_id], |row| {
-            Ok(InvoiceLineItem {
-                id: row.get(0)?,
-                invoice_id: row.get(1)?,
-                description: row.get(2)?,
-                quantity: row.get(3)?,
-                unit_price: row.get(4)?,
-                sort_order: row.get(5)?,
-            })
-        })?.collect::<Result<Vec<_>>>()?;
+        let line_items = stmt
+            .query_map(params![invoice_id], |row| {
+                Ok(InvoiceLineItem {
+                    id: row.get(0)?,
+                    invoice_id: row.get(1)?,
+                    description: row.get(2)?,
+                    quantity: row.get(3)?,
+                    unit_price: row.get(4)?,
+                    sort_order: row.get(5)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
 
-        Ok(InvoiceData { invoice, line_items })
+        Ok(InvoiceData {
+            invoice,
+            line_items,
+        })
     }
 
-    pub fn add_line_item(&self, invoice_id: i64, description: &str, quantity: f64, unit_price: f64) -> Result<InvoiceLineItem> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+    pub fn add_line_item(
+        &self,
+        invoice_id: i64,
+        description: &str,
+        quantity: f64,
+        unit_price: f64,
+    ) -> Result<InvoiceLineItem> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let sort_order: i64 = conn.query_row(
             "SELECT COALESCE(MAX(sort_order), -1) FROM invoice_line_items WHERE invoice_id = ?1",
             params![invoice_id],
@@ -1191,10 +1419,20 @@ impl Database {
         })
     }
 
-    pub fn replace_invoice_line_items(&self, invoice_id: i64, items: &[(String, f64, f64)]) -> Result<()> {
-        let mut conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+    pub fn replace_invoice_line_items(
+        &self,
+        invoice_id: i64,
+        items: &[(String, f64, f64)],
+    ) -> Result<()> {
+        let mut conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let tx = conn.transaction()?;
-        tx.execute("DELETE FROM invoice_line_items WHERE invoice_id = ?1", params![invoice_id])?;
+        tx.execute(
+            "DELETE FROM invoice_line_items WHERE invoice_id = ?1",
+            params![invoice_id],
+        )?;
         for (i, (description, quantity, unit_price)) in items.iter().enumerate() {
             tx.execute(
                 "INSERT INTO invoice_line_items (invoice_id, description, quantity, unit_price, sort_order) VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -1205,8 +1443,21 @@ impl Database {
         Ok(())
     }
 
-    pub fn update_invoice(&self, id: i64, status: &str, subtotal: f64, tax_rate: f64, tax_amount: f64, total: f64, internal_notes: &str, customer_notes: &str) -> Result<()> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+    pub fn update_invoice(
+        &self,
+        id: i64,
+        status: &str,
+        subtotal: f64,
+        tax_rate: f64,
+        tax_amount: f64,
+        total: f64,
+        internal_notes: &str,
+        customer_notes: &str,
+    ) -> Result<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute(
             "UPDATE invoices SET status = ?1, subtotal = ?2, tax_rate = ?3, tax_amount = ?4, total = ?5, internal_notes = ?6, customer_notes = ?7, updated_at = datetime('now') WHERE id = ?8",
             params![status, subtotal, tax_rate, tax_amount, total, internal_notes, customer_notes, id],
@@ -1214,14 +1465,25 @@ impl Database {
         Ok(())
     }
 
-    pub fn create_order(&self, order_number: &str, due_date: &str, description: &str) -> Result<Order> {
-        if order_number.trim().is_empty() || due_date.trim().is_empty() || description.trim().is_empty() {
+    pub fn create_order(
+        &self,
+        order_number: &str,
+        due_date: &str,
+        description: &str,
+    ) -> Result<Order> {
+        if order_number.trim().is_empty()
+            || due_date.trim().is_empty()
+            || description.trim().is_empty()
+        {
             return Err(rusqlite::Error::InvalidQuery);
         }
         if order_number.len() > 100 || description.len() > 1000 {
             return Err(rusqlite::Error::InvalidQuery);
         }
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute(
             "INSERT INTO orders (order_number, due_date, description, status) VALUES (?1, ?2, ?3, 'prepress')",
             params![order_number, due_date, description],
@@ -1291,7 +1553,10 @@ impl Database {
     }
 
     pub fn list_orders(&self) -> Result<Vec<Order>> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
             "SELECT id, order_number, client_id, status, priority, due_date, description, artwork_notes, artwork_url,
                     artwork_approved, deposit_requested, deposit_amount, total_value,
@@ -1305,7 +1570,10 @@ impl Database {
     }
 
     pub fn get_order_data(&self, order_id: i64) -> Result<OrderData> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
             "SELECT id, order_number, client_id, status, priority, due_date, description, artwork_notes, artwork_url,
                     artwork_approved, deposit_requested, deposit_amount, total_value,
@@ -1318,32 +1586,43 @@ impl Database {
 
         let mut stmt = conn.prepare(
             "SELECT id, order_id, previous_status, new_status, notes, created_at
-             FROM order_status_history WHERE order_id = ?1 ORDER BY created_at DESC"
+             FROM order_status_history WHERE order_id = ?1 ORDER BY created_at DESC",
         )?;
-        let status_history = stmt.query_map(params![order_id], |row| {
-            Ok(OrderStatusHistory {
-                id: row.get(0)?,
-                order_id: row.get(1)?,
-                previous_status: row.get(2)?,
-                new_status: row.get(3)?,
-                notes: row.get(4)?,
-                created_at: row.get(5)?,
-            })
-        })?.collect::<Result<Vec<_>>>()?;
+        let status_history = stmt
+            .query_map(params![order_id], |row| {
+                Ok(OrderStatusHistory {
+                    id: row.get(0)?,
+                    order_id: row.get(1)?,
+                    previous_status: row.get(2)?,
+                    new_status: row.get(3)?,
+                    notes: row.get(4)?,
+                    created_at: row.get(5)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
 
-        Ok(OrderData { order, status_history })
+        Ok(OrderData {
+            order,
+            status_history,
+        })
     }
 
     pub fn update_order_status(&self, order_id: i64, new_status: &str, notes: &str) -> Result<()> {
-        let mut conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let mut conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let tx = conn.transaction()?;
 
         // Verify order exists
-        let exists: bool = tx.query_row(
-            "SELECT COUNT(*) FROM orders WHERE id = ?1",
-            params![order_id],
-            |row| row.get::<_, i64>(0),
-        ).map(|c| c > 0).unwrap_or(false);
+        let exists: bool = tx
+            .query_row(
+                "SELECT COUNT(*) FROM orders WHERE id = ?1",
+                params![order_id],
+                |row| row.get::<_, i64>(0),
+            )
+            .map(|c| c > 0)
+            .unwrap_or(false);
         if !exists {
             return Err(rusqlite::Error::QueryReturnedNoRows);
         }
@@ -1369,8 +1648,21 @@ impl Database {
         Ok(())
     }
 
-    pub fn update_order(&self, id: i64, priority: &str, description: &str, artwork_notes: &str, artwork_approved: bool, deposit_requested: bool, deposit_amount: f64, total_value: f64) -> Result<()> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+    pub fn update_order(
+        &self,
+        id: i64,
+        priority: &str,
+        description: &str,
+        artwork_notes: &str,
+        artwork_approved: bool,
+        deposit_requested: bool,
+        deposit_amount: f64,
+        total_value: f64,
+    ) -> Result<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute(
             "UPDATE orders SET priority = ?1, description = ?2, artwork_notes = ?3, artwork_approved = ?4, deposit_requested = ?5, deposit_amount = ?6, total_value = ?7, updated_at = datetime('now') WHERE id = ?8",
             params![priority, description, artwork_notes, artwork_approved as i32, deposit_requested as i32, deposit_amount, total_value, id],
@@ -1385,7 +1677,10 @@ impl Database {
         if estimate_number.len() > 100 {
             return Err(rusqlite::Error::InvalidQuery);
         }
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
 
         // Check if estimate number already exists
         let mut stmt = conn.prepare("SELECT COUNT(*) FROM estimates WHERE estimate_number = ?1")?;
@@ -1419,7 +1714,10 @@ impl Database {
     }
 
     pub fn list_estimates(&self) -> Result<Vec<Estimate>> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
             "SELECT id, estimate_number, client_id, status, valid_until, subtotal, tax_rate, tax_amount, total, currency, notes, artwork_requirements, converted_order_id, created_at, updated_at FROM estimates ORDER BY created_at DESC"
         )?;
@@ -1446,7 +1744,10 @@ impl Database {
     }
 
     pub fn get_estimate_data(&self, estimate_id: i64) -> Result<EstimateData> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
             "SELECT id, estimate_number, client_id, status, valid_until, subtotal, tax_rate, tax_amount, total, currency, notes, artwork_requirements, converted_order_id, created_at, updated_at FROM estimates WHERE id = ?1"
         )?;
@@ -1473,23 +1774,38 @@ impl Database {
         let mut stmt = conn.prepare(
             "SELECT id, estimate_id, description, category, quantity, unit_price, sort_order FROM estimate_line_items WHERE estimate_id = ?1 ORDER BY sort_order"
         )?;
-        let line_items = stmt.query_map(params![estimate_id], |row| {
-            Ok(EstimateLineItem {
-                id: row.get(0)?,
-                estimate_id: row.get(1)?,
-                description: row.get(2)?,
-                category: row.get(3)?,
-                quantity: row.get(4)?,
-                unit_price: row.get(5)?,
-                sort_order: row.get(6)?,
-            })
-        })?.collect::<Result<Vec<_>>>()?;
+        let line_items = stmt
+            .query_map(params![estimate_id], |row| {
+                Ok(EstimateLineItem {
+                    id: row.get(0)?,
+                    estimate_id: row.get(1)?,
+                    description: row.get(2)?,
+                    category: row.get(3)?,
+                    quantity: row.get(4)?,
+                    unit_price: row.get(5)?,
+                    sort_order: row.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
 
-        Ok(EstimateData { estimate, line_items })
+        Ok(EstimateData {
+            estimate,
+            line_items,
+        })
     }
 
-    pub fn add_estimate_line_item(&self, estimate_id: i64, description: &str, category: &str, quantity: f64, unit_price: f64) -> Result<EstimateLineItem> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+    pub fn add_estimate_line_item(
+        &self,
+        estimate_id: i64,
+        description: &str,
+        category: &str,
+        quantity: f64,
+        unit_price: f64,
+    ) -> Result<EstimateLineItem> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let sort_order: i64 = conn.query_row(
             "SELECT COALESCE(MAX(sort_order), -1) FROM estimate_line_items WHERE estimate_id = ?1",
             params![estimate_id],
@@ -1511,10 +1827,20 @@ impl Database {
         })
     }
 
-    pub fn replace_estimate_line_items(&self, estimate_id: i64, items: &[(String, String, f64, f64)]) -> Result<()> {
-        let mut conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+    pub fn replace_estimate_line_items(
+        &self,
+        estimate_id: i64,
+        items: &[(String, String, f64, f64)],
+    ) -> Result<()> {
+        let mut conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let tx = conn.transaction()?;
-        tx.execute("DELETE FROM estimate_line_items WHERE estimate_id = ?1", params![estimate_id])?;
+        tx.execute(
+            "DELETE FROM estimate_line_items WHERE estimate_id = ?1",
+            params![estimate_id],
+        )?;
         for (i, (description, category, quantity, unit_price)) in items.iter().enumerate() {
             tx.execute(
                 "INSERT INTO estimate_line_items (estimate_id, description, category, quantity, unit_price, sort_order) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
@@ -1525,8 +1851,21 @@ impl Database {
         Ok(())
     }
 
-    pub fn update_estimate(&self, id: i64, status: &str, subtotal: f64, tax_rate: f64, tax_amount: f64, total: f64, notes: &str, artwork_requirements: &str) -> Result<()> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+    pub fn update_estimate(
+        &self,
+        id: i64,
+        status: &str,
+        subtotal: f64,
+        tax_rate: f64,
+        tax_amount: f64,
+        total: f64,
+        notes: &str,
+        artwork_requirements: &str,
+    ) -> Result<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute(
             "UPDATE estimates SET status = ?1, subtotal = ?2, tax_rate = ?3, tax_amount = ?4, total = ?5, notes = ?6, artwork_requirements = ?7, updated_at = datetime('now') WHERE id = ?8",
             params![status, subtotal, tax_rate, tax_amount, total, notes, artwork_requirements, id],
@@ -1534,7 +1873,17 @@ impl Database {
         Ok(())
     }
 
-    pub fn add_inventory_item(&self, material_type: &str, size: &str, attributes: &str, quantity: f64, unit: &str, reorder_level: f64, alert_type: &str, alert_threshold: f64) -> Result<InventoryItem> {
+    pub fn add_inventory_item(
+        &self,
+        material_type: &str,
+        size: &str,
+        attributes: &str,
+        quantity: f64,
+        unit: &str,
+        reorder_level: f64,
+        alert_type: &str,
+        alert_threshold: f64,
+    ) -> Result<InventoryItem> {
         if material_type.trim().is_empty() || unit.trim().is_empty() {
             return Err(rusqlite::Error::InvalidQuery);
         }
@@ -1544,7 +1893,10 @@ impl Database {
         if quantity < 0.0 || reorder_level < 0.0 || alert_threshold < 0.0 {
             return Err(rusqlite::Error::InvalidQuery);
         }
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute(
             "INSERT INTO inventory_items (material_type, size, attributes, quantity, unit, reorder_level, alert_type, alert_threshold) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![material_type, size, attributes, quantity, unit, reorder_level, alert_type, alert_threshold],
@@ -1567,7 +1919,10 @@ impl Database {
     }
 
     pub fn list_inventory_items(&self) -> Result<Vec<InventoryItem>> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
             "SELECT id, material_type, size, attributes, quantity, unit, reorder_level, alert_type, alert_threshold, last_restocked, created_at, updated_at FROM inventory_items ORDER BY material_type, size"
         )?;
@@ -1591,7 +1946,10 @@ impl Database {
     }
 
     pub fn get_inventory_item(&self, id: i64) -> Result<InventoryItem> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
             "SELECT id, material_type, size, attributes, quantity, unit, reorder_level, alert_type, alert_threshold, last_restocked, created_at, updated_at FROM inventory_items WHERE id = ?1"
         )?;
@@ -1613,14 +1971,23 @@ impl Database {
         })
     }
 
-    pub fn adjust_inventory(&self, inventory_item_id: i64, quantity_change: f64, reason: &str, order_id: Option<i64>) -> Result<()> {
+    pub fn adjust_inventory(
+        &self,
+        inventory_item_id: i64,
+        quantity_change: f64,
+        reason: &str,
+        order_id: Option<i64>,
+    ) -> Result<()> {
         // Wrap the whole read-then-write in a single transaction (#149).
         // Without it, two concurrent calls can both read the same quantity,
         // both pass the negative guard, then both deduct — driving the
         // quantity below zero. A transaction (BEGIN IMMEDIATE under the
         // mutex) makes the guard check atomic with the UPDATE, so the second
         // caller sees the first caller's committed value.
-        let mut conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let mut conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
 
         if !quantity_change.is_finite() {
             return Err(rusqlite::Error::InvalidQuery);
@@ -1694,7 +2061,10 @@ impl Database {
     }
 
     pub fn get_low_stock_alerts(&self) -> Result<Vec<InventoryAlert>> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
             "SELECT id, inventory_item_id, alert_type, current_quantity, threshold, is_acknowledged, created_at FROM inventory_alerts WHERE is_acknowledged = 0 ORDER BY created_at DESC"
         )?;
@@ -1713,7 +2083,10 @@ impl Database {
     }
 
     pub fn acknowledge_alert(&self, alert_id: i64) -> Result<()> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute(
             "UPDATE inventory_alerts SET is_acknowledged = 1 WHERE id = ?1",
             params![alert_id],
@@ -1740,10 +2113,16 @@ impl Database {
         };
 
         // Check foreign key constraint violations
-        if let Ok(count) = conn.query_row("SELECT COUNT(*) FROM pragma_foreign_key_check()", [], |row| row.get::<_, i64>(0)) {
+        if let Ok(count) = conn.query_row(
+            "SELECT COUNT(*) FROM pragma_foreign_key_check()",
+            [],
+            |row| row.get::<_, i64>(0),
+        ) {
             if count > 0 {
                 result.is_valid = false;
-                result.errors.push(format!("Found {} foreign key constraint violations", count));
+                result
+                    .errors
+                    .push(format!("Found {} foreign key constraint violations", count));
             }
         }
 
@@ -1755,7 +2134,9 @@ impl Database {
         ) {
             if count > 0 {
                 result.is_valid = false;
-                result.errors.push(format!("Found {} orphaned sheet_columns records", count));
+                result
+                    .errors
+                    .push(format!("Found {} orphaned sheet_columns records", count));
             }
         }
 
@@ -1767,7 +2148,10 @@ impl Database {
         ) {
             if count > 0 {
                 result.is_valid = false;
-                result.errors.push(format!("Found {} cell_data records with invalid sheet_id", count));
+                result.errors.push(format!(
+                    "Found {} cell_data records with invalid sheet_id",
+                    count
+                ));
             }
         }
 
@@ -1778,7 +2162,10 @@ impl Database {
         ) {
             if count > 0 {
                 result.is_valid = false;
-                result.errors.push(format!("Found {} cell_data records with invalid column_id", count));
+                result.errors.push(format!(
+                    "Found {} cell_data records with invalid column_id",
+                    count
+                ));
             }
         }
 
@@ -1790,7 +2177,9 @@ impl Database {
         ) {
             if count > 0 {
                 result.is_valid = false;
-                result.errors.push(format!("Found {} orphaned sheets records", count));
+                result
+                    .errors
+                    .push(format!("Found {} orphaned sheets records", count));
             }
         }
 
@@ -1804,7 +2193,9 @@ impl Database {
             ) {
                 if count == 0 {
                     result.is_valid = false;
-                    result.errors.push(format!("Required table '{}' does not exist", table_name));
+                    result
+                        .errors
+                        .push(format!("Required table '{}' does not exist", table_name));
                 }
             }
         }
@@ -1818,7 +2209,9 @@ impl Database {
                 |row| row.get::<_, i64>(0),
             ) {
                 if count == 0 {
-                    result.warnings.push(format!("Expected index '{}' does not exist", index_name));
+                    result
+                        .warnings
+                        .push(format!("Expected index '{}' does not exist", index_name));
                 }
             }
         }
@@ -1842,11 +2235,22 @@ impl Database {
 
     // ── Clients ───────────────────────────────────────────────────────────────
 
-    pub fn create_client(&self, name: &str, company: &str, email: &str, phone: &str, address: &str, tags: &str) -> Result<Client> {
+    pub fn create_client(
+        &self,
+        name: &str,
+        company: &str,
+        email: &str,
+        phone: &str,
+        address: &str,
+        tags: &str,
+    ) -> Result<Client> {
         if name.trim().is_empty() {
             return Err(rusqlite::Error::InvalidQuery);
         }
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute(
             "INSERT INTO clients (name, company, email, phone, address, tags) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![name.trim(), company, email, phone, address, tags],
@@ -1868,25 +2272,42 @@ impl Database {
         })
     }
 
-    pub fn list_clients(&self, search: Option<&str>, status_filter: Option<&str>) -> Result<Vec<Client>> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+    pub fn list_clients(
+        &self,
+        search: Option<&str>,
+        status_filter: Option<&str>,
+    ) -> Result<Vec<Client>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         const COLS: &str = "SELECT id, name, company, email, phone, address, tags, status, notes, last_contacted, created_at, updated_at FROM clients";
         match (search, status_filter) {
             (Some(s), Some(sf)) => {
                 let pattern = format!("%{}%", s);
                 let mut stmt = conn.prepare(&format!("{} WHERE status = ?1 AND (name LIKE ?2 OR company LIKE ?2 OR email LIKE ?2) ORDER BY name", COLS))?;
-                let rows = stmt.query_map(params![sf, pattern], map_client)?.collect::<Result<Vec<_>>>();
+                let rows = stmt
+                    .query_map(params![sf, pattern], map_client)?
+                    .collect::<Result<Vec<_>>>();
                 rows
             }
             (Some(s), None) => {
                 let pattern = format!("%{}%", s);
-                let mut stmt = conn.prepare(&format!("{} WHERE name LIKE ?1 OR company LIKE ?1 OR email LIKE ?1 ORDER BY name", COLS))?;
-                let rows = stmt.query_map(params![pattern], map_client)?.collect::<Result<Vec<_>>>();
+                let mut stmt = conn.prepare(&format!(
+                    "{} WHERE name LIKE ?1 OR company LIKE ?1 OR email LIKE ?1 ORDER BY name",
+                    COLS
+                ))?;
+                let rows = stmt
+                    .query_map(params![pattern], map_client)?
+                    .collect::<Result<Vec<_>>>();
                 rows
             }
             (None, Some(sf)) => {
-                let mut stmt = conn.prepare(&format!("{} WHERE status = ?1 ORDER BY name", COLS))?;
-                let rows = stmt.query_map(params![sf], map_client)?.collect::<Result<Vec<_>>>();
+                let mut stmt =
+                    conn.prepare(&format!("{} WHERE status = ?1 ORDER BY name", COLS))?;
+                let rows = stmt
+                    .query_map(params![sf], map_client)?
+                    .collect::<Result<Vec<_>>>();
                 rows
             }
             (None, None) => {
@@ -1898,7 +2319,10 @@ impl Database {
     }
 
     pub fn get_client(&self, id: i64) -> Result<Client> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.query_row(
             "SELECT id, name, company, email, phone, address, tags, status, notes, last_contacted, created_at, updated_at FROM clients WHERE id = ?1",
             params![id],
@@ -1906,11 +2330,25 @@ impl Database {
         )
     }
 
-    pub fn update_client(&self, id: i64, name: &str, company: &str, email: &str, phone: &str, address: &str, tags: &str, status: &str, notes: &str) -> Result<()> {
+    pub fn update_client(
+        &self,
+        id: i64,
+        name: &str,
+        company: &str,
+        email: &str,
+        phone: &str,
+        address: &str,
+        tags: &str,
+        status: &str,
+        notes: &str,
+    ) -> Result<()> {
         if name.trim().is_empty() {
             return Err(rusqlite::Error::InvalidQuery);
         }
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute(
             "UPDATE clients SET name=?1, company=?2, email=?3, phone=?4, address=?5, tags=?6, status=?7, notes=?8, updated_at=datetime('now') WHERE id=?9",
             params![name.trim(), company, email, phone, address, tags, status, notes, id],
@@ -1919,20 +2357,34 @@ impl Database {
     }
 
     pub fn delete_client(&self, id: i64) -> Result<()> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute("DELETE FROM clients WHERE id = ?1", params![id])?;
         Ok(())
     }
 
     // ── Art Approvals ─────────────────────────────────────────────────────────
 
-    pub fn create_art_approval(&self, order_id: i64, file_path: &str, staff_notes: &str, follow_up_hours: i64) -> Result<ArtApproval> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
-        let version: i64 = conn.query_row(
-            "SELECT COALESCE(MAX(version), 0) FROM art_approvals WHERE order_id = ?1",
-            params![order_id],
-            |row| row.get(0),
-        ).unwrap_or(0);
+    pub fn create_art_approval(
+        &self,
+        order_id: i64,
+        file_path: &str,
+        staff_notes: &str,
+        follow_up_hours: i64,
+    ) -> Result<ArtApproval> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let version: i64 = conn
+            .query_row(
+                "SELECT COALESCE(MAX(version), 0) FROM art_approvals WHERE order_id = ?1",
+                params![order_id],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
         let token = uuid::Uuid::new_v4().to_string();
         conn.execute(
             "INSERT INTO art_approvals (order_id, version, file_path, staff_notes, secure_token, follow_up_hours) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
@@ -1958,17 +2410,30 @@ impl Database {
     }
 
     pub fn get_art_approvals_for_order(&self, order_id: i64) -> Result<Vec<ArtApproval>> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
             "SELECT id, order_id, version, file_path, status, customer_notes, staff_notes, secure_token, follow_up_hours, follow_up_count, submitted_at, responded_at, created_at
              FROM art_approvals WHERE order_id = ?1 ORDER BY version DESC"
         )?;
-        let rows = stmt.query_map(params![order_id], map_art_approval)?.collect::<Result<Vec<_>>>();
+        let rows = stmt
+            .query_map(params![order_id], map_art_approval)?
+            .collect::<Result<Vec<_>>>();
         rows
     }
 
-    pub fn respond_to_art_approval(&self, token: &str, status: &str, customer_notes: &str) -> Result<ArtApproval> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+    pub fn respond_to_art_approval(
+        &self,
+        token: &str,
+        status: &str,
+        customer_notes: &str,
+    ) -> Result<ArtApproval> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let updated = conn.execute(
             "UPDATE art_approvals SET status=?1, customer_notes=?2, responded_at=datetime('now') WHERE secure_token=?3 AND status='pending'",
             params![status, customer_notes, token],
@@ -1984,7 +2449,10 @@ impl Database {
     }
 
     pub fn increment_art_approval_follow_up(&self, id: i64) -> Result<()> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute(
             "UPDATE art_approvals SET follow_up_count = follow_up_count + 1 WHERE id = ?1",
             params![id],
@@ -1994,11 +2462,22 @@ impl Database {
 
     // ── Payments (#10, #11) ───────────────────────────────────────────────────
 
-    pub fn record_payment(&self, invoice_id: Option<i64>, order_id: Option<i64>, amount: f64, payment_method: &str, reference: &str, notes: &str) -> Result<Payment> {
+    pub fn record_payment(
+        &self,
+        invoice_id: Option<i64>,
+        order_id: Option<i64>,
+        amount: f64,
+        payment_method: &str,
+        reference: &str,
+        notes: &str,
+    ) -> Result<Payment> {
         if !amount.is_finite() || amount <= 0.0 {
             return Err(rusqlite::Error::InvalidQuery);
         }
-        let mut conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let mut conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let tx = conn.transaction()?;
         if let Some(inv_id) = invoice_id {
             let total: f64 = tx.query_row(
@@ -2029,8 +2508,16 @@ impl Database {
                 params![inv_id],
                 |row| row.get(0),
             )?;
-            let total: f64 = tx.query_row("SELECT total FROM invoices WHERE id = ?1", params![inv_id], |row| row.get(0))?;
-            let new_status = if paid >= total { "paid" } else { "partially-paid" };
+            let total: f64 = tx.query_row(
+                "SELECT total FROM invoices WHERE id = ?1",
+                params![inv_id],
+                |row| row.get(0),
+            )?;
+            let new_status = if paid >= total {
+                "paid"
+            } else {
+                "partially-paid"
+            };
             tx.execute(
                 "UPDATE invoices SET amount_paid = ?1, status = ?2, updated_at = datetime('now') WHERE id = ?3",
                 params![paid, new_status, inv_id],
@@ -2049,37 +2536,52 @@ impl Database {
         })
     }
 
-    pub fn list_payments(&self, invoice_id: Option<i64>, order_id: Option<i64>) -> Result<Vec<Payment>> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+    pub fn list_payments(
+        &self,
+        invoice_id: Option<i64>,
+        order_id: Option<i64>,
+    ) -> Result<Vec<Payment>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
             "SELECT id, invoice_id, order_id, amount, payment_method, reference, notes, recorded_at
              FROM payments WHERE (?1 IS NULL OR invoice_id = ?1) AND (?2 IS NULL OR order_id = ?2)
-             ORDER BY recorded_at DESC"
+             ORDER BY recorded_at DESC",
         )?;
-        let rows = stmt.query_map(params![invoice_id, order_id], |row| {
-            Ok(Payment {
-                id: row.get(0)?,
-                invoice_id: row.get(1)?,
-                order_id: row.get(2)?,
-                amount: row.get(3)?,
-                payment_method: row.get(4)?,
-                reference: row.get(5)?,
-                notes: row.get(6)?,
-                recorded_at: row.get(7)?,
-            })
-        })?.collect::<Result<Vec<_>>>();
+        let rows = stmt
+            .query_map(params![invoice_id, order_id], |row| {
+                Ok(Payment {
+                    id: row.get(0)?,
+                    invoice_id: row.get(1)?,
+                    order_id: row.get(2)?,
+                    amount: row.get(3)?,
+                    payment_method: row.get(4)?,
+                    reference: row.get(5)?,
+                    notes: row.get(6)?,
+                    recorded_at: row.get(7)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>();
         rows
     }
 
     pub fn delete_payment(&self, id: i64) -> Result<()> {
-        let mut conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let mut conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let tx = conn.transaction()?;
         // Re-derive amount_paid for invoice if linked
-        let inv_id: Option<i64> = tx.query_row(
-            "SELECT invoice_id FROM payments WHERE id = ?1",
-            params![id],
-            |row| row.get(0),
-        ).ok().flatten();
+        let inv_id: Option<i64> = tx
+            .query_row(
+                "SELECT invoice_id FROM payments WHERE id = ?1",
+                params![id],
+                |row| row.get(0),
+            )
+            .ok()
+            .flatten();
         tx.execute("DELETE FROM payments WHERE id = ?1", params![id])?;
         if let Some(inv_id) = inv_id {
             let paid: f64 = tx.query_row(
@@ -2113,28 +2615,46 @@ impl Database {
     }
 
     pub fn search_invoices_and_orders(&self, query: &str) -> Result<Vec<serde_json::Value>> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let pattern = format!("%{}%", query);
         let mut results: Vec<serde_json::Value> = Vec::new();
         // Search invoices
         let mut stmt = conn.prepare(
             "SELECT id, invoice_number, client_id, status, total, amount_paid FROM invoices
-             WHERE invoice_number LIKE ?1 ORDER BY created_at DESC LIMIT 10"
+             WHERE invoice_number LIKE ?1 ORDER BY created_at DESC LIMIT 10",
         )?;
-        let rows = stmt.query_map(params![pattern], |row| {
-            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(3)?, row.get::<_, f64>(4)?, row.get::<_, f64>(5)?))
-        })?.collect::<Result<Vec<_>>>()?;
+        let rows = stmt
+            .query_map(params![pattern], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, f64>(4)?,
+                    row.get::<_, f64>(5)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>>>()?;
         for (id, number, status, total, paid) in rows {
             results.push(serde_json::json!({ "type": "invoice", "id": id, "number": number, "status": status, "total": total, "amount_paid": paid, "balance": total - paid }));
         }
         // Search orders
         let mut stmt2 = conn.prepare(
             "SELECT id, order_number, status, total_value FROM orders
-             WHERE order_number LIKE ?1 ORDER BY created_at DESC LIMIT 10"
+             WHERE order_number LIKE ?1 ORDER BY created_at DESC LIMIT 10",
         )?;
-        let rows2 = stmt2.query_map(params![pattern], |row| {
-            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?, row.get::<_, f64>(3)?))
-        })?.collect::<Result<Vec<_>>>()?;
+        let rows2 = stmt2
+            .query_map(params![pattern], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, f64>(3)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>>>()?;
         for (id, number, status, total) in rows2 {
             results.push(serde_json::json!({ "type": "order", "id": id, "number": number, "status": status, "total": total }));
         }
@@ -2143,38 +2663,60 @@ impl Database {
 
     // ── Invoice reminders (#9) ────────────────────────────────────────────────
 
-    pub fn log_invoice_reminder(&self, invoice_id: i64, method: &str, notes: &str) -> Result<InvoiceReminder> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+    pub fn log_invoice_reminder(
+        &self,
+        invoice_id: i64,
+        method: &str,
+        notes: &str,
+    ) -> Result<InvoiceReminder> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
         conn.execute(
             "INSERT INTO invoice_reminders (invoice_id, method, notes, created_at) VALUES (?1, ?2, ?3, ?4)",
             params![invoice_id, method, notes, now],
         )?;
         let id = conn.last_insert_rowid();
-        Ok(InvoiceReminder { id, invoice_id, method: method.to_string(), notes: notes.to_string(), created_at: now })
+        Ok(InvoiceReminder {
+            id,
+            invoice_id,
+            method: method.to_string(),
+            notes: notes.to_string(),
+            created_at: now,
+        })
     }
 
     pub fn list_invoice_reminders(&self, invoice_id: i64) -> Result<Vec<InvoiceReminder>> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
             "SELECT id, invoice_id, method, notes, created_at FROM invoice_reminders WHERE invoice_id = ?1 ORDER BY created_at DESC"
         )?;
-        let rows = stmt.query_map(params![invoice_id], |row| {
-            Ok(InvoiceReminder {
-                id: row.get(0)?,
-                invoice_id: row.get(1)?,
-                method: row.get(2)?,
-                notes: row.get(3)?,
-                created_at: row.get(4)?,
-            })
-        })?.collect::<Result<Vec<_>>>();
+        let rows = stmt
+            .query_map(params![invoice_id], |row| {
+                Ok(InvoiceReminder {
+                    id: row.get(0)?,
+                    invoice_id: row.get(1)?,
+                    method: row.get(2)?,
+                    notes: row.get(3)?,
+                    created_at: row.get(4)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>();
         rows
     }
 
     // ── QB sync (#7) ──────────────────────────────────────────────────────────
 
     pub fn update_invoice_qb_status(&self, id: i64, status: &str) -> Result<()> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute(
             "UPDATE invoices SET qb_sync_status = ?1, updated_at = datetime('now') WHERE id = ?2",
             params![status, id],
@@ -2184,8 +2726,21 @@ impl Database {
 
     // ── Job specs + fulfillment (#15, #16, #18) ───────────────────────────────
 
-    pub fn update_order_job_specs(&self, id: i64, print_type: &str, paper_stock: &str, ink_colors: &str, finishing: &str, quantity: i64, production_notes: &str, assigned_operator: &str) -> Result<()> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+    pub fn update_order_job_specs(
+        &self,
+        id: i64,
+        print_type: &str,
+        paper_stock: &str,
+        ink_colors: &str,
+        finishing: &str,
+        quantity: i64,
+        production_notes: &str,
+        assigned_operator: &str,
+    ) -> Result<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute(
             "UPDATE orders SET print_type=?1, paper_stock=?2, ink_colors=?3, finishing=?4, quantity=?5, production_notes=?6, assigned_operator=?7, updated_at=datetime('now') WHERE id=?8",
             params![print_type, paper_stock, ink_colors, finishing, quantity, production_notes, assigned_operator, id],
@@ -2193,8 +2748,19 @@ impl Database {
         Ok(())
     }
 
-    pub fn update_order_fulfillment(&self, id: i64, fulfillment_method: &str, tracking_number: &str, tracking_carrier: &str, ready_for_pickup: bool, shipped_at: Option<&str>) -> Result<()> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+    pub fn update_order_fulfillment(
+        &self,
+        id: i64,
+        fulfillment_method: &str,
+        tracking_number: &str,
+        tracking_carrier: &str,
+        ready_for_pickup: bool,
+        shipped_at: Option<&str>,
+    ) -> Result<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute(
             "UPDATE orders SET fulfillment_method=?1, tracking_number=?2, tracking_carrier=?3, ready_for_pickup=?4, shipped_at=?5, updated_at=datetime('now') WHERE id=?6",
             params![fulfillment_method, tracking_number, tracking_carrier, ready_for_pickup as i32, shipped_at, id],
@@ -2204,47 +2770,79 @@ impl Database {
 
     // ── Department notes (#18) ────────────────────────────────────────────────
 
-    pub fn add_department_note(&self, order_id: i64, note: &str, department: &str) -> Result<DepartmentNote> {
+    pub fn add_department_note(
+        &self,
+        order_id: i64,
+        note: &str,
+        department: &str,
+    ) -> Result<DepartmentNote> {
         if note.trim().is_empty() {
             return Err(rusqlite::Error::InvalidQuery);
         }
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
         conn.execute(
             "INSERT INTO department_notes (order_id, note, department, created_at) VALUES (?1, ?2, ?3, ?4)",
             params![order_id, note.trim(), department, now],
         )?;
         let id = conn.last_insert_rowid();
-        Ok(DepartmentNote { id, order_id, note: note.trim().to_string(), department: department.to_string(), created_at: now })
+        Ok(DepartmentNote {
+            id,
+            order_id,
+            note: note.trim().to_string(),
+            department: department.to_string(),
+            created_at: now,
+        })
     }
 
     pub fn list_department_notes(&self, order_id: i64) -> Result<Vec<DepartmentNote>> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
             "SELECT id, order_id, note, department, created_at FROM department_notes WHERE order_id = ?1 ORDER BY created_at DESC"
         )?;
-        let rows = stmt.query_map(params![order_id], |row| {
-            Ok(DepartmentNote {
-                id: row.get(0)?,
-                order_id: row.get(1)?,
-                note: row.get(2)?,
-                department: row.get(3)?,
-                created_at: row.get(4)?,
-            })
-        })?.collect::<Result<Vec<_>>>();
+        let rows = stmt
+            .query_map(params![order_id], |row| {
+                Ok(DepartmentNote {
+                    id: row.get(0)?,
+                    order_id: row.get(1)?,
+                    note: row.get(2)?,
+                    department: row.get(3)?,
+                    created_at: row.get(4)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>();
         rows
     }
 
     pub fn delete_department_note(&self, id: i64) -> Result<()> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute("DELETE FROM department_notes WHERE id = ?1", params![id])?;
         Ok(())
     }
 
     // ── PDF Jobs ──────────────────────────────────────────────────────────────
 
-    pub fn save_certified_version(&self, job_id: i64, file_path: &str, file_size_bytes: u64, author: &str, comment: &str) -> Result<i64> {
-        let mut conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+    pub fn save_certified_version(
+        &self,
+        job_id: i64,
+        file_path: &str,
+        file_size_bytes: u64,
+        author: &str,
+        comment: &str,
+    ) -> Result<i64> {
+        let mut conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
         let tx = conn.transaction()?;
         tx.execute(
@@ -2258,7 +2856,10 @@ impl Database {
     }
 
     pub fn list_certified_versions(&self, job_id: i64) -> Result<Vec<CertifiedVersion>> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
             "SELECT id, job_id, version_number, file_path, file_size_bytes, author, comment, created_at, is_signed \
              FROM pdf_certified_versions WHERE job_id = ?1 ORDER BY version_number DESC"
@@ -2284,7 +2885,10 @@ impl Database {
     }
 
     pub fn save_pdf_job(&self, summary: &PdfSummary) -> Result<i64> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute(
             "INSERT INTO pdf_jobs (file_path, file_name, page_count, pdf_version, file_size_bytes, title, creator, producer, is_encrypted, creation_date) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![summary.file_path, summary.file_name, summary.page_count as i64, summary.pdf_version, summary.file_size_bytes as i64, summary.title, summary.creator, summary.producer, summary.is_encrypted as i32, summary.creation_date],
@@ -2293,7 +2897,10 @@ impl Database {
     }
 
     pub fn list_pdf_jobs(&self) -> Result<Vec<PdfSummary>> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
             "SELECT id, file_path, file_name, page_count, pdf_version, file_size_bytes, title, creator, producer, is_encrypted, creation_date, opened_at FROM pdf_jobs ORDER BY opened_at DESC LIMIT 20"
         )?;
@@ -2316,22 +2923,35 @@ impl Database {
     }
 
     pub fn delete_pdf_job(&self, id: i64) -> Result<()> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute("DELETE FROM pdf_jobs WHERE id = ?1", params![id])?;
         Ok(())
     }
 
     // ── Preflight persistence (Days 43-44) ─────────────────────────────────
 
-    pub fn save_preflight_run(&self, job_id: i64, profile: &str, findings: &[PreflightFindingInput]) -> Result<i64> {
+    pub fn save_preflight_run(
+        &self,
+        job_id: i64,
+        profile: &str,
+        findings: &[PreflightFindingInput],
+    ) -> Result<i64> {
         // #162: wrap the summary row + every finding row in a single
         // transaction so a failure partway through cannot leave a run summary
         // with no findings (or findings referencing a rolled-back summary).
-        let mut conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let mut conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let tx = conn.transaction()?;
 
         let (errors, warnings, ok): (i64, i64, i64) = {
-            let mut e = 0i64; let mut w = 0i64; let mut o = 0i64;
+            let mut e = 0i64;
+            let mut w = 0i64;
+            let mut o = 0i64;
             for f in findings {
                 match f.severity.as_str() {
                     "error" => e += 1,
@@ -2360,7 +2980,10 @@ impl Database {
     }
 
     pub fn list_preflight_runs(&self, job_id: i64) -> Result<Vec<PreflightRunSummary>> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
             "SELECT id, job_id, profile, total_errors, total_warnings, total_ok, ran_at FROM preflight_run_summary WHERE job_id = ?1 ORDER BY ran_at DESC"
         )?;
@@ -2379,7 +3002,10 @@ impl Database {
     }
 
     pub fn list_findings_for_run(&self, run_id: i64) -> Result<Vec<PreflightFinding>> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
             "SELECT id, run_id, check_name, severity, page_num, object_ref, message, fix_hint, created_at FROM preflight_findings WHERE run_id = ?1 ORDER BY id"
         )?;
@@ -2401,8 +3027,14 @@ impl Database {
 
     // ── Phase 4.1 — Preflight Profiles (#39) ──────────────────────────
 
-    pub fn create_preflight_profile(&self, input: &PreflightProfileInput) -> Result<PreflightProfile> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+    pub fn create_preflight_profile(
+        &self,
+        input: &PreflightProfileInput,
+    ) -> Result<PreflightProfile> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute(
             "INSERT INTO preflight_profiles (name, description, is_builtin) VALUES (?1, ?2, 0)",
             params![input.name, input.description],
@@ -2419,7 +3051,10 @@ impl Database {
     }
 
     pub fn list_preflight_profiles(&self) -> Result<Vec<PreflightProfile>> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
             "SELECT id, name, description, is_builtin, created_at, updated_at FROM preflight_profiles ORDER BY name"
         )?;
@@ -2437,7 +3072,10 @@ impl Database {
     }
 
     pub fn get_preflight_profile(&self, id: i64) -> Result<PreflightProfile> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.query_row(
             "SELECT id, name, description, is_builtin, created_at, updated_at FROM preflight_profiles WHERE id = ?1",
             params![id],
@@ -2455,13 +3093,22 @@ impl Database {
     }
 
     pub fn delete_preflight_profile(&self, id: i64) -> Result<()> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
-        conn.execute("DELETE FROM preflight_profiles WHERE id = ?1 AND is_builtin = 0", params![id])?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        conn.execute(
+            "DELETE FROM preflight_profiles WHERE id = ?1 AND is_builtin = 0",
+            params![id],
+        )?;
         Ok(())
     }
 
     pub fn list_profile_checks(&self, profile_id: i64) -> Result<Vec<ProfileCheck>> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
             "SELECT id, profile_id, check_name, severity, enabled, params FROM profile_checks WHERE profile_id = ?1 ORDER BY check_name"
         )?;
@@ -2479,7 +3126,10 @@ impl Database {
     }
 
     pub fn update_profile_check(&self, check_id: i64, enabled: bool, severity: &str) -> Result<()> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute(
             "UPDATE profile_checks SET enabled = ?1, severity = ?2 WHERE id = ?3",
             params![enabled as i32, severity, check_id],
@@ -2488,7 +3138,10 @@ impl Database {
     }
 
     pub fn list_profile_fixups(&self, profile_id: i64) -> Result<Vec<ProfileFixup>> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
             "SELECT id, profile_id, fixup_name, enabled, params FROM profile_fixups WHERE profile_id = ?1 ORDER BY fixup_name"
         )?;
@@ -2505,7 +3158,10 @@ impl Database {
     }
 
     pub fn update_profile_fixup(&self, fixup_id: i64, enabled: bool, params: &str) -> Result<()> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute(
             "UPDATE profile_fixups SET enabled = ?1, params = ?2 WHERE id = ?3",
             params![enabled as i32, params, fixup_id],
@@ -2516,7 +3172,10 @@ impl Database {
     // ── Phase 4.2 — Action Lists (#38) ─────────────────────────────────
 
     pub fn create_action_list(&self, input: &ActionListInput) -> Result<ActionList> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute(
             "INSERT INTO action_lists (name, description) VALUES (?1, ?2)",
             params![input.name, input.description],
@@ -2532,9 +3191,12 @@ impl Database {
     }
 
     pub fn list_action_lists(&self) -> Result<Vec<ActionList>> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
-            "SELECT id, name, description, created_at, updated_at FROM action_lists ORDER BY name"
+            "SELECT id, name, description, created_at, updated_at FROM action_lists ORDER BY name",
         )?;
         let rows = stmt.query_map([], |row| {
             Ok(ActionList {
@@ -2549,7 +3211,10 @@ impl Database {
     }
 
     pub fn get_action_list(&self, id: i64) -> Result<ActionList> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.query_row(
             "SELECT id, name, description, created_at, updated_at FROM action_lists WHERE id = ?1",
             params![id],
@@ -2566,13 +3231,23 @@ impl Database {
     }
 
     pub fn delete_action_list(&self, id: i64) -> Result<()> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute("DELETE FROM action_lists WHERE id = ?1", params![id])?;
         Ok(())
     }
 
-    pub fn add_action_list_step(&self, action_list_id: i64, input: &ActionListStepInput) -> Result<ActionListStep> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+    pub fn add_action_list_step(
+        &self,
+        action_list_id: i64,
+        input: &ActionListStepInput,
+    ) -> Result<ActionListStep> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let max_order: i64 = conn.query_row(
             "SELECT COALESCE(MAX(step_order), -1) FROM action_list_steps WHERE action_list_id = ?1",
             params![action_list_id],
@@ -2593,7 +3268,10 @@ impl Database {
     }
 
     pub fn list_action_list_steps(&self, action_list_id: i64) -> Result<Vec<ActionListStep>> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
             "SELECT id, action_list_id, step_order, action_type, params FROM action_list_steps WHERE action_list_id = ?1 ORDER BY step_order"
         )?;
@@ -2610,7 +3288,10 @@ impl Database {
     }
 
     pub fn delete_action_list_step(&self, id: i64) -> Result<()> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute("DELETE FROM action_list_steps WHERE id = ?1", params![id])?;
         Ok(())
     }
@@ -2618,7 +3299,10 @@ impl Database {
     pub fn reorder_action_list_steps(&self, action_list_id: i64, step_ids: &[i64]) -> Result<()> {
         // #167: apply all step_order updates atomically so a failure mid-loop
         // cannot leave the action list in a partially-reordered state.
-        let mut conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let mut conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let tx = conn.transaction()?;
         for (i, step_id) in step_ids.iter().enumerate() {
             tx.execute(
@@ -2633,7 +3317,10 @@ impl Database {
     // ── Phase 4.3 — Batch Processing (#40) ─────────────────────────────
 
     pub fn create_batch_job(&self, action_list_id: i64, files: &[String]) -> Result<BatchJob> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute(
             "INSERT INTO batch_jobs (action_list_id, status, total_files, processed_files, error_count) VALUES (?1, 'pending', ?2, 0, 0)",
             params![action_list_id, files.len() as i64],
@@ -2659,7 +3346,10 @@ impl Database {
     }
 
     pub fn list_batch_jobs(&self) -> Result<Vec<BatchJob>> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
             "SELECT id, action_list_id, status, total_files, processed_files, error_count, started_at, completed_at, created_at FROM batch_jobs ORDER BY created_at DESC"
         )?;
@@ -2680,7 +3370,10 @@ impl Database {
     }
 
     pub fn get_batch_job(&self, id: i64) -> Result<BatchJob> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.query_row(
             "SELECT id, action_list_id, status, total_files, processed_files, error_count, started_at, completed_at, created_at FROM batch_jobs WHERE id = ?1",
             params![id],
@@ -2709,7 +3402,10 @@ impl Database {
     }
 
     pub fn list_batch_results(&self, batch_id: i64) -> Result<Vec<BatchResult>> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
             "SELECT id, batch_id, file_path, status, output_path, error_message, started_at, completed_at FROM batch_results WHERE batch_id = ?1 ORDER BY id"
         )?;
@@ -2731,7 +3427,10 @@ impl Database {
     // ── Phase 4.5 — Hot Folders (#42) ──────────────────────────────────
 
     pub fn create_hot_folder(&self, input: &HotFolderInput) -> Result<HotFolder> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute(
             "INSERT INTO hot_folders (name, watch_path, action_list_id, output_path, file_pattern, is_active) VALUES (?1, ?2, ?3, ?4, ?5, 1)",
             params![input.name, input.watch_path, input.action_list_id, input.output_path, input.file_pattern],
@@ -2751,7 +3450,10 @@ impl Database {
     }
 
     pub fn list_hot_folders(&self) -> Result<Vec<HotFolder>> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
             "SELECT id, name, watch_path, action_list_id, output_path, file_pattern, is_active, created_at, updated_at FROM hot_folders ORDER BY name"
         )?;
@@ -2772,13 +3474,19 @@ impl Database {
     }
 
     pub fn delete_hot_folder(&self, id: i64) -> Result<()> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute("DELETE FROM hot_folders WHERE id = ?1", params![id])?;
         Ok(())
     }
 
     pub fn toggle_hot_folder(&self, id: i64, is_active: bool) -> Result<()> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute(
             "UPDATE hot_folders SET is_active = ?1, updated_at = datetime('now') WHERE id = ?2",
             params![is_active as i32, id],
@@ -2789,11 +3497,32 @@ impl Database {
     // ── Phase 5.3 — Analytics (#50) ────────────────────────────────────
 
     pub fn get_analytics_summary(&self) -> Result<AnalyticsSummary> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
-        let total_jobs: i64 = conn.query_row("SELECT COUNT(*) FROM pdf_jobs", [], |row| row.get(0)).unwrap_or(0);
-        let total_preflight_runs: i64 = conn.query_row("SELECT COUNT(*) FROM preflight_run_summary", [], |row| row.get(0)).unwrap_or(0);
-        let total_errors: i64 = conn.query_row("SELECT COALESCE(SUM(total_errors), 0) FROM preflight_run_summary", [], |row| row.get(0)).unwrap_or(0);
-        let total_warnings: i64 = conn.query_row("SELECT COALESCE(SUM(total_warnings), 0) FROM preflight_run_summary", [], |row| row.get(0)).unwrap_or(0);
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let total_jobs: i64 = conn
+            .query_row("SELECT COUNT(*) FROM pdf_jobs", [], |row| row.get(0))
+            .unwrap_or(0);
+        let total_preflight_runs: i64 = conn
+            .query_row("SELECT COUNT(*) FROM preflight_run_summary", [], |row| {
+                row.get(0)
+            })
+            .unwrap_or(0);
+        let total_errors: i64 = conn
+            .query_row(
+                "SELECT COALESCE(SUM(total_errors), 0) FROM preflight_run_summary",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+        let total_warnings: i64 = conn
+            .query_row(
+                "SELECT COALESCE(SUM(total_warnings), 0) FROM preflight_run_summary",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
         let most_common_errors: Vec<(String, i64)> = match conn.prepare(
             "SELECT check_name, COUNT(*) as cnt FROM preflight_findings WHERE severity = 'error' GROUP BY check_name ORDER BY cnt DESC LIMIT 10"
         ) {
@@ -2829,10 +3558,17 @@ impl Database {
     // ── Phase 6.1 — Email / FTP / Webhook (#54, #52) ───────────────────
 
     pub fn save_email_settings(&self, settings: &EmailSettings) -> Result<()> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         // Store password in OS keychain instead of SQLite
         if !settings.smtp_password.is_empty() {
-            let _ = crate::keychain::write_secret("frappe-email", "smtp_password", &settings.smtp_password);
+            let _ = crate::keychain::write_secret(
+                "frappe-email",
+                "smtp_password",
+                &settings.smtp_password,
+            );
         }
         conn.execute(
             "INSERT OR REPLACE INTO email_settings (id, smtp_host, smtp_port, smtp_username, smtp_password, use_tls, from_address) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6)",
@@ -2842,7 +3578,10 @@ impl Database {
     }
 
     pub fn get_email_settings(&self) -> Result<Option<EmailSettings>> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let result = conn.query_row(
             "SELECT smtp_host, smtp_port, smtp_username, use_tls, from_address FROM email_settings WHERE id = 1",
             [],
@@ -2873,7 +3612,10 @@ impl Database {
     }
 
     pub fn save_ftp_settings(&self, settings: &FtpSettings) -> Result<()> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         // Store password in OS keychain instead of SQLite
         if !settings.password.is_empty() {
             let _ = crate::keychain::write_secret("frappe-ftp", "password", &settings.password);
@@ -2886,7 +3628,10 @@ impl Database {
     }
 
     pub fn get_ftp_settings(&self) -> Result<Option<FtpSettings>> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let result = conn.query_row(
             "SELECT host, port, username, remote_dir FROM ftp_settings WHERE id = 1",
             [],
@@ -2916,7 +3661,10 @@ impl Database {
     }
 
     pub fn create_webhook(&self, url: &str, event: &str) -> Result<WebhookEntry> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute(
             "INSERT INTO webhooks (url, event, is_active) VALUES (?1, ?2, 1)",
             params![url, event],
@@ -2932,9 +3680,12 @@ impl Database {
     }
 
     pub fn list_webhooks(&self) -> Result<Vec<WebhookEntry>> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
-            "SELECT id, url, event, is_active, created_at FROM webhooks ORDER BY created_at DESC"
+            "SELECT id, url, event, is_active, created_at FROM webhooks ORDER BY created_at DESC",
         )?;
         let rows = stmt.query_map([], |row| {
             Ok(WebhookEntry {
@@ -2949,7 +3700,10 @@ impl Database {
     }
 
     pub fn delete_webhook(&self, id: i64) -> Result<()> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute("DELETE FROM webhooks WHERE id = ?1", params![id])?;
         Ok(())
     }
@@ -2957,8 +3711,18 @@ impl Database {
     // ── Event log (#83) ──────────────────────────────────────────────────
 
     #[allow(dead_code)] // Wired in #133 — see lib.rs upload command surface
-    pub fn log_event(&self, tenant_id: &str, entity_type: &str, entity_id: i64, action: &str, payload: &str) -> Result<i64> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+    pub fn log_event(
+        &self,
+        tenant_id: &str,
+        entity_type: &str,
+        entity_id: i64,
+        action: &str,
+        payload: &str,
+    ) -> Result<i64> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute(
             "INSERT INTO event_log (tenant_id, entity_type, entity_id, action, payload) VALUES (?1, ?2, ?3, ?4, ?5)",
             params![tenant_id, entity_type, entity_id, action, payload],
@@ -2966,10 +3730,20 @@ impl Database {
         Ok(conn.last_insert_rowid())
     }
 
-    pub fn list_events(&self, tenant_id: &str, entity_type: Option<&str>, entity_id: Option<i64>, limit: i64) -> Result<Vec<EventLogEntry>> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+    pub fn list_events(
+        &self,
+        tenant_id: &str,
+        entity_type: Option<&str>,
+        entity_id: Option<i64>,
+        limit: i64,
+    ) -> Result<Vec<EventLogEntry>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut sql = "SELECT id, tenant_id, entity_type, entity_id, action, payload, created_at FROM event_log WHERE tenant_id = ?1".to_string();
-        let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(tenant_id.to_string())];
+        let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> =
+            vec![Box::new(tenant_id.to_string())];
         if let Some(et) = entity_type {
             sql.push_str(" AND entity_type = ?");
             param_values.push(Box::new(et.to_string()));
@@ -2980,7 +3754,8 @@ impl Database {
         }
         sql.push_str(" ORDER BY id DESC LIMIT ?");
         param_values.push(Box::new(limit));
-        let params_refs: Vec<&dyn rusqlite::types::ToSql> = param_values.iter().map(|p| p.as_ref()).collect();
+        let params_refs: Vec<&dyn rusqlite::types::ToSql> =
+            param_values.iter().map(|p| p.as_ref()).collect();
         let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map(params_refs.as_slice(), |row| {
             Ok(EventLogEntry {
@@ -2999,18 +3774,33 @@ impl Database {
     // ── Schema versioning (#90) ──────────────────────────────────────────
 
     pub fn get_schema_version(&self) -> Result<i64> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
-        conn.query_row("SELECT MAX(version) FROM schema_version", [], |row| row.get::<_, i64>(0))
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        conn.query_row("SELECT MAX(version) FROM schema_version", [], |row| {
+            row.get::<_, i64>(0)
+        })
     }
 
     #[allow(dead_code)] // Future schema-versioning API; migrations are currently applied inline in `new()`
     pub fn migrate_to(&self, target_version: i64) -> Result<()> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
-        let current: i64 = conn.query_row("SELECT COALESCE(MAX(version), 0) FROM schema_version", [], |row| row.get(0))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let current: i64 = conn.query_row(
+            "SELECT COALESCE(MAX(version), 0) FROM schema_version",
+            [],
+            |row| row.get(0),
+        )?;
         if current >= target_version {
             return Ok(());
         }
-        conn.execute("INSERT INTO schema_version (version, migrated_at) VALUES (?1, datetime('now'))", params![target_version])?;
+        conn.execute(
+            "INSERT INTO schema_version (version, migrated_at) VALUES (?1, datetime('now'))",
+            params![target_version],
+        )?;
         Ok(())
     }
 
@@ -3021,7 +3811,10 @@ impl Database {
     #[cfg(feature = "sqlcipher")]
     pub fn export_plaintext_backup(&self, output_path: &std::path::Path) -> Result<u64> {
         let _key_hex = self.key.as_hex();
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
 
         // Remove existing file if present
         if output_path.exists() {
@@ -3033,9 +3826,8 @@ impl Database {
 
         // ATTACH a new plaintext database at the output path.
         // Validate the path to prevent SQL injection via the ATTACH string literal.
-        let out_str = validate_sql_path(output_path).map_err(|e| {
-            rusqlite::Error::ToSqlConversionFailure(e.into())
-        })?;
+        let out_str = validate_sql_path(output_path)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(e.into()))?;
         conn.execute_batch(&format!(
             "ATTACH DATABASE '{}' AS plaintext_backup KEY '';
              PRAGMA plaintext_backup.cipher_use_hmac = OFF;
@@ -3057,7 +3849,10 @@ impl Database {
     #[cfg(not(feature = "sqlcipher"))]
     pub fn export_plaintext_backup(&self, output_path: &std::path::Path) -> Result<u64> {
         // Use SQLite's built-in VACUUM INTO for a clean, defragmented copy
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         if output_path.exists() {
             std::fs::remove_file(output_path).map_err(|e| {
                 let msg = format!("failed to remove existing backup: {}", e);
@@ -3102,13 +3897,17 @@ impl Database {
         // we stat it (purely defensive; not strictly required).
         drop(backup_conn);
 
-        let meta = std::fs::metadata(backup_path).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+        let meta = std::fs::metadata(backup_path)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
         let size = meta.len() as i64;
 
         // Only now — for the brief INSERT that records the backup row — do we
         // acquire the main connection's mutex. This keeps the critical section
         // tiny so other callers aren't blocked.
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute(
             "INSERT INTO backup_entries (backup_type, file_path, size_bytes) VALUES ('snapshot', ?1, ?2)",
             params![backup_path.to_string_lossy().to_string(), size],
@@ -3125,7 +3924,10 @@ impl Database {
     }
 
     pub fn list_backups(&self) -> Result<Vec<BackupEntry>> {
-        let conn = self.conn.lock().map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
             "SELECT id, backup_type, file_path, size_bytes, checksum, created_at FROM backup_entries ORDER BY id DESC"
         )?;

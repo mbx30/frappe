@@ -511,7 +511,7 @@ pub struct Client {
     pub email: String,
     pub phone: String,
     pub address: String,
-    pub tags: String, // comma-separated
+    pub tags: String,   // comma-separated
     pub status: String, // active, inactive
     pub notes: String,
     pub last_contacted: Option<String>,

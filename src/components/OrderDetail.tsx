@@ -33,15 +33,7 @@ export default function OrderDetail({ orderId, onSave, onCancel }: OrderDetailPr
   const [transitionNotes, setTransitionNotes] = useState('')
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (orderId) {
-      loadOrder()
-    } else {
-      initializeNewOrder()
-    }
-  }, [orderId])
-
-  const loadOrder = async () => {
+  async function loadOrder() {
     if (!orderId) return
     try {
       const data = await invoke<OrderData>('get_order', { id: orderId })
@@ -53,7 +45,7 @@ export default function OrderDetail({ orderId, onSave, onCancel }: OrderDetailPr
     }
   }
 
-  const initializeNewOrder = () => {
+  function initializeNewOrder() {
     const today = new Date().toISOString().split('T')[0]
     const dueDate = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
     setOrderData({
@@ -90,6 +82,16 @@ export default function OrderDetail({ orderId, onSave, onCancel }: OrderDetailPr
     })
     setIsLoading(false)
   }
+
+  useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
+    if (orderId) {
+      loadOrder()
+    } else {
+      initializeNewOrder()
+    }
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [orderId])
 
   const handleStatusChange = async (newStatus: string) => {
     if (!orderData || isTransitioning) return

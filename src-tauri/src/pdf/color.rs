@@ -1,4 +1,4 @@
-use lopdf::{Document, Object, Dictionary};
+use lopdf::{Dictionary, Document, Object};
 use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -36,18 +36,21 @@ impl ColorSpaceKind {
     }
 
     pub fn is_rgb_family(&self) -> bool {
-        matches!(self, ColorSpaceKind::DeviceRGB | ColorSpaceKind::CalRGB | ColorSpaceKind::Lab)
-            || matches!(self, ColorSpaceKind::ICCBased(3..=4))
+        matches!(
+            self,
+            ColorSpaceKind::DeviceRGB | ColorSpaceKind::CalRGB | ColorSpaceKind::Lab
+        ) || matches!(self, ColorSpaceKind::ICCBased(3..=4))
     }
 
     pub fn is_cmyk_family(&self) -> bool {
-        matches!(self, ColorSpaceKind::DeviceCMYK)
-            || matches!(self, ColorSpaceKind::ICCBased(4))
+        matches!(self, ColorSpaceKind::DeviceCMYK) || matches!(self, ColorSpaceKind::ICCBased(4))
     }
 
     pub fn base_kind(&self) -> String {
         match self {
-            ColorSpaceKind::Separation(alt) | ColorSpaceKind::DeviceN(alt) | ColorSpaceKind::Indexed(alt) => alt.base_kind(),
+            ColorSpaceKind::Separation(alt)
+            | ColorSpaceKind::DeviceN(alt)
+            | ColorSpaceKind::Indexed(alt) => alt.base_kind(),
             other => other.display_name(),
         }
     }
@@ -88,19 +91,35 @@ pub fn resolve_color_space(
         return ColorSpaceKind::Unknown(format!("/{} (max depth)", String::from_utf8_lossy(name)));
     }
 
-    if name.eq_ignore_ascii_case(b"DeviceGray") { return ColorSpaceKind::DeviceGray; }
-    if name.eq_ignore_ascii_case(b"DeviceRGB") { return ColorSpaceKind::DeviceRGB; }
-    if name.eq_ignore_ascii_case(b"DeviceCMYK") { return ColorSpaceKind::DeviceCMYK; }
-    if name.eq_ignore_ascii_case(b"CalGray") { return ColorSpaceKind::CalGray; }
-    if name.eq_ignore_ascii_case(b"CalRGB") { return ColorSpaceKind::CalRGB; }
-    if name.eq_ignore_ascii_case(b"Lab") { return ColorSpaceKind::Lab; }
-    if name.eq_ignore_ascii_case(b"Pattern") { return ColorSpaceKind::Pattern; }
+    if name.eq_ignore_ascii_case(b"DeviceGray") {
+        return ColorSpaceKind::DeviceGray;
+    }
+    if name.eq_ignore_ascii_case(b"DeviceRGB") {
+        return ColorSpaceKind::DeviceRGB;
+    }
+    if name.eq_ignore_ascii_case(b"DeviceCMYK") {
+        return ColorSpaceKind::DeviceCMYK;
+    }
+    if name.eq_ignore_ascii_case(b"CalGray") {
+        return ColorSpaceKind::CalGray;
+    }
+    if name.eq_ignore_ascii_case(b"CalRGB") {
+        return ColorSpaceKind::CalRGB;
+    }
+    if name.eq_ignore_ascii_case(b"Lab") {
+        return ColorSpaceKind::Lab;
+    }
+    if name.eq_ignore_ascii_case(b"Pattern") {
+        return ColorSpaceKind::Pattern;
+    }
 
     let cs_dict = match resources.get(b"ColorSpace") {
         Ok(Object::Dictionary(d)) => d.clone(),
         Ok(Object::Reference(id)) => match doc.get_dictionary(*id) {
             Ok(d) => d.clone(),
-            Err(_) => return ColorSpaceKind::Unknown(format!("/{}", String::from_utf8_lossy(name))),
+            Err(_) => {
+                return ColorSpaceKind::Unknown(format!("/{}", String::from_utf8_lossy(name)))
+            }
         },
         _ => return ColorSpaceKind::Unknown(format!("/{}", String::from_utf8_lossy(name))),
     };
@@ -120,18 +139,12 @@ fn resolve_color_space_object(
     depth: usize,
 ) -> ColorSpaceKind {
     match obj {
-        Object::Name(n) => {
-            resolve_color_space(n, doc, resources, depth + 1)
-        }
-        Object::Array(arr) => {
-            resolve_array_color_space(arr, doc, resources, depth)
-        }
-        Object::Reference(id) => {
-            match doc.get_object(*id) {
-                Ok(o) => resolve_color_space_object(o, doc, resources, depth + 1),
-                Err(_) => ColorSpaceKind::Unknown("indirect_ref_error".into()),
-            }
-        }
+        Object::Name(n) => resolve_color_space(n, doc, resources, depth + 1),
+        Object::Array(arr) => resolve_array_color_space(arr, doc, resources, depth),
+        Object::Reference(id) => match doc.get_object(*id) {
+            Ok(o) => resolve_color_space_object(o, doc, resources, depth + 1),
+            Err(_) => ColorSpaceKind::Unknown("indirect_ref_error".into()),
+        },
         _ => ColorSpaceKind::Unknown("unexpected_object".into()),
     }
 }
@@ -158,7 +171,9 @@ fn resolve_array_color_space(
                 Object::Reference(id) => doc.get_object(*id).ok().and_then(|o| o.as_stream().ok()),
                 _ => None,
             };
-            let n = stream.and_then(|s| s.dict.get(b"N").ok().and_then(|n| n.as_i64().ok())).unwrap_or(3) as u8;
+            let n = stream
+                .and_then(|s| s.dict.get(b"N").ok().and_then(|n| n.as_i64().ok()))
+                .unwrap_or(3) as u8;
             ColorSpaceKind::ICCBased(n)
         }
         "Separation" if arr.len() >= 3 => {
@@ -200,27 +215,40 @@ fn parse_content_operations(content: &[u8]) -> Vec<(String, Vec<f64>, Vec<Vec<u8
     let mut i = 0;
 
     while i < len {
-        if is_whitespace(content[i]) { i += 1; continue; }
+        if is_whitespace(content[i]) {
+            i += 1;
+            continue;
+        }
         if content[i] == b'%' {
-            while i < len && content[i] != b'\n' && content[i] != b'\r' { i += 1; }
+            while i < len && content[i] != b'\n' && content[i] != b'\r' {
+                i += 1;
+            }
             continue;
         }
 
         if content[i] == b'/' {
             let start = i;
             i += 1;
-            while i < len && !is_whitespace(content[i]) && content[i] != b'%' { i += 1; }
+            while i < len && !is_whitespace(content[i]) && content[i] != b'%' {
+                i += 1;
+            }
             operands_name.push(content[start..i].to_vec());
             continue;
         }
 
         if content[i] == b'-' || content[i] == b'+' || is_digit(content[i]) || content[i] == b'.' {
             let start = i;
-            if content[i] == b'-' || content[i] == b'+' { i += 1; }
-            while i < len && is_digit(content[i]) { i += 1; }
+            if content[i] == b'-' || content[i] == b'+' {
+                i += 1;
+            }
+            while i < len && is_digit(content[i]) {
+                i += 1;
+            }
             if i < len && content[i] == b'.' {
                 i += 1;
-                while i < len && is_digit(content[i]) { i += 1; }
+                while i < len && is_digit(content[i]) {
+                    i += 1;
+                }
             }
             let s = std::str::from_utf8(&content[start..i]).unwrap_or("0");
             if let Ok(n) = s.parse::<f64>() {
@@ -231,26 +259,46 @@ fn parse_content_operations(content: &[u8]) -> Vec<(String, Vec<f64>, Vec<Vec<u8
 
         if is_operator_char(content[i]) {
             let start = i;
-            while i < len && is_operator_char(content[i]) { i += 1; }
+            while i < len && is_operator_char(content[i]) {
+                i += 1;
+            }
             let op = String::from_utf8_lossy(&content[start..i]).to_string();
-            ops.push((op, std::mem::take(&mut operands_num), std::mem::take(&mut operands_name)));
+            ops.push((
+                op,
+                std::mem::take(&mut operands_num),
+                std::mem::take(&mut operands_name),
+            ));
             continue;
         }
 
         if content[i] == b'(' {
             let mut depth = 0;
             while i < len {
-                if content[i] == b'(' { depth += 1; }
-                if content[i] == b')' { depth -= 1; if depth == 0 { i += 1; break; } }
-                if content[i] == b'\\' { i += 1; }
+                if content[i] == b'(' {
+                    depth += 1;
+                }
+                if content[i] == b')' {
+                    depth -= 1;
+                    if depth == 0 {
+                        i += 1;
+                        break;
+                    }
+                }
+                if content[i] == b'\\' {
+                    i += 1;
+                }
                 i += 1;
             }
             continue;
         }
 
         if content[i] == b'<' && i + 1 < len && content[i + 1] != b'<' {
-            while i < len && content[i] != b'>' { i += 1; }
-            if i < len { i += 1; }
+            while i < len && content[i] != b'>' {
+                i += 1;
+            }
+            if i < len {
+                i += 1;
+            }
             continue;
         }
 
@@ -290,17 +338,30 @@ fn find_extgstate(doc: &Document, resources: &Dictionary, name: &[u8]) -> Option
     }
 }
 
-fn collect_xobject_subtype(doc: &Document, xobject_dict: &Dictionary, name: &[u8]) -> Option<Vec<u8>> {
+fn collect_xobject_subtype(
+    doc: &Document,
+    xobject_dict: &Dictionary,
+    name: &[u8],
+) -> Option<Vec<u8>> {
     xobject_dict.get(name).ok().and_then(|value| {
         let stream = match value {
             Object::Reference(id) => doc.get_object(*id).ok().and_then(|o| o.as_stream().ok())?,
             _ => return None,
         };
-        stream.dict.get(b"Subtype").ok().and_then(|o| o.as_name().ok()).map(|n| n.to_vec())
+        stream
+            .dict
+            .get(b"Subtype")
+            .ok()
+            .and_then(|o| o.as_name().ok())
+            .map(|n| n.to_vec())
     })
 }
 
-fn collect_form_xobject_stream(doc: &Document, xobject_dict: &Dictionary, name: &[u8]) -> Option<Vec<u8>> {
+fn collect_form_xobject_stream(
+    doc: &Document,
+    xobject_dict: &Dictionary,
+    name: &[u8],
+) -> Option<Vec<u8>> {
     xobject_dict.get(name).ok().and_then(|value| {
         let stream = match value {
             Object::Reference(id) => doc.get_object(*id).ok().and_then(|o| o.as_stream().ok())?,
@@ -310,7 +371,11 @@ fn collect_form_xobject_stream(doc: &Document, xobject_dict: &Dictionary, name: 
     })
 }
 
-fn collect_form_xobject_resources(doc: &Document, xobject_dict: &Dictionary, name: &[u8]) -> Option<Dictionary> {
+fn collect_form_xobject_resources(
+    doc: &Document,
+    xobject_dict: &Dictionary,
+    name: &[u8],
+) -> Option<Dictionary> {
     xobject_dict.get(name).ok().and_then(|value| {
         let stream = match value {
             Object::Reference(id) => doc.get_object(*id).ok().and_then(|o| o.as_stream().ok())?,
@@ -342,8 +407,15 @@ fn collect_color_usages_in_stream(
     };
 
     process_color_stream(
-        doc, content_bytes, &resources, &xobject_dict,
-        page, &mut usages, &mut stroke_cs, &mut fill_cs, depth,
+        doc,
+        content_bytes,
+        &resources,
+        &xobject_dict,
+        page,
+        &mut usages,
+        &mut stroke_cs,
+        &mut fill_cs,
+        depth,
     );
 
     usages
@@ -360,7 +432,9 @@ fn process_color_stream(
     fill_cs: &mut Option<ColorSpaceKind>,
     depth: usize,
 ) {
-    if depth > 10 { return; }
+    if depth > 10 {
+        return;
+    }
 
     let ops = parse_content_operations(content_bytes);
 
@@ -393,7 +467,10 @@ fn process_color_stream(
                 }
             }
             "G" => {
-                let changed = stroke_cs.as_ref().map(|c| c != &ColorSpaceKind::DeviceGray).unwrap_or(true);
+                let changed = stroke_cs
+                    .as_ref()
+                    .map(|c| c != &ColorSpaceKind::DeviceGray)
+                    .unwrap_or(true);
                 if changed {
                     *stroke_cs = Some(ColorSpaceKind::DeviceGray);
                     usages.push(ColorUsage {
@@ -405,7 +482,10 @@ fn process_color_stream(
                 }
             }
             "g" => {
-                let changed = fill_cs.as_ref().map(|c| c != &ColorSpaceKind::DeviceGray).unwrap_or(true);
+                let changed = fill_cs
+                    .as_ref()
+                    .map(|c| c != &ColorSpaceKind::DeviceGray)
+                    .unwrap_or(true);
                 if changed {
                     *fill_cs = Some(ColorSpaceKind::DeviceGray);
                     usages.push(ColorUsage {
@@ -417,7 +497,10 @@ fn process_color_stream(
                 }
             }
             "RG" => {
-                let changed = stroke_cs.as_ref().map(|c| c != &ColorSpaceKind::DeviceRGB).unwrap_or(true);
+                let changed = stroke_cs
+                    .as_ref()
+                    .map(|c| c != &ColorSpaceKind::DeviceRGB)
+                    .unwrap_or(true);
                 if changed {
                     *stroke_cs = Some(ColorSpaceKind::DeviceRGB);
                     usages.push(ColorUsage {
@@ -429,7 +512,10 @@ fn process_color_stream(
                 }
             }
             "rg" => {
-                let changed = fill_cs.as_ref().map(|c| c != &ColorSpaceKind::DeviceRGB).unwrap_or(true);
+                let changed = fill_cs
+                    .as_ref()
+                    .map(|c| c != &ColorSpaceKind::DeviceRGB)
+                    .unwrap_or(true);
                 if changed {
                     *fill_cs = Some(ColorSpaceKind::DeviceRGB);
                     usages.push(ColorUsage {
@@ -441,7 +527,10 @@ fn process_color_stream(
                 }
             }
             "K" => {
-                let changed = stroke_cs.as_ref().map(|c| c != &ColorSpaceKind::DeviceCMYK).unwrap_or(true);
+                let changed = stroke_cs
+                    .as_ref()
+                    .map(|c| c != &ColorSpaceKind::DeviceCMYK)
+                    .unwrap_or(true);
                 if changed {
                     *stroke_cs = Some(ColorSpaceKind::DeviceCMYK);
                     usages.push(ColorUsage {
@@ -453,7 +542,10 @@ fn process_color_stream(
                 }
             }
             "k" => {
-                let changed = fill_cs.as_ref().map(|c| c != &ColorSpaceKind::DeviceCMYK).unwrap_or(true);
+                let changed = fill_cs
+                    .as_ref()
+                    .map(|c| c != &ColorSpaceKind::DeviceCMYK)
+                    .unwrap_or(true);
                 if changed {
                     *fill_cs = Some(ColorSpaceKind::DeviceCMYK);
                     usages.push(ColorUsage {
@@ -487,15 +579,17 @@ fn process_color_stream(
             "gs" => {
                 if let Some(name_bytes) = names.first() {
                     if let Some(gs_dict) = find_extgstate(doc, resources, name_bytes) {
-                        if let Ok(_sa) = gs_dict.get(b"SA").and_then(|o| o.as_bool()) {
-                        }
+                        if let Ok(_sa) = gs_dict.get(b"SA").and_then(|o| o.as_bool()) {}
                         if let Ok(op) = gs_dict.get(b"OP").and_then(|o| o.as_bool()) {
                             if op {
                                 usages.push(ColorUsage {
                                     color_space: ColorSpaceKind::Unknown("overprint".into()),
                                     usage_type: "stroke".into(),
                                     page,
-                                    object_context: format!("gs /{} OP=true", String::from_utf8_lossy(name_bytes)),
+                                    object_context: format!(
+                                        "gs /{} OP=true",
+                                        String::from_utf8_lossy(name_bytes)
+                                    ),
                                 });
                             }
                         }
@@ -506,15 +600,25 @@ fn process_color_stream(
                 if let Some(name_bytes) = names.first() {
                     let subtype = collect_xobject_subtype(doc, xobject_dict, name_bytes);
                     if subtype.as_deref() == Some(b"Form") {
-                        if let Some(form_content) = collect_form_xobject_stream(doc, xobject_dict, name_bytes) {
-                            let form_resources = collect_form_xobject_resources(doc, xobject_dict, name_bytes)
-                                .unwrap_or_else(|| resources.clone());
+                        if let Some(form_content) =
+                            collect_form_xobject_stream(doc, xobject_dict, name_bytes)
+                        {
+                            let form_resources =
+                                collect_form_xobject_resources(doc, xobject_dict, name_bytes)
+                                    .unwrap_or_else(|| resources.clone());
                             let form_xobject_dict = find_xobject_dict(doc, &form_resources)
                                 .unwrap_or_else(|| Dictionary::new());
 
                             process_color_stream(
-                                doc, &form_content, &form_resources, &form_xobject_dict,
-                                page, usages, stroke_cs, fill_cs, depth + 1,
+                                doc,
+                                &form_content,
+                                &form_resources,
+                                &form_xobject_dict,
+                                page,
+                                usages,
+                                stroke_cs,
+                                fill_cs,
+                                depth + 1,
                             );
                         }
                     }
@@ -525,11 +629,9 @@ fn process_color_stream(
     }
 }
 
-pub fn compute_findings(
-    usages: &[ColorUsage],
-    target_profile: &str,
-) -> Vec<ColorSpaceFinding> {
-    let mut seen: std::collections::HashMap<String, Vec<&ColorUsage>> = std::collections::HashMap::new();
+pub fn compute_findings(usages: &[ColorUsage], target_profile: &str) -> Vec<ColorSpaceFinding> {
+    let mut seen: std::collections::HashMap<String, Vec<&ColorUsage>> =
+        std::collections::HashMap::new();
     for usage in usages {
         let key = usage.color_space.display_name();
         seen.entry(key).or_default().push(usage);
@@ -656,58 +758,86 @@ fn extract_icc_description(stream_data: &[u8]) -> String {
 fn find_mlu_description(data: &[u8]) -> Option<String> {
     // Scan for 'desc' tag followed by a MultiLocalizedUnicodeTag
     // Tag table is at offset 128 (tag_count at 128)
-    if data.len() < 132 { return None; }
+    if data.len() < 132 {
+        return None;
+    }
     let tag_count = u32::from_be_bytes([data[128], data[129], data[130], data[131]]) as usize;
-    if data.len() < 132 + tag_count * 12 { return None; }
+    if data.len() < 132 + tag_count * 12 {
+        return None;
+    }
 
     for i in 0..tag_count {
         let entry_offset = 132 + i * 12;
-        if entry_offset + 12 > data.len() { break; }
+        if entry_offset + 12 > data.len() {
+            break;
+        }
         let tag = &data[entry_offset..entry_offset + 4];
-        if tag != b"desc" { continue; }
+        if tag != b"desc" {
+            continue;
+        }
         // Offset and size of the tag data
         let offset = u32::from_be_bytes([
-            data[entry_offset + 4], data[entry_offset + 5],
-            data[entry_offset + 6], data[entry_offset + 7],
+            data[entry_offset + 4],
+            data[entry_offset + 5],
+            data[entry_offset + 6],
+            data[entry_offset + 7],
         ]) as usize;
         let _size = u32::from_be_bytes([
-            data[entry_offset + 8], data[entry_offset + 9],
-            data[entry_offset + 10], data[entry_offset + 11],
+            data[entry_offset + 8],
+            data[entry_offset + 9],
+            data[entry_offset + 10],
+            data[entry_offset + 11],
         ]) as usize;
-        if offset + 12 > data.len() { return None; }
+        if offset + 12 > data.len() {
+            return None;
+        }
 
         let desc_type = &data[offset..offset + 4];
         if desc_type == b"desc" {
             // Simple text description
             let text_len = u32::from_be_bytes([
-                data[offset + 8], data[offset + 9],
-                data[offset + 10], data[offset + 11],
+                data[offset + 8],
+                data[offset + 9],
+                data[offset + 10],
+                data[offset + 11],
             ]) as usize;
             let text_start = offset + 12;
             if text_start + text_len <= data.len() {
-                return Some(String::from_utf8_lossy(&data[text_start..text_start + text_len]).to_string());
+                return Some(
+                    String::from_utf8_lossy(&data[text_start..text_start + text_len]).to_string(),
+                );
             }
         } else if desc_type == b"mftt" {
             // MultiLocalizedUnicodeTag
-            if offset + 16 > data.len() { return None; }
+            if offset + 16 > data.len() {
+                return None;
+            }
             let _record_count = u32::from_be_bytes([
-                data[offset + 8], data[offset + 9],
-                data[offset + 10], data[offset + 11],
+                data[offset + 8],
+                data[offset + 9],
+                data[offset + 10],
+                data[offset + 11],
             ]) as usize;
             let record_size = u32::from_be_bytes([
-                data[offset + 12], data[offset + 13],
-                data[offset + 14], data[offset + 15],
+                data[offset + 12],
+                data[offset + 13],
+                data[offset + 14],
+                data[offset + 15],
             ]) as usize;
             let rec_offset = offset + 16;
             if rec_offset + record_size <= data.len() {
                 // Try to get the first record's text
                 let lang_len = u32::from_be_bytes([
-                    data[rec_offset + 8], data[rec_offset + 9],
-                    data[rec_offset + 10], data[rec_offset + 11],
+                    data[rec_offset + 8],
+                    data[rec_offset + 9],
+                    data[rec_offset + 10],
+                    data[rec_offset + 11],
                 ]) as usize;
                 let lang_offset = u32::from_be_bytes([
-                    data[rec_offset + 12], data[rec_offset + 13],
-                    data[rec_offset + 14], data[rec_offset + 15],
+                    data[rec_offset + 12],
+                    data[rec_offset + 13],
+                    data[rec_offset + 14],
+                    data[rec_offset + 15],
                 ]) as usize;
                 let text_start = offset + lang_offset;
                 if text_start + lang_len * 2 <= data.len() {
@@ -737,10 +867,7 @@ fn find_text_description(data: &[u8]) -> Option<String> {
     None
 }
 
-pub fn check_color_spaces(
-    doc: &Document,
-    target_profile: &str,
-) -> Vec<ColorSpaceFinding> {
+pub fn check_color_spaces(doc: &Document, target_profile: &str) -> Vec<ColorSpaceFinding> {
     let page_ids: Vec<(u32, u16)> = doc.get_pages().values().copied().collect();
     let mut all_usages = Vec::new();
 
@@ -757,10 +884,10 @@ pub fn check_color_spaces(
             Some(r) => r,
             None => continue,
         };
-        let xobject_dict = find_xobject_dict(doc, &resources)
-            .unwrap_or_else(|| Dictionary::new());
+        let xobject_dict = find_xobject_dict(doc, &resources).unwrap_or_else(|| Dictionary::new());
 
-        let usages = collect_color_usages_in_stream(doc, obj_id, &content_bytes, page, &xobject_dict, 0);
+        let usages =
+            collect_color_usages_in_stream(doc, obj_id, &content_bytes, page, &xobject_dict, 0);
         all_usages.extend(usages);
 
         // Also scan image color spaces
@@ -778,7 +905,10 @@ pub fn check_color_spaces(
     compute_findings(&all_usages, target_profile)
 }
 
-fn collect_image_color_spaces(doc: &Document, page_id: (u32, u16)) -> Vec<(ColorSpaceKind, String)> {
+fn collect_image_color_spaces(
+    doc: &Document,
+    page_id: (u32, u16),
+) -> Vec<(ColorSpaceKind, String)> {
     let mut results = Vec::new();
     let resources = match get_resources(doc, page_id) {
         Some(r) => r,
@@ -791,30 +921,34 @@ fn collect_image_color_spaces(doc: &Document, page_id: (u32, u16)) -> Vec<(Color
 
     for (name, value) in xobject_dict.iter() {
         let stream = match value {
-            Object::Reference(id) => match doc.get_object(*id).ok().and_then(|o| o.as_stream().ok()) {
-                Some(s) => s,
-                None => continue,
-            },
+            Object::Reference(id) => {
+                match doc.get_object(*id).ok().and_then(|o| o.as_stream().ok()) {
+                    Some(s) => s,
+                    None => continue,
+                }
+            }
             _ => continue,
         };
-        let subtype = stream.dict.get(b"Subtype").ok().and_then(|o| o.as_name().ok());
-        if subtype != Some(b"Image") { continue; }
+        let subtype = stream
+            .dict
+            .get(b"Subtype")
+            .ok()
+            .and_then(|o| o.as_name().ok());
+        if subtype != Some(b"Image") {
+            continue;
+        }
 
         let cs = match stream.dict.get(b"ColorSpace") {
             Ok(Object::Name(n)) => resolve_color_space(n, doc, &resources, 0),
             Ok(Object::Array(arr)) => resolve_array_color_space(arr, doc, &resources, 0),
-            Ok(Object::Reference(id)) => {
-                match doc.get_object(*id) {
-                    Ok(o) => {
-                        match o {
-                            Object::Name(n) => resolve_color_space(n, doc, &resources, 0),
-                            Object::Array(arr) => resolve_array_color_space(arr, doc, &resources, 0),
-                            _ => ColorSpaceKind::Unknown("indirect_noname".into()),
-                        }
-                    },
-                    Err(_) => ColorSpaceKind::Unknown("indirect_error".into()),
-                }
-            }
+            Ok(Object::Reference(id)) => match doc.get_object(*id) {
+                Ok(o) => match o {
+                    Object::Name(n) => resolve_color_space(n, doc, &resources, 0),
+                    Object::Array(arr) => resolve_array_color_space(arr, doc, &resources, 0),
+                    _ => ColorSpaceKind::Unknown("indirect_noname".into()),
+                },
+                Err(_) => ColorSpaceKind::Unknown("indirect_error".into()),
+            },
             _ => continue,
         };
 
@@ -847,8 +981,10 @@ pub struct InkCoverageFinding {
 
 pub fn check_spot_colors(doc: &Document) -> Vec<SpotColorFinding> {
     let page_ids: Vec<(u32, u16)> = doc.get_pages().values().copied().collect();
-    let mut spot_names: std::collections::HashMap<String, Vec<usize>> = std::collections::HashMap::new();
-    let mut alt_spaces: std::collections::HashMap<String, ColorSpaceKind> = std::collections::HashMap::new();
+    let mut spot_names: std::collections::HashMap<String, Vec<usize>> =
+        std::collections::HashMap::new();
+    let mut alt_spaces: std::collections::HashMap<String, ColorSpaceKind> =
+        std::collections::HashMap::new();
 
     for page_num in 0..page_ids.len() {
         let obj_id = page_ids[page_num];
@@ -877,7 +1013,9 @@ pub fn check_spot_colors(doc: &Document) -> Vec<SpotColorFinding> {
                 _ => continue,
             };
 
-            if arr.is_empty() { continue; }
+            if arr.is_empty() {
+                continue;
+            }
             let family = match &arr[0] {
                 Object::Name(n) => String::from_utf8_lossy(&n).to_string(),
                 _ => continue,
@@ -911,14 +1049,22 @@ pub fn check_spot_colors(doc: &Document) -> Vec<SpotColorFinding> {
         let xobject_dict = find_xobject_dict(doc, &resources).unwrap_or_else(|| Dictionary::new());
         for (_name, value) in xobject_dict.iter() {
             let stream = match value {
-                Object::Reference(id) => match doc.get_object(*id).ok().and_then(|o| o.as_stream().ok()) {
-                    Some(s) => s,
-                    None => continue,
-                },
+                Object::Reference(id) => {
+                    match doc.get_object(*id).ok().and_then(|o| o.as_stream().ok()) {
+                        Some(s) => s,
+                        None => continue,
+                    }
+                }
                 _ => continue,
             };
-            let subtype = stream.dict.get(b"Subtype").ok().and_then(|o| o.as_name().ok());
-            if subtype != Some(b"Image") { continue; }
+            let subtype = stream
+                .dict
+                .get(b"Subtype")
+                .ok()
+                .and_then(|o| o.as_name().ok());
+            if subtype != Some(b"Image") {
+                continue;
+            }
             if let Ok(cs) = stream.dict.get(b"ColorSpace") {
                 let resolved = resolve_color_space_object(cs, doc, &resources, 0);
                 if let ColorSpaceKind::Separation(_) = &resolved {
@@ -936,29 +1082,55 @@ pub fn check_spot_colors(doc: &Document) -> Vec<SpotColorFinding> {
         }
     }
 
-    let mut findings: Vec<SpotColorFinding> = spot_names.into_iter().map(|(name, pages)| {
-        let alt = alt_spaces.get(&name);
-        let is_process = name.eq_ignore_ascii_case("All")
-            || name.eq_ignore_ascii_case("None")
-            || name.contains("Cut") || name.contains("Die")
-            || name.contains("Cyan") || name.contains("Magenta")
-            || name.contains("Yellow") || name.contains("Black")
-            || name.contains("Varnish") || name.contains("Coat");
-        SpotColorFinding {
-            name: name.clone(),
-            pages: pages.clone(),
-            has_alternate_colorspace: alt.is_some(),
-            alternate_colorspace_type: alt.map(|a| a.display_name()).unwrap_or_else(|| "none".into()),
-            severity: if is_process { "info".into() } else { "warning".into() },
-            message: if is_process {
-                format!("'{}' — appears to be a process/finishing name. Verify intent.", name)
-            } else {
-                let alt_str = alt.map(|a| format!(" using {}", a.display_name())).unwrap_or_default();
-                format!("Spot color '{}' found{} on pages {}.", name, alt_str,
-                    pages.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", "))
-            },
-        }
-    }).collect();
+    let mut findings: Vec<SpotColorFinding> = spot_names
+        .into_iter()
+        .map(|(name, pages)| {
+            let alt = alt_spaces.get(&name);
+            let is_process = name.eq_ignore_ascii_case("All")
+                || name.eq_ignore_ascii_case("None")
+                || name.contains("Cut")
+                || name.contains("Die")
+                || name.contains("Cyan")
+                || name.contains("Magenta")
+                || name.contains("Yellow")
+                || name.contains("Black")
+                || name.contains("Varnish")
+                || name.contains("Coat");
+            SpotColorFinding {
+                name: name.clone(),
+                pages: pages.clone(),
+                has_alternate_colorspace: alt.is_some(),
+                alternate_colorspace_type: alt
+                    .map(|a| a.display_name())
+                    .unwrap_or_else(|| "none".into()),
+                severity: if is_process {
+                    "info".into()
+                } else {
+                    "warning".into()
+                },
+                message: if is_process {
+                    format!(
+                        "'{}' — appears to be a process/finishing name. Verify intent.",
+                        name
+                    )
+                } else {
+                    let alt_str = alt
+                        .map(|a| format!(" using {}", a.display_name()))
+                        .unwrap_or_default();
+                    format!(
+                        "Spot color '{}' found{} on pages {}.",
+                        name,
+                        alt_str,
+                        pages
+                            .iter()
+                            .map(|p| p.to_string())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
+                },
+            }
+        })
+        .collect();
 
     if findings.is_empty() {
         findings.push(SpotColorFinding {
@@ -995,7 +1167,12 @@ pub fn icc_profile_from_stream(doc: &Document, stream_ref: &Object) -> Option<Ic
         Object::Reference(id) => doc.get_object(*id).ok().and_then(|o| o.as_stream().ok())?,
         _ => return None,
     };
-    let n = stream.dict.get(b"N").ok().and_then(|n| n.as_i64().ok()).unwrap_or(3) as u8;
+    let n = stream
+        .dict
+        .get(b"N")
+        .ok()
+        .and_then(|n| n.as_i64().ok())
+        .unwrap_or(3) as u8;
 
     let info = parse_icc_header(&stream.content);
     Some(IccProfileInfo {

@@ -1,8 +1,8 @@
-use lopdf::{Document, Object, Dictionary};
-use serde::Serialize;
 use flate2::read::ZlibDecoder;
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
+use lopdf::{Dictionary, Document, Object};
+use serde::Serialize;
 use std::io::{Read, Write};
 
 #[derive(Debug, Clone, Serialize)]
@@ -16,7 +16,11 @@ pub struct ConversionResult {
 // Based on ISO 12647-2 / FOGRA39 characterization
 
 fn srgb_to_linear(c: f64) -> f64 {
-    if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
+    if c <= 0.04045 {
+        c / 12.92
+    } else {
+        ((c + 0.055) / 1.055).powf(2.4)
+    }
 }
 
 fn rgb_to_cmyk_pixel(r: u8, g: u8, b: u8) -> (u8, u8, u8, u8) {
@@ -126,7 +130,10 @@ impl LcmsEngine {
                 for chunk in pixels.chunks(3) {
                     if chunk.len() == 3 {
                         let (c, m, y, k) = rgb_to_cmyk_pixel(chunk[0], chunk[1], chunk[2]);
-                        out.push(c); out.push(m); out.push(y); out.push(k);
+                        out.push(c);
+                        out.push(m);
+                        out.push(y);
+                        out.push(k);
                     }
                 }
                 out
@@ -140,10 +147,7 @@ impl LcmsEngine {
     }
 }
 
-pub fn convert_rgb_to_cmyk(
-    doc: &mut Document,
-    scope: &str,
-) -> Result<ConversionResult, String> {
+pub fn convert_rgb_to_cmyk(doc: &mut Document, scope: &str) -> Result<ConversionResult, String> {
     let mut result = ConversionResult {
         images_converted: 0,
         vector_ops_converted: 0,
@@ -155,136 +159,161 @@ pub fn convert_rgb_to_cmyk(
 
     // Convert image XObjects
     if scope == "both" || scope == "images" {
-    for page_num in 0..page_ids.len() {
-        let obj_id = page_ids[page_num];
+        for page_num in 0..page_ids.len() {
+            let obj_id = page_ids[page_num];
 
-        let resources = match get_resources(doc, obj_id) {
-            Some(r) => r,
-            None => continue,
-        };
-
-        let xobject_dict = match find_xobject_dict(doc, &resources) {
-            Some(x) => x,
-            None => continue,
-        };
-
-        let xobject_names: Vec<Vec<u8>> = xobject_dict.iter().map(|(k, _)| k.clone()).collect();
-
-        for name in &xobject_names {
-            let value = match xobject_dict.get(name) {
-                Ok(v) => v.clone(),
-                Err(_) => continue,
+            let resources = match get_resources(doc, obj_id) {
+                Some(r) => r,
+                None => continue,
             };
 
-            let _ = match value {
-                Object::Reference(id) => {
-                    match doc.get_object(id) {
-                        Ok(o) => {
-                            if let Some(s) = o.as_stream().ok() {
-                                // Check if it's an Image with RGB color space
-                                let subtype = s.dict.get(b"Subtype").ok().and_then(|o| o.as_name().ok());
-                                if subtype != Some(b"Image") { continue; }
+            let xobject_dict = match find_xobject_dict(doc, &resources) {
+                Some(x) => x,
+                None => continue,
+            };
 
-                                let cs = s.dict.get(b"ColorSpace").ok();
-                                let is_rgb = matches!(cs, Some(Object::Name(n)) if n.eq_ignore_ascii_case(b"DeviceRGB"))
-                                    || matches!(cs, Some(Object::Array(arr)) if arr.first().and_then(|o| o.as_name().ok()) == Some(b"ICCBased"));
+            let xobject_names: Vec<Vec<u8>> = xobject_dict.iter().map(|(k, _)| k.clone()).collect();
 
-                                if !is_rgb { continue; }
+            for name in &xobject_names {
+                let value = match xobject_dict.get(name) {
+                    Ok(v) => v.clone(),
+                    Err(_) => continue,
+                };
 
-                                let bpc = s.dict.get(b"BitsPerComponent").ok().and_then(|o| o.as_i64().ok()).unwrap_or(8);
+                let _ = match value {
+                    Object::Reference(id) => {
+                        match doc.get_object(id) {
+                            Ok(o) => {
+                                if let Some(s) = o.as_stream().ok() {
+                                    // Check if it's an Image with RGB color space
+                                    let subtype =
+                                        s.dict.get(b"Subtype").ok().and_then(|o| o.as_name().ok());
+                                    if subtype != Some(b"Image") {
+                                        continue;
+                                    }
 
-                                if bpc != 8 { continue; }
+                                    let cs = s.dict.get(b"ColorSpace").ok();
+                                    let is_rgb = matches!(cs, Some(Object::Name(n)) if n.eq_ignore_ascii_case(b"DeviceRGB"))
+                                        || matches!(cs, Some(Object::Array(arr)) if arr.first().and_then(|o| o.as_name().ok()) == Some(b"ICCBased"));
 
-                                // Decode the image data. Previously this operated on
-                                // `s.content` directly, which is the *compressed*
-                                // byte stream when a Filter (e.g. FlateDecode) is
-                                // present — converting compressed bytes produces
-                                // garbage. Decompress first, convert, then
-                                // recompress with the same filter. (#154)
-                                let raw_data = match decode_image_stream(s) {
-                                    Some(d) => d,
-                                    None => continue,
-                                };
-                                let pixel_count = raw_data.len() / 3;
-                                if pixel_count == 0 { continue; }
+                                    if !is_rgb {
+                                        continue;
+                                    }
 
-                                // Convert pixels
-                                let cmyk_data = engine.convert_pixels(&raw_data, 3);
+                                    let bpc = s
+                                        .dict
+                                        .get(b"BitsPerComponent")
+                                        .ok()
+                                        .and_then(|o| o.as_i64().ok())
+                                        .unwrap_or(8);
 
-                                // Update the stream with CMYK data
-                                if let Some(o) = doc.objects.get_mut(&id) {
-                                    if let Ok(stream_obj) = o.as_stream_mut() {
-                                        // Re-encode with the same filter that was
-                                        // originally present (FlateDecode/Fl), or
-                                        // store raw if there was none.
-                                        let had_filter = stream_obj.dict.get(b"Filter").is_ok();
-                                        if had_filter {
-                                            let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-                                            if encoder.write_all(&cmyk_data).is_err() {
-                                                continue;
+                                    if bpc != 8 {
+                                        continue;
+                                    }
+
+                                    // Decode the image data. Previously this operated on
+                                    // `s.content` directly, which is the *compressed*
+                                    // byte stream when a Filter (e.g. FlateDecode) is
+                                    // present — converting compressed bytes produces
+                                    // garbage. Decompress first, convert, then
+                                    // recompress with the same filter. (#154)
+                                    let raw_data = match decode_image_stream(s) {
+                                        Some(d) => d,
+                                        None => continue,
+                                    };
+                                    let pixel_count = raw_data.len() / 3;
+                                    if pixel_count == 0 {
+                                        continue;
+                                    }
+
+                                    // Convert pixels
+                                    let cmyk_data = engine.convert_pixels(&raw_data, 3);
+
+                                    // Update the stream with CMYK data
+                                    if let Some(o) = doc.objects.get_mut(&id) {
+                                        if let Ok(stream_obj) = o.as_stream_mut() {
+                                            // Re-encode with the same filter that was
+                                            // originally present (FlateDecode/Fl), or
+                                            // store raw if there was none.
+                                            let had_filter = stream_obj.dict.get(b"Filter").is_ok();
+                                            if had_filter {
+                                                let mut encoder = ZlibEncoder::new(
+                                                    Vec::new(),
+                                                    Compression::default(),
+                                                );
+                                                if encoder.write_all(&cmyk_data).is_err() {
+                                                    continue;
+                                                }
+                                                let recompressed = match encoder.finish() {
+                                                    Ok(c) => c,
+                                                    Err(_) => continue,
+                                                };
+                                                stream_obj.content = recompressed;
+                                                // Normalize the filter name to the
+                                                // canonical FlateDecode spelling —
+                                                // drop any abbreviation and any
+                                                // DecodeParms that no longer match
+                                                // the recompressed payload.
+                                                stream_obj.dict.set(
+                                                    "Filter",
+                                                    Object::Name(b"FlateDecode".to_vec()),
+                                                );
+                                                stream_obj.dict.remove(b"DecodeParms");
+                                            } else {
+                                                stream_obj.content = cmyk_data;
                                             }
-                                            let recompressed = match encoder.finish() {
-                                                Ok(c) => c,
-                                                Err(_) => continue,
-                                            };
-                                            stream_obj.content = recompressed;
-                                            // Normalize the filter name to the
-                                            // canonical FlateDecode spelling —
-                                            // drop any abbreviation and any
-                                            // DecodeParms that no longer match
-                                            // the recompressed payload.
-                                            stream_obj.dict.set("Filter", Object::Name(b"FlateDecode".to_vec()));
-                                            stream_obj.dict.remove(b"DecodeParms");
-                                        } else {
-                                            stream_obj.content = cmyk_data;
-                                        }
-                                        stream_obj.dict.set("ColorSpace", Object::Name(b"DeviceCMYK".to_vec()));
-                                        stream_obj.dict.set("BitsPerComponent", Object::Integer(8));
-                                        stream_obj.dict.remove(b"Length");
+                                            stream_obj.dict.set(
+                                                "ColorSpace",
+                                                Object::Name(b"DeviceCMYK".to_vec()),
+                                            );
+                                            stream_obj
+                                                .dict
+                                                .set("BitsPerComponent", Object::Integer(8));
+                                            stream_obj.dict.remove(b"Length");
 
-                                        result.images_converted += 1;
+                                            result.images_converted += 1;
+                                        }
                                     }
                                 }
+                                continue;
                             }
-                            continue;
+                            Err(_) => continue,
                         }
-                        Err(_) => continue,
                     }
-                }
-                _ => continue,
-            };
+                    _ => continue,
+                };
+            }
         }
-    }
     }
 
     // Convert vector color operators in content streams
     if scope == "both" || scope == "vector" {
-    for page_num in 0..page_ids.len() {
-        let obj_id = page_ids[page_num];
+        for page_num in 0..page_ids.len() {
+            let obj_id = page_ids[page_num];
 
-        let content = match doc.get_page_content(obj_id) {
-            Ok(c) => c,
-            Err(_) => continue,
-        };
+            let content = match doc.get_page_content(obj_id) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
 
-        let (count, converted) = convert_vector_colors(&content, &engine);
-        if count > 0 {
-            // Update page content stream
-            let content_stream_id = get_page_content_stream_id(doc, obj_id);
-            if let Some(stream_id) = content_stream_id {
-                if let Some(o) = doc.objects.get_mut(&stream_id) {
-                    if let Ok(stream_obj) = o.as_stream_mut() {
-                        stream_obj.content = converted;
-                        if stream_obj.dict.get(b"Filter").is_ok() {
-                            stream_obj.dict.remove(b"Filter");
-                            stream_obj.dict.remove(b"DecodeParms");
+            let (count, converted) = convert_vector_colors(&content, &engine);
+            if count > 0 {
+                // Update page content stream
+                let content_stream_id = get_page_content_stream_id(doc, obj_id);
+                if let Some(stream_id) = content_stream_id {
+                    if let Some(o) = doc.objects.get_mut(&stream_id) {
+                        if let Ok(stream_obj) = o.as_stream_mut() {
+                            stream_obj.content = converted;
+                            if stream_obj.dict.get(b"Filter").is_ok() {
+                                stream_obj.dict.remove(b"Filter");
+                                stream_obj.dict.remove(b"DecodeParms");
+                            }
                         }
                     }
                 }
+                result.vector_ops_converted += count;
             }
-            result.vector_ops_converted += count;
         }
-    }
     }
 
     Ok(result)
@@ -320,9 +349,19 @@ fn convert_vector_colors(content: &[u8], _engine: &LcmsEngine) -> (usize, Vec<u8
                     let (c, m, y, k) = rgb_to_cmyk_float(nums[0], nums[1], nums[2]);
                     let remaining = &nums[3..];
                     let parts: Vec<String> = remaining.iter().map(|v| v.to_string()).collect();
-                    let line = format!("{} {} {} {}{} {}\n", c, m, y, k,
-                        if parts.is_empty() { String::new() } else { format!(" {}", parts.join(" ")) },
-                        op);
+                    let line = format!(
+                        "{} {} {} {}{} {}\n",
+                        c,
+                        m,
+                        y,
+                        k,
+                        if parts.is_empty() {
+                            String::new()
+                        } else {
+                            format!(" {}", parts.join(" "))
+                        },
+                        op
+                    );
                     output.extend_from_slice(line.as_bytes());
                     ops_count += 1;
                 }
@@ -340,13 +379,19 @@ fn convert_vector_colors(content: &[u8], _engine: &LcmsEngine) -> (usize, Vec<u8
     (ops_count, output)
 }
 
-fn find_next_operator(content: &[u8], start: usize) -> Option<(usize, usize, String, Vec<f64>, Vec<Vec<u8>>)> {
+fn find_next_operator(
+    content: &[u8],
+    start: usize,
+) -> Option<(usize, usize, String, Vec<f64>, Vec<Vec<u8>>)> {
     let ops = parse_content_operations(&content[start..]);
     if let Some((op, nums, names)) = ops.first() {
         // Find the byte position of this operator in the content
         let op_bytes = op.as_bytes();
         let search_start = start;
-        if let Some(pos) = content[search_start..].windows(op_bytes.len()).position(|w| w == op_bytes) {
+        if let Some(pos) = content[search_start..]
+            .windows(op_bytes.len())
+            .position(|w| w == op_bytes)
+        {
             let abs_pos = search_start + pos;
             let end = abs_pos + op_bytes.len();
             Some((abs_pos, end, op.clone(), nums.clone(), names.clone()))
@@ -389,9 +434,7 @@ pub fn add_output_intent(
 
     // Create ICC profile stream
     let icc_stream = Stream::new(
-        Dictionary::from_iter(vec![
-            (b"N".to_vec(), Object::Integer(n_channels as i64)),
-        ]),
+        Dictionary::from_iter(vec![(b"N".to_vec(), Object::Integer(n_channels as i64))]),
         icc_data.to_vec(),
     );
     let icc_stream_id = doc.add_object(Object::Stream(icc_stream));
@@ -400,21 +443,38 @@ pub fn add_output_intent(
     let output_intent = Object::Dictionary(Dictionary::from_iter(vec![
         (b"Type".to_vec(), Object::Name(b"OutputIntent".to_vec())),
         (b"S".to_vec(), Object::Name(b"GTS_PDFX".to_vec())),
-        (b"OutputConditionIdentifier".to_vec(), Object::String(condition_id.as_bytes().to_vec(), lopdf::StringFormat::Literal)),
-        (b"OutputCondition".to_vec(), Object::String(condition.as_bytes().to_vec(), lopdf::StringFormat::Literal)),
-        (b"DestOutputProfile".to_vec(), Object::Reference(icc_stream_id)),
+        (
+            b"OutputConditionIdentifier".to_vec(),
+            Object::String(
+                condition_id.as_bytes().to_vec(),
+                lopdf::StringFormat::Literal,
+            ),
+        ),
+        (
+            b"OutputCondition".to_vec(),
+            Object::String(condition.as_bytes().to_vec(), lopdf::StringFormat::Literal),
+        ),
+        (
+            b"DestOutputProfile".to_vec(),
+            Object::Reference(icc_stream_id),
+        ),
     ]));
 
     let output_intent_id = doc.add_object(output_intent);
 
     // Get or create catalog via the trailer's Root reference.
-    let catalog_ref = doc.trailer.get(b"Root")
+    let catalog_ref = doc
+        .trailer
+        .get(b"Root")
         .ok()
         .and_then(|r| r.as_reference().ok())
         .ok_or_else(|| "Cannot find Root reference in trailer".to_string())?;
     if let Some(catalog) = doc.objects.get_mut(&catalog_ref) {
         if let Ok(catalog_dict) = catalog.as_dict_mut() {
-            catalog_dict.set("OutputIntents", Object::Array(vec![Object::Reference(output_intent_id)]));
+            catalog_dict.set(
+                "OutputIntents",
+                Object::Array(vec![Object::Reference(output_intent_id)]),
+            );
         }
     }
 
@@ -422,7 +482,10 @@ pub fn add_output_intent(
     if let Ok(info_ref) = doc.trailer.get(b"Info").and_then(|o| o.as_reference()) {
         if let Some(info) = doc.objects.get_mut(&info_ref) {
             if let Ok(info_dict) = info.as_dict_mut() {
-                info_dict.set("GTS_PDFXVersion", Object::String(b"PDF/X-4".to_vec(), lopdf::StringFormat::Literal));
+                info_dict.set(
+                    "GTS_PDFXVersion",
+                    Object::String(b"PDF/X-4".to_vec(), lopdf::StringFormat::Literal),
+                );
                 info_dict.set("Trapped", Object::Name(b"False".to_vec()));
             }
         }
@@ -561,7 +624,9 @@ fn decode_image_stream(stream: &lopdf::Stream) -> Option<Vec<u8>> {
                         data = buf;
                     } else {
                         let name = String::from_utf8_lossy(n);
-                        log::warn!("decode_image_stream: unsupported filter {name} in pipeline — skipping");
+                        log::warn!(
+                            "decode_image_stream: unsupported filter {name} in pipeline — skipping"
+                        );
                         return None;
                     }
                 }
@@ -580,27 +645,40 @@ fn parse_content_operations(content: &[u8]) -> Vec<(String, Vec<f64>, Vec<Vec<u8
     let mut i = 0;
 
     while i < len {
-        if is_whitespace(content[i]) { i += 1; continue; }
+        if is_whitespace(content[i]) {
+            i += 1;
+            continue;
+        }
         if content[i] == b'%' {
-            while i < len && content[i] != b'\n' && content[i] != b'\r' { i += 1; }
+            while i < len && content[i] != b'\n' && content[i] != b'\r' {
+                i += 1;
+            }
             continue;
         }
 
         if content[i] == b'/' {
             let start = i;
             i += 1;
-            while i < len && !is_whitespace(content[i]) && content[i] != b'%' { i += 1; }
+            while i < len && !is_whitespace(content[i]) && content[i] != b'%' {
+                i += 1;
+            }
             operands_name.push(content[start..i].to_vec());
             continue;
         }
 
         if content[i] == b'-' || content[i] == b'+' || is_digit(content[i]) || content[i] == b'.' {
             let start = i;
-            if content[i] == b'-' || content[i] == b'+' { i += 1; }
-            while i < len && is_digit(content[i]) { i += 1; }
+            if content[i] == b'-' || content[i] == b'+' {
+                i += 1;
+            }
+            while i < len && is_digit(content[i]) {
+                i += 1;
+            }
             if i < len && content[i] == b'.' {
                 i += 1;
-                while i < len && is_digit(content[i]) { i += 1; }
+                while i < len && is_digit(content[i]) {
+                    i += 1;
+                }
             }
             let s = std::str::from_utf8(&content[start..i]).unwrap_or("0");
             if let Ok(n) = s.parse::<f64>() {
@@ -611,26 +689,46 @@ fn parse_content_operations(content: &[u8]) -> Vec<(String, Vec<f64>, Vec<Vec<u8
 
         if is_operator_char(content[i]) {
             let start = i;
-            while i < len && is_operator_char(content[i]) { i += 1; }
+            while i < len && is_operator_char(content[i]) {
+                i += 1;
+            }
             let op = String::from_utf8_lossy(&content[start..i]).to_string();
-            ops.push((op, std::mem::take(&mut operands_num), std::mem::take(&mut operands_name)));
+            ops.push((
+                op,
+                std::mem::take(&mut operands_num),
+                std::mem::take(&mut operands_name),
+            ));
             continue;
         }
 
         if content[i] == b'(' {
             let mut depth = 0;
             while i < len {
-                if content[i] == b'(' { depth += 1; }
-                if content[i] == b')' { depth -= 1; if depth == 0 { i += 1; break; } }
-                if content[i] == b'\\' { i += 1; }
+                if content[i] == b'(' {
+                    depth += 1;
+                }
+                if content[i] == b')' {
+                    depth -= 1;
+                    if depth == 0 {
+                        i += 1;
+                        break;
+                    }
+                }
+                if content[i] == b'\\' {
+                    i += 1;
+                }
                 i += 1;
             }
             continue;
         }
 
         if content[i] == b'<' && i + 1 < len && content[i + 1] != b'<' {
-            while i < len && content[i] != b'>' { i += 1; }
-            if i < len { i += 1; }
+            while i < len && content[i] != b'>' {
+                i += 1;
+            }
+            if i < len {
+                i += 1;
+            }
             continue;
         }
 
