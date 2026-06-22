@@ -79,7 +79,7 @@ export default function EstimateEditor({ estimateId, onSave, onCancel }: Estimat
   const { estimate, line_items } = estimateData
 
   const handleAddLineItem = (category: EstimateLineItem['category']) => {
-    const newItem: EstimateLineItem = {
+    const newItem: EstimateLineItem & { tempId?: string } = {
       id: 0,
       estimate_id: estimate.id || 0,
       description: '',
@@ -87,6 +87,7 @@ export default function EstimateEditor({ estimateId, onSave, onCancel }: Estimat
       quantity: 1,
       unit_price: 0,
       sort_order: line_items.length,
+      tempId: `temp-${Date.now()}-${Math.random()}`,
     }
     setEstimateData({
       ...estimateData,
@@ -330,8 +331,9 @@ export default function EstimateEditor({ estimateId, onSave, onCancel }: Estimat
 
                   {categoryItems.map((item) => {
                     const actualIndex = line_items.indexOf(item)
+                    const key = (item as EstimateLineItem & { tempId?: string }).tempId || `item-${item.id}`
                     return (
-                      <div key={actualIndex} className="line-item">
+                      <div key={key} className="line-item">
                         <Input
                           placeholder="Description"
                           value={item.description}

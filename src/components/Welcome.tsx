@@ -102,7 +102,7 @@ export default function Welcome({ onImportComplete }: WelcomeProps) {
           <Button
             variant="primary"
             fullWidth
-            onClick={() => invoke('create_workbook', { name: `Workbook 1` }).then(onImportComplete)}
+            onClick={() => invoke('create_workbook', { name: `Workbook 1` }).then(onImportComplete).catch((e) => { console.error('Failed to create workbook:', e) })}
             disabled={isLoading}
           >
             Start with Empty Workbook
