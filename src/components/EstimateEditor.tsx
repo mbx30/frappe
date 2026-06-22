@@ -69,7 +69,7 @@ export default function EstimateEditor({ estimateId, onSave, onCancel }: Estimat
     } else {
       initializeNewEstimate()
     }
-    /* eslint-enable react-hooks/set-state-in-effect */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [estimateId])
 
   const handleAddLineItem = useCallback((category: EstimateLineItem['category']) => {

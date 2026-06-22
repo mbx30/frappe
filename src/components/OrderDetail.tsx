@@ -90,7 +90,7 @@ export default function OrderDetail({ orderId, onSave, onCancel }: OrderDetailPr
     } else {
       initializeNewOrder()
     }
-    /* eslint-enable react-hooks/set-state-in-effect */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderId])
 
   const handleStatusChange = async (newStatus: string) => {
