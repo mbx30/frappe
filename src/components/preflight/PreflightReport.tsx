@@ -36,10 +36,12 @@ export default function PreflightReport({ filePath, result, jobId, onSaved }: Pr
   })
   const [minBleed, setMinBleed] = useState(3)
   const [bleedFindings, setBleedFindings] = useState(result.bleed)
+  const [pdfxFindings, setPdfxFindings] = useState(result.pdfx)
   const [saving, setSaving] = useState(false)
   const [saveMsg, setSaveMsg] = useState<string | null>(null)
   const [profile, setProfile] = useState('full')
   const [running, setRunning] = useState(false)
+  const [profileMsg, setProfileMsg] = useState<string | null>(null)
 
   const toggle = (key: string) => setSections(prev => ({ ...prev, [key]: !prev[key] }))
 
@@ -48,7 +50,7 @@ export default function PreflightReport({ filePath, result, jobId, onSaved }: Pr
   const ic = countBySeverity(result.images)
   const blc = countBySeverity(bleedFindings)
   const sc = countBySeverity(result.security)
-  const xc = countBySeverity(result.pdfx)
+  const xc = countBySeverity(pdfxFindings)
   const cc = countBySeverity(result.color_spaces)
   const oc = countBySeverity(result.overprint)
   const tc = countBySeverity(result.transparency)
@@ -68,7 +70,7 @@ export default function PreflightReport({ filePath, result, jobId, onSaved }: Pr
       for (const f of result.images) findings.push({ check_name: 'image_resolution', severity: f.severity, page_num: typeof f.page === 'number' ? f.page : null, object_ref: f.image_name, message: f.message, fix_hint: '' })
       for (const f of bleedFindings) findings.push({ check_name: 'bleed', severity: f.severity, page_num: typeof f.page === 'number' ? f.page : null, object_ref: null, message: f.message, fix_hint: '' })
       for (const f of result.security) findings.push({ check_name: 'security', severity: f.severity, page_num: null, object_ref: f.category, message: f.message, fix_hint: '' })
-      for (const f of result.pdfx) findings.push({ check_name: 'pdfx', severity: f.severity, page_num: null, object_ref: f.category, message: f.message, fix_hint: f.fix_hint })
+      for (const f of pdfxFindings) findings.push({ check_name: 'pdfx', severity: f.severity, page_num: null, object_ref: f.category, message: f.message, fix_hint: f.fix_hint })
       for (const f of result.color_spaces) findings.push({ check_name: 'color_spaces', severity: f.severity, page_num: null, object_ref: f.color_space, message: f.message, fix_hint: '' })
       for (const f of result.overprint) findings.push({ check_name: 'overprint', severity: f.severity, page_num: typeof f.page === 'number' ? f.page : null, object_ref: f.object_context, message: f.message, fix_hint: '' })
       for (const f of result.transparency) findings.push({ check_name: 'transparency', severity: f.severity, page_num: typeof f.page === 'number' ? f.page : null, object_ref: f.ty, message: f.message, fix_hint: '' })
@@ -85,10 +87,14 @@ export default function PreflightReport({ filePath, result, jobId, onSaved }: Pr
 
   const handleRunProfile = async () => {
     setRunning(true)
+    setProfileMsg(null)
     try {
-      await invoke('check_pdfx', { path: filePath, profile: profile === 'full' ? 'x4' : profile })
+      const fullResult = await invoke<typeof result>('check_pdfx', { path: filePath, profile: profile === 'full' ? 'x4' : profile })
+      setPdfxFindings(fullResult.pdfx)
+      setProfileMsg('Profile check complete. Results updated above.')
     } catch (e) {
       console.error('Profile check failed:', e)
+      setProfileMsg(`Profile check failed: ${e}`)
     } finally {
       setRunning(false)
     }

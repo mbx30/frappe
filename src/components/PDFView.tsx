@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { invoke } from '@tauri-apps/api/core'
+import { invoke, convertFileSrc } from '@tauri-apps/api/core'
 import type { PdfSummary, CombinedPreflightResult } from '../types'
 import PreflightReport from './preflight/PreflightReport'
 import PdfInspector from './preflight/PdfInspector'
@@ -82,7 +82,7 @@ function ThumbnailStrip({ filePath, pageCount, currentPage, onSelectPage }: {
           }}
         >
           {thumbnails[i] ? (
-            <img src={`file://${thumbnails[i]}`} alt={`Page ${i + 1}`} />
+            <img src={convertFileSrc(thumbnails[i])} alt={`Page ${i + 1}`} />
           ) : (
             <div className="thumb-placeholder" aria-hidden="true">{i + 1}</div>
           )}
@@ -129,7 +129,7 @@ function PageViewer({ filePath, pageIndex }: { filePath: string; pageIndex: numb
       </div>
       <div className="page-canvas" role="img" aria-label={`Page ${pageIndex + 1}`}>
         {loading && <div className="page-loading" role="status">{t('pdf.rendering')}</div>}
-        {renderUrl && <img src={`file://${renderUrl}`} alt={`Page ${pageIndex + 1}`} style={{ maxWidth: `${zoom}%` }} />}
+        {renderUrl && <img src={convertFileSrc(renderUrl)} alt={`Page ${pageIndex + 1}`} style={{ maxWidth: `${zoom}%` }} />}
       </div>
     </div>
   )

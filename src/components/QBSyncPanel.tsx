@@ -24,6 +24,7 @@ export default function QBSyncPanel() {
   const [syncing, setSyncing] = useState<Set<number>>(new Set())
   const [errors, setErrors] = useState<Map<number, string>>(new Map())
   const [successIds, setSuccessIds] = useState<Set<number>>(new Set())
+  const [syncingAll, setSyncingAll] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -58,11 +59,17 @@ export default function QBSyncPanel() {
   }
 
   const handleSyncAll = async () => {
-    const unsynced = invoices.filter(
-      (inv) => inv.qb_sync_status !== 'synced' && inv.status !== 'draft' && inv.status !== 'voided'
-    )
-    for (const inv of unsynced) {
-      await handleSync(inv)
+    if (syncingAll) return
+    setSyncingAll(true)
+    try {
+      const unsynced = invoices.filter(
+        (inv) => inv.qb_sync_status !== 'synced' && inv.status !== 'draft' && inv.status !== 'voided'
+      )
+      for (const inv of unsynced) {
+        await handleSync(inv)
+      }
+    } finally {
+      setSyncingAll(false)
     }
   }
 
@@ -86,8 +93,8 @@ export default function QBSyncPanel() {
             Not Connected (Stub)
           </div>
           {unsyncedCount > 0 && (
-            <Button variant="primary" onClick={handleSyncAll}>
-              Mark All Synced ({unsyncedCount})
+            <Button variant="primary" onClick={handleSyncAll} disabled={syncingAll}>
+              {syncingAll ? 'Syncing...' : `Mark All Synced (${unsyncedCount})`}
             </Button>
           )}
         </div>
