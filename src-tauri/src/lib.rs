@@ -52,13 +52,6 @@ pub fn run() {
             }
 
             app_handle.manage(database);
-            if cfg!(debug_assertions) {
-                app_handle.plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
-            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
