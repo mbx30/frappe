@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  builder:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: frappe:${VERSION:-latest}
+    container_name: frappe-builder
+    # Mount source for incremental builds if desired
+    volumes:
+      - .:/app
+      - frappe-target-cache:/app/target
+      - frappe-node-cache:/app/node_modules
+    environment:
+      # Rust build settings
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: 1
+    working_dir: /app
+
+volumes:
+  frappe-target-cache:
+    driver: local
+  frappe-node-cache:
+    driver: local
