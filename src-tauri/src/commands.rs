@@ -2479,6 +2479,7 @@ pub fn compress_pdf(path: String, output_path: String) -> Result<(), String> {
         &output_path,
         &crate::pdf::compress::CompressionOptions::default(),
     )
+    .map(|_| ())
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

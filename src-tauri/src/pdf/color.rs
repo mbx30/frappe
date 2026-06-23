@@ -1152,13 +1152,12 @@ pub fn check_ink_coverage(doc: &lopdf::Document) -> Vec<InkCoverageFinding> {
 
     let page_ids: Vec<(u32, u16)> = doc.get_pages().values().copied().collect();
 
-    for (idx, &(obj_id, _)) in page_ids.iter().enumerate() {
+    for (idx, &obj_id) in page_ids.iter().enumerate() {
         let page_num = idx + 1;
-        let content = match doc.get_page_content(obj_id) {
-            Ok(Some(c)) => c,
-            _ => continue,
+        let bytes = match doc.get_page_content(obj_id) {
+            Ok(c) => c,
+            Err(_) => continue,
         };
-        let bytes = content.content;
         let text = String::from_utf8_lossy(&bytes);
         let mut max_tac = 0.0f64;
 

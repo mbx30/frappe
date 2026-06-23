@@ -3575,8 +3575,9 @@ impl Database {
             let mut stmt = tx.prepare(
                 "SELECT id, file_path FROM batch_results WHERE batch_id = ?1 AND status = 'pending' ORDER BY id LIMIT 2000"
             )?;
-            stmt.query_map(params![batch_id], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))?
-                .collect::<Result<Vec<_>>>()?
+            let x = stmt.query_map(params![batch_id], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))?
+                .collect::<Result<Vec<_>>>()?;
+            x
         };
 
         if pending_results.is_empty() {
