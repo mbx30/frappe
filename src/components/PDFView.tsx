@@ -179,6 +179,12 @@ export default function PDFView({ summary, jobs, onOpenFile, onSaveJob, onDelete
       setCurrentPage(p => Math.max(0, p - 1))
     } else if (e.key === 'ArrowRight' && showViewer) {
       setCurrentPage(p => Math.min((summary?.page_count ?? 1) - 1, p + 1))
+    } else if (e.key === 'Home' && showViewer) {
+      e.preventDefault()
+      setCurrentPage(0)
+    } else if (e.key === 'End' && showViewer) {
+      e.preventDefault()
+      setCurrentPage((summary?.page_count ?? 1) - 1)
     } else if (e.key === '+' || e.key === '=') {
       // Zoom in handled by PageViewer's internal state, but we can trigger a re-render
     } else if (e.key === '-') {
