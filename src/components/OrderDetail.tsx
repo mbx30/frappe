@@ -14,8 +14,9 @@ interface OrderDetailProps {
   onCancel: () => void
 }
 
-const generateOrderNumber = () => {
-  return `ORD-${Date.now().toString().slice(-8)}`
+const isUniqueOrderNumberError = (e: unknown): boolean => {
+  const msg = typeof e === 'string' ? e : (e instanceof Error ? e.message : String(e))
+  return /UNIQUE constraint failed: orders\.order_number/i.test(msg)
 }
 
 const statusTransitions: Record<string, string[]> = {
@@ -45,13 +46,14 @@ export default function OrderDetail({ orderId, onSave, onCancel }: OrderDetailPr
     }
   }
 
-  function initializeNewOrder() {
+  async function initializeNewOrder() {
     const today = new Date().toISOString().split('T')[0]
-    const dueDate = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    const dueDate = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    const orderNumber = await invoke<string>('next_order_number')
     setOrderData({
       order: {
         id: 0,
-        order_number: generateOrderNumber(),
+        order_number: orderNumber,
         client_id: null,
         status: 'prepress',
         priority: 'normal',
@@ -134,12 +136,34 @@ export default function OrderDetail({ orderId, onSave, onCancel }: OrderDetailPr
     setIsSaving(true)
     try {
       if (orderData.order.id === 0) {
-        // Create new order
-        const newOrder = await invoke<Order>('create_order', {
-          orderNumber: orderData.order.order_number,
-          dueDate: orderData.order.due_date,
-          description: orderData.order.description,
-        })
+        // Create new order. Race-protect: if two new-order flows happen at
+        // once, both can read max=N from `next_order_number` and try to
+        // insert the same order_number. The SQLite UNIQUE constraint catches
+        // the loser — detect that and retry once with a freshly-fetched
+        // number (#239 H1 follow-up).
+        let newOrder: Order
+        try {
+          newOrder = await invoke<Order>('create_order', {
+            orderNumber: orderData.order.order_number,
+            dueDate: orderData.order.due_date,
+            description: orderData.order.description,
+          })
+        } catch (e) {
+          if (isUniqueOrderNumberError(e)) {
+            const retryNumber = await invoke<string>('next_order_number')
+            newOrder = await invoke<Order>('create_order', {
+              orderNumber: retryNumber,
+              dueDate: orderData.order.due_date,
+              description: orderData.order.description,
+            })
+            setOrderData({
+              ...orderData,
+              order: { ...orderData.order, order_number: retryNumber },
+            })
+          } else {
+            throw e
+          }
+        }
 
         // Update with details
         await invoke('update_order', {

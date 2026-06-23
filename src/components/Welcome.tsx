@@ -6,7 +6,7 @@ import { Button } from '../design-system'
 import './Welcome.css'
 
 interface WelcomeProps {
-  onImportComplete: () => void
+  onImportComplete: (createdWorkbookId: number | null) => void
 }
 
 export default function Welcome({ onImportComplete }: WelcomeProps) {
@@ -25,7 +25,7 @@ export default function Welcome({ onImportComplete }: WelcomeProps) {
       const wb = await invoke<{ id: number }>('create_workbook', { name: 'Imported Data' })
       const cmd = filePath.endsWith('.csv') ? 'import_csv_file' : 'import_excel_file'
       await invoke<SheetData>(cmd, { workbookId: wb.id, filePath })
-      onImportComplete()
+      onImportComplete(wb.id)
     } catch (e) {
       alert(`Import failed: ${e}`)
     } finally {
@@ -44,8 +44,8 @@ export default function Welcome({ onImportComplete }: WelcomeProps) {
   const handleEmptyWorkbook = async () => {
     setIsLoading(true)
     try {
-      await invoke('create_workbook', { name: 'Workbook 1' })
-      onImportComplete()
+      const wb = await invoke<{ id: number }>('create_workbook', { name: 'Workbook 1' })
+      onImportComplete(wb.id)
     } catch (e) {
       alert(`Failed to create workbook: ${e}`)
       console.error('Failed to create workbook:', e)

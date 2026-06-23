@@ -57,6 +57,7 @@ export interface BusinessInfo {
   business_name: string | null
   industry: string | null
   company_size: string | null
+  order_number_prefix: string | null
   completed_onboarding: boolean
 }
 

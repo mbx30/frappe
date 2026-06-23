@@ -334,9 +334,19 @@ pub fn save_business_info(
     business_name: String,
     industry: String,
     company_size: String,
+    order_number_prefix: Option<String>,
 ) -> Result<(), String> {
-    db.save_business_info(&business_name, &industry, &company_size)
+    let prefix = order_number_prefix.unwrap_or_default();
+    Database::validate_order_prefix(&prefix).map_err(|_| {
+        "Order number prefix must be empty or 1-4 alphanumeric characters".to_string()
+    })?;
+    db.save_business_info(&business_name, &industry, &company_size, &prefix)
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn next_order_number(db: State<'_, Database>) -> Result<String, String> {
+    db.next_order_number().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -362,6 +372,16 @@ pub fn create_invoice(
 #[tauri::command]
 pub fn list_invoices(db: State<'_, Database>) -> Result<Vec<Invoice>, String> {
     db.list_invoices().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn list_invoices_paginated(
+    db: State<'_, Database>,
+    limit: i64,
+    offset: i64,
+) -> Result<crate::models::PaginatedList<Invoice>, String> {
+    db.list_invoices_paginated(limit, offset)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -441,6 +461,16 @@ pub fn create_order(
 #[tauri::command]
 pub fn list_orders(db: State<'_, Database>) -> Result<Vec<Order>, String> {
     db.list_orders().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn list_orders_paginated(
+    db: State<'_, Database>,
+    limit: i64,
+    offset: i64,
+) -> Result<crate::models::PaginatedList<Order>, String> {
+    db.list_orders_paginated(limit, offset)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -655,6 +685,16 @@ pub fn list_clients(
     status_filter: Option<String>,
 ) -> Result<Vec<Client>, String> {
     db.list_clients(search.as_deref(), status_filter.as_deref())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn list_clients_paginated(
+    db: State<'_, Database>,
+    limit: i64,
+    offset: i64,
+) -> Result<crate::models::PaginatedList<Client>, String> {
+    db.list_clients_paginated(limit, offset)
         .map_err(|e| e.to_string())
 }
 
@@ -1522,8 +1562,9 @@ pub fn check_spot_colors(path: String) -> Result<Vec<SpotColorFinding>, String> 
 }
 
 #[tauri::command]
-pub fn check_ink_coverage() -> Vec<InkCoverageFinding> {
-    crate::pdf::color::check_ink_coverage()
+pub fn check_ink_coverage(path: String) -> Result<Vec<InkCoverageFinding>, String> {
+    let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
+    Ok(crate::pdf::color::check_ink_coverage(&doc))
 }
 
 #[tauri::command]
@@ -1935,6 +1976,21 @@ pub fn encode_content_stream(
 }
 
 #[tauri::command]
+pub fn round_trip_page(
+    path: String,
+    page_index: usize,
+    output_path: String,
+) -> Result<serde_json::Value, String> {
+    let decoded = decode_content_stream(path.clone(), page_index)?;
+    encode_content_stream(path, page_index, decoded.clone(), output_path)?;
+    Ok(serde_json::json!({
+        "page_index": page_index,
+        "decoded_bytes": decoded.len(),
+        "success": true,
+    }))
+}
+
+#[tauri::command]
 pub fn tokenize_content_stream(path: String, page_index: usize) -> Result<Vec<String>, String> {
     use crate::pdf::content_stream;
     let content = decode_content_stream(path, page_index)?;
@@ -2119,12 +2175,114 @@ pub fn optimize_image(
 // ═══════════════════════════════════════════════════════════════════════════
 
 #[tauri::command]
+pub fn start_hot_folder_watcher(
+    config: crate::pdf::watcher::HotFolderConfig,
+) -> Result<(), String> {
+    crate::pdf::watcher::start_hot_folder_watcher(&config)
+}
+
+#[tauri::command]
+pub fn stop_hot_folder_watcher() -> Result<(), String> {
+    crate::pdf::watcher::stop_hot_folder_watcher()
+}
+
+#[tauri::command]
+pub fn get_check_registry() -> Vec<crate::pdf::registry::CheckDefinition> {
+    crate::pdf::registry::CHECK_REGISTRY.to_vec()
+}
+
+#[tauri::command]
+pub fn run_profile(
+    db: State<'_, Database>,
+    profile_id: i64,
+    path: String,
+) -> Result<crate::pdf::registry::RunProfileResult, String> {
+    let profile = db.get_preflight_profile(profile_id).map_err(|e| e.to_string())?;
+    let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
+    let mut findings: Vec<String> = Vec::new();
+
+    let name_lower = profile.name.to_lowercase();
+    if name_lower.contains("pdf/x-1a") {
+        let f = crate::pdf::pdfx::check_pdfx(&doc, "PDF/X-1a:2003");
+        findings.extend(f.iter().map(|x| x.message.clone()));
+    } else if name_lower.contains("pdf/x-4") {
+        let f = crate::pdf::pdfx::check_pdfx(&doc, "PDF/X-4");
+        findings.extend(f.iter().map(|x| x.message.clone()));
+    }
+    let cs = crate::pdf::color::check_color_spaces(&doc, "Coated FOGRA39");
+    findings.extend(cs.iter().map(|x| x.message.clone()));
+    let sp = crate::pdf::color::check_spot_colors(&doc);
+    findings.extend(sp.iter().map(|x| x.message.clone()));
+    let ic = crate::pdf::color::check_ink_coverage(&doc);
+    findings.extend(ic.iter().map(|x| x.message.clone()));
+
+    Ok(crate::pdf::registry::RunProfileResult {
+        profile_name: profile.name,
+        findings_count: findings.len(),
+    })
+}
+
+#[tauri::command]
 pub fn create_preflight_profile(
     db: State<'_, Database>,
     input: PreflightProfileInput,
 ) -> Result<PreflightProfile, String> {
     db.create_preflight_profile(&input)
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn generate_approval_sheet(
+    info: crate::pdf::approval_sheet::ApprovalSheetInfo,
+    output_path: String,
+) -> Result<(), String> {
+    crate::pdf::approval_sheet::generate_approval_sheet(&info, &output_path)
+}
+
+#[tauri::command]
+pub fn export_preflight_report_json(
+    db: State<'_, Database>,
+    run_id: i64,
+) -> Result<serde_json::Value, String> {
+    let findings = db
+        .list_findings_for_run(run_id)
+        .map_err(|e| e.to_string())?;
+    let rows: Vec<serde_json::Value> = findings
+        .into_iter()
+        .map(|f| {
+            serde_json::json!({
+                "check_name": f.check_name,
+                "severity": f.severity,
+                "page_num": f.page_num,
+                "message": f.message,
+                "fix_hint": f.fix_hint,
+            })
+        })
+        .collect();
+    Ok(serde_json::json!({ "findings": rows }))
+}
+
+#[tauri::command]
+pub fn export_preflight_report_csv(
+    db: State<'_, Database>,
+    run_id: i64,
+) -> Result<String, String> {
+    let findings = db
+        .list_findings_for_run(run_id)
+        .map_err(|e| e.to_string())?;
+    let mut out = "check_name,severity,page_num,message,fix_hint\n".to_string();
+    for f in findings {
+        let page_num = f.page_num.map(|n| n.to_string()).unwrap_or_default();
+        out.push_str(&format!(
+            "{},{},{},\"{}\",\"{}\"\n",
+            f.check_name,
+            f.severity,
+            page_num,
+            f.message.replace('"', "\"\""),
+            f.fix_hint.replace('"', "\"\"")
+        ));
+    }
+    Ok(out)
 }
 
 #[tauri::command]
@@ -2316,49 +2474,11 @@ pub fn toggle_hot_folder(db: State<'_, Database>, id: i64, is_active: bool) -> R
 pub fn compress_pdf(path: String, output_path: String) -> Result<(), String> {
     let _ = validate_read_path(&path)?;
     let _ = validate_write_path(&output_path)?;
-    use flate2::write::ZlibEncoder;
-    use flate2::Compression;
-    use lopdf::Object;
-    use std::io::Write;
-
-    let mut doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {e}"))?;
-    let mut compressed = 0u32;
-
-    for (_, obj) in doc.objects.iter_mut() {
-        if let Object::Stream(ref mut stream) = obj {
-            // If already compressed with FlateDecode (or its "Fl" abbreviation,
-            // per PDF spec §7.4.4 table 7.9), skip. The Filter entry may be a
-            // single Name or an Array of Names (filter pipeline). (#165)
-            let has_flate = match stream.dict.get(b"Filter") {
-                Ok(Object::Name(n)) => n == b"FlateDecode" || n == b"Fl",
-                Ok(Object::Array(arr)) => arr.iter().any(|f| {
-                    matches!(f,
-                    Object::Name(n) if n == b"FlateDecode" || n == b"Fl")
-                }),
-                _ => false,
-            };
-            if !has_flate {
-                let data = std::mem::take(&mut stream.content);
-                let mut encoder = ZlibEncoder::new(Vec::new(), Compression::best());
-                if encoder.write_all(&data).is_err() {
-                    return Err("Zlib write failed".to_string());
-                }
-                stream.content = encoder
-                    .finish()
-                    .map_err(|e| format!("Zlib finish failed: {e}"))?;
-                stream
-                    .dict
-                    .set("Filter", Object::Name(b"FlateDecode".to_vec()));
-                // Remove length as it'll be recalculated
-                stream.dict.remove(b"Length");
-                compressed += 1;
-            }
-        }
-    }
-    log::info!("Compressed {compressed} streams in PDF");
-    doc.save(&output_path)
-        .map_err(|e| format!("Failed to save: {e}"))?;
-    Ok(())
+    crate::pdf::compress::compress_pdf(
+        &path,
+        &output_path,
+        &crate::pdf::compress::CompressionOptions::default(),
+    )
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2378,24 +2498,6 @@ pub fn detect_barcodes(_path: String) -> Result<Vec<BarcodeResult>, String> {
 #[tauri::command]
 pub fn get_analytics_summary(db: State<'_, Database>) -> Result<AnalyticsSummary, String> {
     db.get_analytics_summary().map_err(|e| e.to_string())
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Phase 5.4 — Approval sheets & report export (#59, #60)
-// ═══════════════════════════════════════════════════════════════════════════
-
-#[tauri::command]
-pub fn generate_approval_sheet(
-    _path: String,
-    _config: ApprovalSheetConfig,
-    _output_path: String,
-) -> Result<(), String> {
-    Err("generate_approval_sheet is not implemented. Tracked in v2 polish issue #135.".to_string())
-}
-
-#[tauri::command]
-pub fn export_preflight_report(_run_id: i64, _format: String) -> Result<String, String> {
-    Err("export_preflight_report is not implemented. Tracked in v2 polish issue #135.".to_string())
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

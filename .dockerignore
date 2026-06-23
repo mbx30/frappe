@@ -1,0 +1,13 @@
+.cargo
+.git
+.github
+.vscode
+.claude
+node_modules
+dist
+target
+*.lock
+.gitignore
+LICENSE
+**/*.md
+tests

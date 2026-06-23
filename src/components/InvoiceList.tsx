@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, memo } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { Button, Card, Badge } from '../design-system'
 import type { Invoice } from '../types'
@@ -18,7 +18,7 @@ const statusColors: Record<string, 'success' | 'warning' | 'danger' | 'info'> = 
   voided: 'info',
 }
 
-export default function InvoiceList({ onCreateNew, onEditInvoice }: InvoiceListProps) {
+export default memo(function InvoiceList({ onCreateNew, onEditInvoice }: InvoiceListProps) {
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)

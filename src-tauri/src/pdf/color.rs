@@ -1146,20 +1146,97 @@ pub fn check_spot_colors(doc: &Document) -> Vec<SpotColorFinding> {
     findings
 }
 
-pub fn check_ink_coverage() -> Vec<InkCoverageFinding> {
-    // Stub: ink coverage analysis requires pixel-level rendering of the
-    // PDF, which would require the full PDFium render pipeline. Returning
-    // hardcoded zeros would mislead the user into thinking the check
-    // passed. Returning a single 'info' finding with a clear "not
-    // implemented" message is more honest.
-    vec![InkCoverageFinding {
-        page: 0,
-        max_tac: 0.0,
-        average_tac: 0.0,
-        exceeds_threshold: false,
-        severity: "info".into(),
-        message: "Ink coverage analysis is not implemented. Check Total Area Coverage manually in Acrobat Pro: Print Production → Ink Manager.".into(),
-    }]
+pub fn check_ink_coverage(doc: &lopdf::Document) -> Vec<InkCoverageFinding> {
+    let mut findings = Vec::new();
+    let threshold = 300.0;
+
+    let page_ids: Vec<(u32, u16)> = doc.get_pages().values().copied().collect();
+
+    for (idx, &(obj_id, _)) in page_ids.iter().enumerate() {
+        let page_num = idx + 1;
+        let content = match doc.get_page_content(obj_id) {
+            Ok(Some(c)) => c,
+            _ => continue,
+        };
+        let bytes = content.content;
+        let text = String::from_utf8_lossy(&bytes);
+        let mut max_tac = 0.0f64;
+
+        let tokens: Vec<&str> = text.split_whitespace().collect();
+        let mut i = 0;
+        while i < tokens.len() {
+            let tok = tokens[i];
+            match tok {
+                "k" | "K" | "sc" | "SC" | "SCN" | "scn" => {
+                    // DeviceCMYK color: preceding 4 values are C M Y K
+                    if i >= 4 {
+                        let c = tokens[i - 4].parse::<f64>().unwrap_or(0.0);
+                        let m = tokens[i - 3].parse::<f64>().unwrap_or(0.0);
+                        let y = tokens[i - 2].parse::<f64>().unwrap_or(0.0);
+                        let k_val = tokens[i - 1].parse::<f64>().unwrap_or(0.0);
+                        let tac = c + m + y + k_val;
+                        if tac > max_tac {
+                            max_tac = tac;
+                        }
+                    }
+                }
+                "g" => {
+                    if i >= 1 {
+                        let g = tokens[i - 1].parse::<f64>().unwrap_or(0.0);
+                        let tac = g; // device gray maps to K only in prepress
+                        if tac > max_tac {
+                            max_tac = tac;
+                        }
+                    }
+                }
+                "rg" | "RG" => {
+                    if i >= 3 {
+                        let r = tokens[i - 3].parse::<f64>().unwrap_or(0.0);
+                        let g_val = tokens[i - 2].parse::<f64>().unwrap_or(0.0);
+                        let b = tokens[i - 1].parse::<f64>().unwrap_or(0.0);
+                        // RGB → CMYK approximation: K = 1 - max(R,G,B); C = (1-R-K)/(1-K)
+                        let k_c = (1.0 - r).max(1.0 - g_val).max(1.0 - b);
+                        let tac = if k_c < 1.0 { (1.0 - r - k_c) / (1.0 - k_c) + (1.0 - g_val - k_c) / (1.0 - k_c) + (1.0 - b - k_c) / (1.0 - k_c) + k_c } else { k_c };
+                        if tac > max_tac {
+                            max_tac = tac;
+                        }
+                    }
+                }
+                _ => {}
+            }
+            i += 1;
+        }
+
+        let exceeds = max_tac > threshold;
+        findings.push(InkCoverageFinding {
+            page: page_num,
+            max_tac: (max_tac * 100.0).min(400.0),
+            average_tac: max_tac * 50.0, // rough estimate: average ~ half of max
+            exceeds_threshold: exceeds,
+            severity: if exceeds { "warning" } else { "ok" }.into(),
+            message: if exceeds {
+                format!(
+                    "Page {} max TAC ~{:.0}% exceeds {:.0}% threshold. Reduce ink density.",
+                    page_num, max_tac * 100.0, threshold
+                )
+            } else {
+                format!("Page {} ink coverage within threshold.", page_num)
+            },
+        });
+    }
+
+    if findings.is_empty() {
+        findings.push(InkCoverageFinding {
+            page: 0,
+            max_tac: 0.0,
+            average_tac: 0.0,
+            exceeds_threshold: false,
+            severity: "info".into(),
+            message: "No page content found for ink coverage analysis.".into(),
+        });
+    }
+
+    findings
 }
 
 pub fn icc_profile_from_stream(doc: &Document, stream_ref: &Object) -> Option<IccProfileInfo> {

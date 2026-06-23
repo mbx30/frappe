@@ -10,6 +10,10 @@ function App() {
   const [businessInfo, setBusinessInfo] = useState<BusinessInfo | null>(null)
   const [onboardingStep, setOnboardingStep] = useState<'welcome' | 'business' | 'complete' | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  // Workbook id from the Welcome screen, threaded through onboarding so
+  // ManagementView can auto-select the freshly-created workbook instead of
+  // showing an empty list. Cleared after first use.
+  const [pendingWorkbookId, setPendingWorkbookId] = useState<number | null>(null)
 
   const checkOnboarding = useCallback(async () => {
     try {
@@ -40,7 +44,14 @@ function App() {
   }
 
   if (onboardingStep === 'welcome') {
-    return <Welcome onImportComplete={() => setOnboardingStep('business')} />
+    return (
+      <Welcome
+        onImportComplete={(createdWorkbookId) => {
+          setPendingWorkbookId(createdWorkbookId)
+          setOnboardingStep('business')
+        }}
+      />
+    )
   }
 
   if (onboardingStep === 'business') {
@@ -72,7 +83,10 @@ function App() {
       </div>
 
       <div className="app-content">
-        <ManagementView />
+        <ManagementView
+          initialWorkbookId={pendingWorkbookId}
+          onInitialWorkbookConsumed={() => setPendingWorkbookId(null)}
+        />
       </div>
     </div>
   )

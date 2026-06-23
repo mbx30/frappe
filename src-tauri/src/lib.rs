@@ -1,3 +1,4 @@
+mod cache;
 mod cloud_backup;
 mod cloud_import;
 mod commands;
@@ -72,14 +73,17 @@ pub fn run() {
             commands::verify_database,
             commands::get_business_info,
             commands::save_business_info,
+            commands::next_order_number,
             commands::create_invoice,
             commands::list_invoices,
+            commands::list_invoices_paginated,
             commands::get_invoice,
             commands::add_invoice_line_item,
             commands::replace_invoice_line_items,
             commands::update_invoice,
             commands::create_order,
             commands::list_orders,
+            commands::list_orders_paginated,
             commands::get_order,
             commands::update_order_status,
             commands::update_order,
@@ -97,6 +101,7 @@ pub fn run() {
             commands::acknowledge_alert,
             commands::create_client,
             commands::list_clients,
+            commands::list_clients_paginated,
             commands::get_client,
             commands::update_client,
             commands::delete_client,
@@ -158,6 +163,7 @@ pub fn run() {
             // Phase 3.3
             commands::decode_content_stream,
             commands::encode_content_stream,
+            commands::round_trip_page,
             commands::tokenize_content_stream,
             // Phase 3.4
             commands::search_text,
@@ -166,6 +172,11 @@ pub fn run() {
             commands::replace_image,
             commands::optimize_image,
             // Phase 4.1
+            commands::generate_approval_sheet,
+            commands::export_preflight_report_json,
+            commands::export_preflight_report_csv,
+            commands::get_check_registry,
+            commands::run_profile,
             commands::create_preflight_profile,
             commands::list_preflight_profiles,
             commands::get_preflight_profile,
@@ -194,15 +205,14 @@ pub fn run() {
             commands::list_hot_folders,
             commands::delete_hot_folder,
             commands::toggle_hot_folder,
+            commands::start_hot_folder_watcher,
+            commands::stop_hot_folder_watcher,
             // Phase 5.1
             commands::compress_pdf,
             // Phase 5.2
             commands::detect_barcodes,
             // Phase 5.3
             commands::get_analytics_summary,
-            // Phase 5.4
-            commands::generate_approval_sheet,
-            commands::export_preflight_report,
             // Phase 5.5
             commands::ai_visual_check,
             // Phase 6.1

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, memo } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { Button, Input, Select, Badge } from '../design-system'
 import type { Client } from '../types'
@@ -14,7 +14,7 @@ const statusColors: Record<string, 'success' | 'info'> = {
   inactive: 'info',
 }
 
-export default function ClientList({ onSelectClient, onNewClient }: ClientListProps) {
+export default memo(function ClientList({ onSelectClient, onNewClient }: ClientListProps) {
   const [clients, setClients] = useState<Client[]>([])
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
