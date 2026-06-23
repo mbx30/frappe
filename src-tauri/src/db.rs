@@ -8,6 +8,27 @@ use fs2::FileExt;
 
 use crate::models::*;
 
+/// Backend enforcement of the order status state machine (#160).
+///
+/// The kanban board (`OrderKanban.tsx`) and order detail view
+/// (`OrderDetail.tsx`) both restrict transitions to a strict forward-only
+/// flow: `prepress → production → delivery → completed`. Without a matching
+/// backend guard, a direct Tauri command invocation could set any arbitrary
+/// status string and corrupt an order. This function is the authoritative
+/// guard; the frontend maps are a UX convenience layered on top of it.
+///
+/// A no-op transition (`current == new`) is treated as valid so that an
+/// idempotent re-submission of the current status does not error.
+pub(crate) fn is_valid_order_transition(current: &str, new: &str) -> bool {
+    if current == new {
+        return true;
+    }
+    matches!(
+        (current, new),
+        ("prepress", "production") | ("production", "delivery") | ("delivery", "completed")
+    )
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct VerificationResult {
     pub is_valid: bool,
@@ -931,6 +952,20 @@ impl Database {
             .conn
             .lock()
             .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        // Reject duplicate workbook names to avoid data confusion and export
+        // collisions (#190). Pre-check rather than relying on a UNIQUE
+        // constraint so the error is a clear, user-facing message.
+        let existing: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM workbooks WHERE name = ?1",
+            params![name],
+            |row| row.get(0),
+        )?;
+        if existing > 0 {
+            return Err(rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_CONSTRAINT),
+                Some(format!("A workbook named \"{}\" already exists", name)),
+            ));
+        }
         conn.execute("INSERT INTO workbooks (name) VALUES (?1)", params![name])?;
         let id = conn.last_insert_rowid();
         Ok(Workbook {
@@ -1761,6 +1796,18 @@ impl Database {
             params![order_id],
             |row| row.get(0),
         )?;
+
+        // Enforce the order status state machine on the backend so a direct
+        // command call cannot bypass the frontend's forward-only flow (#160).
+        if !is_valid_order_transition(&previous_status, new_status) {
+            return Err(rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_CONSTRAINT),
+                Some(format!(
+                    "Invalid order status transition: {} → {}",
+                    previous_status, new_status
+                )),
+            ));
+        }
 
         tx.execute(
             "INSERT INTO order_status_history (order_id, previous_status, new_status, notes)
@@ -4256,5 +4303,37 @@ mod tests {
                 "{fn_name} missing {limit_token} in its query"
             );
         }
+    }
+
+    /// #160 — the backend order status machine must accept only the
+    /// forward-only flow and reject everything else, including backward
+    /// moves and arbitrary strings injected via a direct command call.
+    #[test]
+    fn order_status_transitions() {
+        use super::is_valid_order_transition as ok;
+
+        // Valid forward transitions.
+        assert!(ok("prepress", "production"));
+        assert!(ok("production", "delivery"));
+        assert!(ok("delivery", "completed"));
+
+        // No-op (idempotent re-submit) is allowed.
+        assert!(ok("prepress", "prepress"));
+        assert!(ok("completed", "completed"));
+
+        // Backward moves are rejected.
+        assert!(!ok("production", "prepress"));
+        assert!(!ok("completed", "delivery"));
+
+        // Skipping stages is rejected.
+        assert!(!ok("prepress", "delivery"));
+        assert!(!ok("prepress", "completed"));
+
+        // Terminal state has no outgoing transitions.
+        assert!(!ok("completed", "production"));
+
+        // Arbitrary / injected strings are rejected.
+        assert!(!ok("prepress", "deleted"));
+        assert!(!ok("anything", "production"));
     }
 }
