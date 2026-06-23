@@ -383,24 +383,114 @@ fn find_next_operator(
     content: &[u8],
     start: usize,
 ) -> Option<(usize, usize, String, Vec<f64>, Vec<Vec<u8>>)> {
-    let ops = parse_content_operations(&content[start..]);
-    if let Some((op, nums, names)) = ops.first() {
-        // Find the byte position of this operator in the content
-        let op_bytes = op.as_bytes();
-        let search_start = start;
-        if let Some(pos) = content[search_start..]
-            .windows(op_bytes.len())
-            .position(|w| w == op_bytes)
-        {
-            let abs_pos = search_start + pos;
-            let end = abs_pos + op_bytes.len();
-            Some((abs_pos, end, op.clone(), nums.clone(), names.clone()))
-        } else {
-            None
+    // Position-tracked single-pass scan: find the first complete operation
+    // (operands + operator) starting at `start`, returning exact byte offsets.
+    let slice = &content[start..];
+    let len = slice.len();
+    let mut i = 0;
+    let mut operands_num: Vec<f64> = Vec::new();
+    let mut operands_name: Vec<Vec<u8>> = Vec::new();
+    let mut op_group_start: Option<usize> = None;
+
+    while i < len {
+        if is_whitespace(slice[i]) {
+            i += 1;
+            continue;
         }
-    } else {
-        None
+        if slice[i] == b'%' {
+            while i < len && slice[i] != b'\n' && slice[i] != b'\r' {
+                i += 1;
+            }
+            continue;
+        }
+        if slice[i] == b'/' {
+            if op_group_start.is_none() {
+                op_group_start = Some(i);
+            }
+            let s = i;
+            i += 1;
+            while i < len && !is_whitespace(slice[i]) && slice[i] != b'%' {
+                i += 1;
+            }
+            operands_name.push(slice[s..i].to_vec());
+            continue;
+        }
+        if slice[i] == b'-' || slice[i] == b'+' || is_digit(slice[i]) || slice[i] == b'.' {
+            if op_group_start.is_none() {
+                op_group_start = Some(i);
+            }
+            let s = i;
+            if slice[i] == b'-' || slice[i] == b'+' {
+                i += 1;
+            }
+            while i < len && is_digit(slice[i]) {
+                i += 1;
+            }
+            if i < len && slice[i] == b'.' {
+                i += 1;
+                while i < len && is_digit(slice[i]) {
+                    i += 1;
+                }
+            }
+            if let Ok(n) = std::str::from_utf8(&slice[s..i])
+                .unwrap_or("0")
+                .parse::<f64>()
+            {
+                operands_num.push(n);
+            }
+            continue;
+        }
+        if is_operator_char(slice[i]) {
+            if op_group_start.is_none() {
+                op_group_start = Some(i);
+            }
+            let s = i;
+            while i < len && is_operator_char(slice[i]) {
+                i += 1;
+            }
+            let op = String::from_utf8_lossy(&slice[s..i]).to_string();
+            let abs_start = start + op_group_start.unwrap_or(s);
+            let abs_end = start + i;
+            return Some((abs_start, abs_end, op, operands_num, operands_name));
+        }
+        if slice[i] == b'(' {
+            if op_group_start.is_none() {
+                op_group_start = Some(i);
+            }
+            let mut depth = 0;
+            while i < len {
+                if slice[i] == b'(' {
+                    depth += 1;
+                }
+                if slice[i] == b')' {
+                    depth -= 1;
+                    if depth == 0 {
+                        i += 1;
+                        break;
+                    }
+                }
+                if slice[i] == b'\\' {
+                    i += 1;
+                }
+                i += 1;
+            }
+            continue;
+        }
+        if slice[i] == b'<' && i + 1 < len && slice[i + 1] != b'<' {
+            if op_group_start.is_none() {
+                op_group_start = Some(i);
+            }
+            while i < len && slice[i] != b'>' {
+                i += 1;
+            }
+            if i < len {
+                i += 1;
+            }
+            continue;
+        }
+        i += 1;
     }
+    None
 }
 
 fn get_page_content_stream_id(doc: &Document, page_id: (u32, u16)) -> Option<(u32, u16)> {

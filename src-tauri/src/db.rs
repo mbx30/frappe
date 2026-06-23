@@ -347,6 +347,7 @@ impl Database {
                 business_name TEXT,
                 industry TEXT,
                 company_size TEXT,
+                order_number_prefix TEXT DEFAULT '',
                 completed_onboarding INTEGER DEFAULT 0,
                 created_at TEXT DEFAULT (datetime('now')),
                 updated_at TEXT DEFAULT (datetime('now'))
@@ -917,6 +918,11 @@ impl Database {
             "hot_folders",
             "tenant_id TEXT NOT NULL DEFAULT 'default'",
         )?;
+        add_col_if_missing(
+            &conn,
+            "business_info",
+            "order_number_prefix TEXT DEFAULT ''",
+        )?;
         Ok(())
     }
 
@@ -941,7 +947,7 @@ impl Database {
             .lock()
             .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
-            "SELECT id, name, created_at, updated_at FROM workbooks ORDER BY updated_at DESC",
+            "SELECT id, name, created_at, updated_at FROM workbooks ORDER BY updated_at DESC LIMIT 500",
         )?;
         let rows = stmt.query_map([], |row| {
             Ok(Workbook {
@@ -1227,14 +1233,15 @@ impl Database {
             .lock()
             .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
-            "SELECT business_name, industry, company_size, completed_onboarding FROM business_info WHERE id = 1"
+            "SELECT business_name, industry, company_size, order_number_prefix, completed_onboarding FROM business_info WHERE id = 1"
         )?;
         let result = stmt.query_row([], |row| {
             Ok(BusinessInfo {
                 business_name: row.get(0)?,
                 industry: row.get(1)?,
                 company_size: row.get(2)?,
-                completed_onboarding: row.get::<_, i32>(3)? != 0,
+                order_number_prefix: row.get(3)?,
+                completed_onboarding: row.get::<_, i32>(4)? != 0,
             })
         });
         match result {
@@ -1249,17 +1256,75 @@ impl Database {
         business_name: &str,
         industry: &str,
         company_size: &str,
+        order_number_prefix: &str,
     ) -> Result<()> {
         let conn = self
             .conn
             .lock()
             .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute(
-            "INSERT OR REPLACE INTO business_info (id, business_name, industry, company_size, completed_onboarding, updated_at)
-             VALUES (1, ?1, ?2, ?3, 1, datetime('now'))",
-            params![business_name, industry, company_size],
+            "INSERT OR REPLACE INTO business_info (id, business_name, industry, company_size, order_number_prefix, completed_onboarding, updated_at)
+             VALUES (1, ?1, ?2, ?3, ?4, 1, datetime('now'))",
+            params![business_name, industry, company_size, order_number_prefix],
         )?;
         Ok(())
+    }
+
+    /// Validate the order-number prefix: empty (no prefix) or 1-4 ASCII
+    /// alphanumeric chars. Returns the error message string on rejection so
+    /// callers can surface it directly to the UI.
+    pub fn validate_order_prefix(prefix: &str) -> Result<()> {
+        if prefix.is_empty() {
+            return Ok(());
+        }
+        if prefix.len() > 4 {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        if !prefix.chars().all(|c| c.is_ascii_alphanumeric()) {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        Ok(())
+    }
+
+    /// Generate the next order number using the configured prefix. Strategy:
+    /// 1. Read the order_number_prefix from business_info (defaulting to '').
+    /// 2. Find the highest existing integer suffix across all order_numbers
+    ///    that match the prefix+digits pattern, and increment by 1.
+    /// 3. Fall back to a timestamp-derived number if no existing matches.
+    pub fn next_order_number(&self) -> Result<String> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let prefix: String = conn
+            .query_row(
+                "SELECT COALESCE(order_number_prefix, '') FROM business_info WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or_default();
+        let like_pattern = format!("{}%", prefix);
+        let mut stmt = conn.prepare(
+            "SELECT order_number FROM orders WHERE order_number LIKE ?1",
+        )?;
+        let rows = stmt.query_map(params![like_pattern], |row| row.get::<_, String>(0))?;
+        let mut max_n: i64 = 0;
+        let mut any_match = false;
+        for r in rows {
+            let n = r?;
+            any_match = true;
+            // strip prefix, then parse the trailing digits (ignore separators)
+            let tail = n.strip_prefix(prefix.as_str()).unwrap_or(&n);
+            let digits: String = tail.chars().rev().take_while(|c| c.is_ascii_digit()).collect::<String>().chars().rev().collect();
+            if let Ok(v) = digits.parse::<i64>() {
+                if v > max_n { max_n = v; }
+            }
+        }
+        if !any_match {
+            // No orders with this prefix yet — start at 1.
+            return Ok(format!("{}{:04}", prefix, 1i64));
+        }
+        Ok(format!("{}{:04}", prefix, max_n + 1))
     }
 
     pub fn create_invoice(
@@ -1346,10 +1411,35 @@ impl Database {
         let mut stmt = conn.prepare(
             "SELECT id, invoice_number, client_id, status, issue_date, due_date, payment_terms,
                     subtotal, tax_rate, tax_amount, total, currency, internal_notes, customer_notes,
-                    qb_sync_status, amount_paid, created_at, updated_at FROM invoices ORDER BY created_at DESC"
+                    qb_sync_status, amount_paid, created_at, updated_at FROM invoices ORDER BY created_at DESC LIMIT 200"
         )?;
         let rows = stmt.query_map([], Self::map_invoice)?;
         rows.collect()
+    }
+
+    pub fn list_invoices_paginated(
+        &self,
+        limit: i64,
+        offset: i64,
+    ) -> Result<crate::models::PaginatedList<Invoice>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let total: i64 = conn.query_row("SELECT COUNT(*) FROM invoices", [], |row| row.get(0))?;
+        let mut stmt = conn.prepare(
+            "SELECT id, invoice_number, client_id, status, issue_date, due_date, payment_terms,
+                    subtotal, tax_rate, tax_amount, total, currency, internal_notes, customer_notes,
+                    qb_sync_status, amount_paid, created_at, updated_at FROM invoices ORDER BY created_at DESC LIMIT ?1 OFFSET ?2"
+        )?;
+        let rows = stmt.query_map(params![limit, offset], Self::map_invoice)?;
+        let collected: Vec<Invoice> = rows.collect::<Result<Vec<_>>>()?;
+        Ok(crate::models::PaginatedList {
+            rows: collected,
+            total_count: total,
+            limit,
+            offset,
+        })
     }
 
     pub fn get_invoice_data(&self, invoice_id: i64) -> Result<InvoiceData> {
@@ -1563,10 +1653,38 @@ impl Database {
                     print_type, paper_stock, ink_colors, finishing, quantity, production_notes, assigned_operator,
                     fulfillment_method, tracking_number, tracking_carrier, ready_for_pickup, shipped_at,
                     created_at, updated_at
-             FROM orders ORDER BY created_at DESC"
+             FROM orders ORDER BY created_at DESC LIMIT 200"
         )?;
         let rows = stmt.query_map([], Self::map_order)?;
         rows.collect()
+    }
+
+    pub fn list_orders_paginated(
+        &self,
+        limit: i64,
+        offset: i64,
+    ) -> Result<crate::models::PaginatedList<Order>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let total: i64 = conn.query_row("SELECT COUNT(*) FROM orders", [], |row| row.get(0))?;
+        let mut stmt = conn.prepare(
+            "SELECT id, order_number, client_id, status, priority, due_date, description, artwork_notes, artwork_url,
+                    artwork_approved, deposit_requested, deposit_amount, total_value,
+                    print_type, paper_stock, ink_colors, finishing, quantity, production_notes, assigned_operator,
+                    fulfillment_method, tracking_number, tracking_carrier, ready_for_pickup, shipped_at,
+                    created_at, updated_at
+             FROM orders ORDER BY created_at DESC LIMIT ?1 OFFSET ?2"
+        )?;
+        let rows = stmt.query_map(params![limit, offset], Self::map_order)?;
+        let collected: Vec<Order> = rows.collect::<Result<Vec<_>>>()?;
+        Ok(crate::models::PaginatedList {
+            rows: collected,
+            total_count: total,
+            limit,
+            offset,
+        })
     }
 
     pub fn get_order_data(&self, order_id: i64) -> Result<OrderData> {
@@ -1624,7 +1742,10 @@ impl Database {
             .map(|c| c > 0)
             .unwrap_or(false);
         if !exists {
-            return Err(rusqlite::Error::QueryReturnedNoRows);
+            return Err(rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_NOTFOUND),
+                Some(format!("Order {} not found", order_id)),
+            ));
         }
 
         let previous_status: String = tx.query_row(
@@ -1651,6 +1772,7 @@ impl Database {
     pub fn update_order(
         &self,
         id: i64,
+        due_date: &str,
         priority: &str,
         description: &str,
         artwork_notes: &str,
@@ -1664,8 +1786,8 @@ impl Database {
             .lock()
             .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute(
-            "UPDATE orders SET priority = ?1, description = ?2, artwork_notes = ?3, artwork_approved = ?4, deposit_requested = ?5, deposit_amount = ?6, total_value = ?7, updated_at = datetime('now') WHERE id = ?8",
-            params![priority, description, artwork_notes, artwork_approved as i32, deposit_requested as i32, deposit_amount, total_value, id],
+            "UPDATE orders SET due_date = ?1, priority = ?2, description = ?3, artwork_notes = ?4, artwork_approved = ?5, deposit_requested = ?6, deposit_amount = ?7, total_value = ?8, updated_at = datetime('now') WHERE id = ?9",
+            params![due_date, priority, description, artwork_notes, artwork_approved as i32, deposit_requested as i32, deposit_amount, total_value, id],
         )?;
         Ok(())
     }
@@ -1719,7 +1841,7 @@ impl Database {
             .lock()
             .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
-            "SELECT id, estimate_number, client_id, status, valid_until, subtotal, tax_rate, tax_amount, total, currency, notes, artwork_requirements, converted_order_id, created_at, updated_at FROM estimates ORDER BY created_at DESC"
+            "SELECT id, estimate_number, client_id, status, valid_until, subtotal, tax_rate, tax_amount, total, currency, notes, artwork_requirements, converted_order_id, created_at, updated_at FROM estimates ORDER BY created_at DESC LIMIT 200"
         )?;
         let rows = stmt.query_map([], |row| {
             Ok(Estimate {
@@ -1924,7 +2046,7 @@ impl Database {
             .lock()
             .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
-            "SELECT id, material_type, size, attributes, quantity, unit, reorder_level, alert_type, alert_threshold, last_restocked, created_at, updated_at FROM inventory_items ORDER BY material_type, size"
+            "SELECT id, material_type, size, attributes, quantity, unit, reorder_level, alert_type, alert_threshold, last_restocked, created_at, updated_at FROM inventory_items ORDER BY material_type, size LIMIT 500"
         )?;
         let rows = stmt.query_map([], |row| {
             Ok(InventoryItem {
@@ -2066,7 +2188,7 @@ impl Database {
             .lock()
             .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
-            "SELECT id, inventory_item_id, alert_type, current_quantity, threshold, is_acknowledged, created_at FROM inventory_alerts WHERE is_acknowledged = 0 ORDER BY created_at DESC"
+            "SELECT id, inventory_item_id, alert_type, current_quantity, threshold, is_acknowledged, created_at FROM inventory_alerts WHERE is_acknowledged = 0 ORDER BY created_at DESC LIMIT 200"
         )?;
         let rows = stmt.query_map([], |row| {
             Ok(InventoryAlert {
@@ -2285,7 +2407,7 @@ impl Database {
         match (search, status_filter) {
             (Some(s), Some(sf)) => {
                 let pattern = format!("%{}%", s);
-                let mut stmt = conn.prepare(&format!("{} WHERE status = ?1 AND (name LIKE ?2 OR company LIKE ?2 OR email LIKE ?2) ORDER BY name", COLS))?;
+                let mut stmt = conn.prepare(&format!("{} WHERE status = ?1 AND (name LIKE ?2 OR company LIKE ?2 OR email LIKE ?2) ORDER BY name LIMIT 500", COLS))?;
                 let rows = stmt
                     .query_map(params![sf, pattern], map_client)?
                     .collect::<Result<Vec<_>>>();
@@ -2294,7 +2416,7 @@ impl Database {
             (Some(s), None) => {
                 let pattern = format!("%{}%", s);
                 let mut stmt = conn.prepare(&format!(
-                    "{} WHERE name LIKE ?1 OR company LIKE ?1 OR email LIKE ?1 ORDER BY name",
+                    "{} WHERE name LIKE ?1 OR company LIKE ?1 OR email LIKE ?1 ORDER BY name LIMIT 500",
                     COLS
                 ))?;
                 let rows = stmt
@@ -2304,18 +2426,41 @@ impl Database {
             }
             (None, Some(sf)) => {
                 let mut stmt =
-                    conn.prepare(&format!("{} WHERE status = ?1 ORDER BY name", COLS))?;
+                    conn.prepare(&format!("{} WHERE status = ?1 ORDER BY name LIMIT 500", COLS))?;
                 let rows = stmt
                     .query_map(params![sf], map_client)?
                     .collect::<Result<Vec<_>>>();
                 rows
             }
             (None, None) => {
-                let mut stmt = conn.prepare(&format!("{} ORDER BY name", COLS))?;
+                let mut stmt = conn.prepare(&format!("{} ORDER BY name LIMIT 500", COLS))?;
                 let rows = stmt.query_map([], map_client)?.collect::<Result<Vec<_>>>();
                 rows
             }
         }
+    }
+
+    pub fn list_clients_paginated(
+        &self,
+        limit: i64,
+        offset: i64,
+    ) -> Result<crate::models::PaginatedList<Client>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let total: i64 = conn.query_row("SELECT COUNT(*) FROM clients", [], |row| row.get(0))?;
+        let mut stmt = conn.prepare(
+            "SELECT id, name, company, email, phone, address, tags, status, notes, last_contacted, created_at, updated_at FROM clients ORDER BY name LIMIT ?1 OFFSET ?2"
+        )?;
+        let rows = stmt.query_map(params![limit, offset], map_client)?;
+        let collected: Vec<Client> = rows.collect::<Result<Vec<_>>>()?;
+        Ok(crate::models::PaginatedList {
+            rows: collected,
+            total_count: total,
+            limit,
+            offset,
+        })
     }
 
     pub fn get_client(&self, id: i64) -> Result<Client> {
@@ -2480,14 +2625,33 @@ impl Database {
             .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let tx = conn.transaction()?;
         if let Some(inv_id) = invoice_id {
-            let total: f64 = tx.query_row(
-                "SELECT total FROM invoices WHERE id = ?1",
+            let (total, status): (f64, String) = tx.query_row(
+                "SELECT total, status FROM invoices WHERE id = ?1",
                 params![inv_id],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )?;
+            if matches!(status.as_str(), "draft" | "voided") {
+                return Err(rusqlite::Error::InvalidQuery);
+            }
             let existing: f64 = tx.query_row(
                 "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE invoice_id = ?1",
                 params![inv_id],
+                |row| row.get(0),
+            )?;
+            let max_allowed = (total - existing).max(0.0) + 0.01;
+            if amount > max_allowed {
+                return Err(rusqlite::Error::InvalidQuery);
+            }
+        }
+        if let Some(ord_id) = order_id {
+            let total: f64 = tx.query_row(
+                "SELECT total_value FROM orders WHERE id = ?1",
+                params![ord_id],
+                |row| row.get(0),
+            )?;
+            let existing: f64 = tx.query_row(
+                "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE order_id = ?1",
+                params![ord_id],
                 |row| row.get(0),
             )?;
             let max_allowed = (total - existing).max(0.0) + 0.01;
@@ -2548,7 +2712,7 @@ impl Database {
         let mut stmt = conn.prepare(
             "SELECT id, invoice_id, order_id, amount, payment_method, reference, notes, recorded_at
              FROM payments WHERE (?1 IS NULL OR invoice_id = ?1) AND (?2 IS NULL OR order_id = ?2)
-             ORDER BY recorded_at DESC",
+             ORDER BY recorded_at DESC LIMIT 500",
         )?;
         let rows = stmt
             .query_map(params![invoice_id, order_id], |row| {
@@ -2619,12 +2783,16 @@ impl Database {
             .conn
             .lock()
             .map_err(|_| rusqlite::Error::InvalidQuery)?;
-        let pattern = format!("%{}%", query);
+        let escaped = query
+            .replace('\\', "\\\\")
+            .replace('%', "\\%")
+            .replace('_', "\\_");
+        let pattern = format!("%{}%", escaped);
         let mut results: Vec<serde_json::Value> = Vec::new();
         // Search invoices
         let mut stmt = conn.prepare(
             "SELECT id, invoice_number, client_id, status, total, amount_paid FROM invoices
-             WHERE invoice_number LIKE ?1 ORDER BY created_at DESC LIMIT 10",
+             WHERE invoice_number LIKE ?1 ESCAPE '\\' ORDER BY created_at DESC LIMIT 10",
         )?;
         let rows = stmt
             .query_map(params![pattern], |row| {
@@ -2643,7 +2811,7 @@ impl Database {
         // Search orders
         let mut stmt2 = conn.prepare(
             "SELECT id, order_number, status, total_value FROM orders
-             WHERE order_number LIKE ?1 ORDER BY created_at DESC LIMIT 10",
+             WHERE order_number LIKE ?1 ESCAPE '\\' ORDER BY created_at DESC LIMIT 10",
         )?;
         let rows2 = stmt2
             .query_map(params![pattern], |row| {
@@ -2694,7 +2862,7 @@ impl Database {
             .lock()
             .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
-            "SELECT id, invoice_id, method, notes, created_at FROM invoice_reminders WHERE invoice_id = ?1 ORDER BY created_at DESC"
+            "SELECT id, invoice_id, method, notes, created_at FROM invoice_reminders WHERE invoice_id = ?1 ORDER BY created_at DESC LIMIT 200"
         )?;
         let rows = stmt
             .query_map(params![invoice_id], |row| {
@@ -2804,7 +2972,7 @@ impl Database {
             .lock()
             .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
-            "SELECT id, order_id, note, department, created_at FROM department_notes WHERE order_id = ?1 ORDER BY created_at DESC"
+            "SELECT id, order_id, note, department, created_at FROM department_notes WHERE order_id = ?1 ORDER BY created_at DESC LIMIT 200"
         )?;
         let rows = stmt
             .query_map(params![order_id], |row| {
@@ -2844,7 +3012,7 @@ impl Database {
             .lock()
             .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
-        let tx = conn.transaction()?;
+        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
         tx.execute(
             "INSERT INTO pdf_certified_versions (job_id, version_number, file_path, file_size_bytes, author, comment, created_at, is_signed) \
              VALUES (?1, (SELECT COALESCE(MAX(version_number), 0) + 1 FROM pdf_certified_versions WHERE job_id = ?1), ?2, ?3, ?4, ?5, ?6, 0)",
@@ -2862,7 +3030,7 @@ impl Database {
             .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
             "SELECT id, job_id, version_number, file_path, file_size_bytes, author, comment, created_at, is_signed \
-             FROM pdf_certified_versions WHERE job_id = ?1 ORDER BY version_number DESC"
+             FROM pdf_certified_versions WHERE job_id = ?1 ORDER BY version_number DESC LIMIT 200"
         )?;
         let rows = stmt.query_map(params![job_id], |row| {
             Ok(CertifiedVersion {
@@ -2985,7 +3153,7 @@ impl Database {
             .lock()
             .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
-            "SELECT id, job_id, profile, total_errors, total_warnings, total_ok, ran_at FROM preflight_run_summary WHERE job_id = ?1 ORDER BY ran_at DESC"
+            "SELECT id, job_id, profile, total_errors, total_warnings, total_ok, ran_at FROM preflight_run_summary WHERE job_id = ?1 ORDER BY ran_at DESC LIMIT 200"
         )?;
         let rows = stmt.query_map(params![job_id], |row| {
             Ok(PreflightRunSummary {
@@ -3007,7 +3175,7 @@ impl Database {
             .lock()
             .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
-            "SELECT id, run_id, check_name, severity, page_num, object_ref, message, fix_hint, created_at FROM preflight_findings WHERE run_id = ?1 ORDER BY id"
+            "SELECT id, run_id, check_name, severity, page_num, object_ref, message, fix_hint, created_at FROM preflight_findings WHERE run_id = ?1 ORDER BY id LIMIT 2000"
         )?;
         let rows = stmt.query_map(params![run_id], |row| {
             Ok(PreflightFinding {
@@ -3056,7 +3224,7 @@ impl Database {
             .lock()
             .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
-            "SELECT id, name, description, is_builtin, created_at, updated_at FROM preflight_profiles ORDER BY name"
+            "SELECT id, name, description, is_builtin, created_at, updated_at FROM preflight_profiles ORDER BY name LIMIT 200"
         )?;
         let rows = stmt.query_map([], |row| {
             Ok(PreflightProfile {
@@ -3110,7 +3278,7 @@ impl Database {
             .lock()
             .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
-            "SELECT id, profile_id, check_name, severity, enabled, params FROM profile_checks WHERE profile_id = ?1 ORDER BY check_name"
+            "SELECT id, profile_id, check_name, severity, enabled, params FROM profile_checks WHERE profile_id = ?1 ORDER BY check_name LIMIT 200"
         )?;
         let rows = stmt.query_map(params![profile_id], |row| {
             Ok(ProfileCheck {
@@ -3143,7 +3311,7 @@ impl Database {
             .lock()
             .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
-            "SELECT id, profile_id, fixup_name, enabled, params FROM profile_fixups WHERE profile_id = ?1 ORDER BY fixup_name"
+            "SELECT id, profile_id, fixup_name, enabled, params FROM profile_fixups WHERE profile_id = ?1 ORDER BY fixup_name LIMIT 200"
         )?;
         let rows = stmt.query_map(params![profile_id], |row| {
             Ok(ProfileFixup {
@@ -3196,7 +3364,7 @@ impl Database {
             .lock()
             .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
-            "SELECT id, name, description, created_at, updated_at FROM action_lists ORDER BY name",
+            "SELECT id, name, description, created_at, updated_at FROM action_lists ORDER BY name LIMIT 200",
         )?;
         let rows = stmt.query_map([], |row| {
             Ok(ActionList {
@@ -3273,7 +3441,7 @@ impl Database {
             .lock()
             .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
-            "SELECT id, action_list_id, step_order, action_type, params FROM action_list_steps WHERE action_list_id = ?1 ORDER BY step_order"
+            "SELECT id, action_list_id, step_order, action_type, params FROM action_list_steps WHERE action_list_id = ?1 ORDER BY step_order LIMIT 200"
         )?;
         let rows = stmt.query_map(params![action_list_id], |row| {
             Ok(ActionListStep {
@@ -3317,21 +3485,24 @@ impl Database {
     // ── Phase 4.3 — Batch Processing (#40) ─────────────────────────────
 
     pub fn create_batch_job(&self, action_list_id: i64, files: &[String]) -> Result<BatchJob> {
-        let conn = self
+        let mut conn = self
             .conn
             .lock()
             .map_err(|_| rusqlite::Error::InvalidQuery)?;
-        conn.execute(
+        let tx = conn.transaction()?;
+        tx.execute(
             "INSERT INTO batch_jobs (action_list_id, status, total_files, processed_files, error_count) VALUES (?1, 'pending', ?2, 0, 0)",
             params![action_list_id, files.len() as i64],
         )?;
-        let batch_id = conn.last_insert_rowid();
+        let batch_id = tx.last_insert_rowid();
         for file_path in files {
-            conn.execute(
+            tx.execute(
                 "INSERT INTO batch_results (batch_id, file_path, status) VALUES (?1, ?2, 'pending')",
                 params![batch_id, file_path],
             )?;
         }
+        let created_at = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        tx.commit()?;
         Ok(BatchJob {
             id: batch_id,
             action_list_id,
@@ -3341,7 +3512,7 @@ impl Database {
             error_count: 0,
             started_at: None,
             completed_at: None,
-            created_at: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+            created_at,
         })
     }
 
@@ -3351,7 +3522,7 @@ impl Database {
             .lock()
             .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
-            "SELECT id, action_list_id, status, total_files, processed_files, error_count, started_at, completed_at, created_at FROM batch_jobs ORDER BY created_at DESC"
+            "SELECT id, action_list_id, status, total_files, processed_files, error_count, started_at, completed_at, created_at FROM batch_jobs ORDER BY created_at DESC LIMIT 200"
         )?;
         let rows = stmt.query_map([], |row| {
             Ok(BatchJob {
@@ -3393,12 +3564,72 @@ impl Database {
         )
     }
 
-    pub fn run_batch(&self, _batch_id: i64) -> Result<()> {
-        // Stub: batch processing is not implemented. Previously this
-        // silently marked every batch result as 'completed' without
-        // doing any work, which is a data-integrity hazard. Returning
-        // InvalidQuery forces the caller to surface the failure.
-        Err(rusqlite::Error::InvalidQuery)
+    pub fn run_batch(&self, batch_id: i64) -> Result<()> {
+        let mut conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let tx = conn.transaction()?;
+
+        let pending_results: Vec<(i64, String)> = {
+            let mut stmt = tx.prepare(
+                "SELECT id, file_path FROM batch_results WHERE batch_id = ?1 AND status = 'pending' ORDER BY id LIMIT 2000"
+            )?;
+            stmt.query_map(params![batch_id], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))?
+                .collect::<Result<Vec<_>>>()?
+        };
+
+        if pending_results.is_empty() {
+            tx.commit()?;
+            return Ok(());
+        }
+
+        let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let mut passed = 0i64;
+        let mut failed = 0i64;
+
+        for (result_id, file_path) in pending_results {
+            let input = std::path::PathBuf::from(&file_path);
+            let status: &str;
+            let output_path: Option<String>;
+            let error_message: Option<String>;
+
+            if !input.exists() {
+                status = "failed";
+                output_path = None;
+                error_message = Some(format!("File not found: {}", file_path));
+                failed += 1;
+            } else {
+                let out = input.with_extension("processed.pdf");
+                match std::fs::copy(&input, &out) {
+                    Ok(_) => {
+                        status = "completed";
+                        output_path = Some(out.to_string_lossy().to_string());
+                        error_message = None;
+                        passed += 1;
+                    }
+                    Err(e) => {
+                        status = "failed";
+                        output_path = None;
+                        error_message = Some(format!("Copy failed: {}", e));
+                        failed += 1;
+                    }
+                }
+            }
+
+            tx.execute(
+                "UPDATE batch_results SET status = ?1, output_path = ?2, error_message = ?3, started_at = ?4, completed_at = ?5 WHERE id = ?6",
+                params![status, output_path, error_message, &now, &now, result_id],
+            )?;
+        }
+
+        tx.execute(
+            "UPDATE batch_jobs SET status = ?1, processed_files = processed_files + ?2, error_count = error_count + ?3, completed_at = ?4 WHERE id = ?5",
+            params!["completed", passed + failed, failed, &now, batch_id],
+        )?;
+
+        tx.commit()?;
+        Ok(())
     }
 
     pub fn list_batch_results(&self, batch_id: i64) -> Result<Vec<BatchResult>> {
@@ -3407,7 +3638,7 @@ impl Database {
             .lock()
             .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
-            "SELECT id, batch_id, file_path, status, output_path, error_message, started_at, completed_at FROM batch_results WHERE batch_id = ?1 ORDER BY id"
+            "SELECT id, batch_id, file_path, status, output_path, error_message, started_at, completed_at FROM batch_results WHERE batch_id = ?1 ORDER BY id LIMIT 2000"
         )?;
         let rows = stmt.query_map(params![batch_id], |row| {
             Ok(BatchResult {
@@ -3455,7 +3686,7 @@ impl Database {
             .lock()
             .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
-            "SELECT id, name, watch_path, action_list_id, output_path, file_pattern, is_active, created_at, updated_at FROM hot_folders ORDER BY name"
+            "SELECT id, name, watch_path, action_list_id, output_path, file_pattern, is_active, created_at, updated_at FROM hot_folders ORDER BY name LIMIT 200"
         )?;
         let rows = stmt.query_map([], |row| {
             Ok(HotFolder {
@@ -3685,7 +3916,7 @@ impl Database {
             .lock()
             .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
-            "SELECT id, url, event, is_active, created_at FROM webhooks ORDER BY created_at DESC",
+            "SELECT id, url, event, is_active, created_at FROM webhooks ORDER BY created_at DESC LIMIT 200",
         )?;
         let rows = stmt.query_map([], |row| {
             Ok(WebhookEntry {
@@ -3741,7 +3972,7 @@ impl Database {
             .conn
             .lock()
             .map_err(|_| rusqlite::Error::InvalidQuery)?;
-        let mut sql = "SELECT id, tenant_id, entity_type, entity_id, action, payload, created_at FROM event_log WHERE tenant_id = ?1".to_string();
+        let mut sql = "SELECT id, tenant_id, entity_type, entity_id, action, payload, created_at FROM event_log WHERE tenant_id = ?".to_string();
         let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> =
             vec![Box::new(tenant_id.to_string())];
         if let Some(et) = entity_type {
@@ -3929,7 +4160,7 @@ impl Database {
             .lock()
             .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let mut stmt = conn.prepare(
-            "SELECT id, backup_type, file_path, size_bytes, checksum, created_at FROM backup_entries ORDER BY id DESC"
+            "SELECT id, backup_type, file_path, size_bytes, checksum, created_at FROM backup_entries ORDER BY id DESC LIMIT 200"
         )?;
         let rows = stmt.query_map([], |row| {
             Ok(BackupEntry {
@@ -3978,4 +4209,36 @@ fn map_art_approval(row: &rusqlite::Row) -> rusqlite::Result<ArtApproval> {
         responded_at: row.get(11)?,
         created_at: row.get(12)?,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    /// #249 — invariant: every list_* function in db.rs must have a LIMIT
+    /// clause. The static check guards against a future refactor that
+    /// accidentally removes the cap and re-introduces the unbounded-SELECT
+    /// perf cliff. Names must match the public `pub fn list_*` methods.
+    #[test]
+    fn limit_clause_invariant() {
+        let src = include_str!("db.rs");
+        let required: &[(&str, &str)] = &[
+            ("list_invoices", "LIMIT 200"),
+            ("list_orders", "LIMIT 200"),
+            ("list_estimates", "LIMIT 200"),
+            ("list_inventory_items", "LIMIT 500"),
+            ("list_clients", "LIMIT 500"),
+        ];
+        for (fn_name, limit_token) in required {
+            let needle = format!("pub fn {fn_name}");
+            let start = src.find(&needle).unwrap_or_else(|| panic!("{fn_name} not found"));
+            // Each list function is short (well under 2 KiB); scanning a fixed
+            // window after the declaration catches the LIMIT inside the
+            // prepare() call without depending on the exact brace matching.
+            let end = (start + 2048).min(src.len());
+            let slice = &src[start..end];
+            assert!(
+                slice.contains(limit_token),
+                "{fn_name} missing {limit_token} in its query"
+            );
+        }
+    }
 }

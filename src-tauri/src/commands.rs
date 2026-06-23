@@ -334,9 +334,19 @@ pub fn save_business_info(
     business_name: String,
     industry: String,
     company_size: String,
+    order_number_prefix: Option<String>,
 ) -> Result<(), String> {
-    db.save_business_info(&business_name, &industry, &company_size)
+    let prefix = order_number_prefix.unwrap_or_default();
+    Database::validate_order_prefix(&prefix).map_err(|_| {
+        "Order number prefix must be empty or 1-4 alphanumeric characters".to_string()
+    })?;
+    db.save_business_info(&business_name, &industry, &company_size, &prefix)
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn next_order_number(db: State<'_, Database>) -> Result<String, String> {
+    db.next_order_number().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -362,6 +372,16 @@ pub fn create_invoice(
 #[tauri::command]
 pub fn list_invoices(db: State<'_, Database>) -> Result<Vec<Invoice>, String> {
     db.list_invoices().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn list_invoices_paginated(
+    db: State<'_, Database>,
+    limit: i64,
+    offset: i64,
+) -> Result<crate::models::PaginatedList<Invoice>, String> {
+    db.list_invoices_paginated(limit, offset)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -444,6 +464,16 @@ pub fn list_orders(db: State<'_, Database>) -> Result<Vec<Order>, String> {
 }
 
 #[tauri::command]
+pub fn list_orders_paginated(
+    db: State<'_, Database>,
+    limit: i64,
+    offset: i64,
+) -> Result<crate::models::PaginatedList<Order>, String> {
+    db.list_orders_paginated(limit, offset)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn get_order(db: State<'_, Database>, id: i64) -> Result<OrderData, String> {
     db.get_order_data(id).map_err(|e| e.to_string())
 }
@@ -463,6 +493,7 @@ pub fn update_order_status(
 pub fn update_order(
     db: State<'_, Database>,
     id: i64,
+    due_date: String,
     priority: String,
     description: String,
     artwork_notes: String,
@@ -473,6 +504,7 @@ pub fn update_order(
 ) -> Result<(), String> {
     db.update_order(
         id,
+        &due_date,
         &priority,
         &description,
         &artwork_notes,
@@ -653,6 +685,16 @@ pub fn list_clients(
     status_filter: Option<String>,
 ) -> Result<Vec<Client>, String> {
     db.list_clients(search.as_deref(), status_filter.as_deref())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn list_clients_paginated(
+    db: State<'_, Database>,
+    limit: i64,
+    offset: i64,
+) -> Result<crate::models::PaginatedList<Client>, String> {
+    db.list_clients_paginated(limit, offset)
         .map_err(|e| e.to_string())
 }
 
@@ -981,6 +1023,7 @@ pub fn create_certified_version(
     author: String,
     comment: String,
 ) -> Result<i64, String> {
+    let _ = validate_read_path(&file_path)?;
     let metadata = std::fs::metadata(&file_path).map_err(|e| format!("File not found: {}", e))?;
     db.save_certified_version(job_id, &file_path, metadata.len(), &author, &comment)
         .map_err(|e| e.to_string())
@@ -1255,24 +1298,28 @@ pub fn rotate_page(
 
 #[tauri::command]
 pub fn check_fonts(path: String) -> Result<Vec<FontFinding>, String> {
+    let _ = validate_read_path(&path)?;
     let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     Ok(crate::pdf::fonts::collect_fonts(&doc))
 }
 
 #[tauri::command]
 pub fn check_page_boxes(path: String) -> Result<Vec<PageBoxFinding>, String> {
+    let _ = validate_read_path(&path)?;
     let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     Ok(crate::pdf::boxes::check_page_boxes(&doc))
 }
 
 #[tauri::command]
 pub fn check_image_resolution(path: String) -> Result<Vec<ImageResolutionFinding>, String> {
+    let _ = validate_read_path(&path)?;
     let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     Ok(crate::pdf::images::check_image_resolution(&doc))
 }
 
 #[tauri::command]
 pub fn check_bleed(path: String, min_bleed_mm: Option<f64>) -> Result<Vec<BleedFinding>, String> {
+    let _ = validate_read_path(&path)?;
     let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     let min = min_bleed_mm.unwrap_or(3.0);
     Ok(crate::pdf::bleed::check_bleed(&doc, min))
@@ -1280,6 +1327,7 @@ pub fn check_bleed(path: String, min_bleed_mm: Option<f64>) -> Result<Vec<BleedF
 
 #[tauri::command]
 pub fn add_bleed(path: String, amount_mm: f64, output_path: String) -> Result<(), String> {
+    let _ = validate_read_path(&path)?;
     let _ = validate_write_path(&output_path)?;
     let mut doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     let page_ids: Vec<(u32, u16)> = doc.get_pages().values().copied().collect();
@@ -1371,12 +1419,14 @@ pub fn add_bleed(path: String, amount_mm: f64, output_path: String) -> Result<()
 
 #[tauri::command]
 pub fn check_output_intents(path: String) -> Result<Vec<OutputIntent>, String> {
+    let _ = validate_read_path(&path)?;
     let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     Ok(crate::pdf::metadata::get_output_intents(&doc))
 }
 
 #[tauri::command]
 pub fn check_security(path: String) -> Result<Vec<SecurityFinding>, String> {
+    let _ = validate_read_path(&path)?;
     let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     Ok(crate::pdf::security::check_security(&doc))
 }
@@ -1398,6 +1448,7 @@ pub struct CombinedPreflightResult {
 
 #[tauri::command]
 pub fn check_full_preflight(path: String) -> Result<CombinedPreflightResult, String> {
+    let _ = validate_read_path(&path)?;
     let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     let mut pdfx = crate::pdf::pdfx::check_metadata(&doc);
     pdfx.extend(crate::pdf::pdfx::check_version_compatibility(&path, "x4"));
@@ -1422,6 +1473,7 @@ pub fn check_full_preflight(path: String) -> Result<CombinedPreflightResult, Str
 
 #[tauri::command]
 pub fn check_pdfx(path: String, profile: String) -> Result<CombinedPreflightResult, String> {
+    let _ = validate_read_path(&path)?;
     let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
 
     let target = profile.as_str();
@@ -1476,37 +1528,43 @@ pub fn check_color_spaces(
     path: String,
     target_profile: String,
 ) -> Result<Vec<ColorSpaceFinding>, String> {
+    let _ = validate_read_path(&path)?;
     let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     Ok(crate::pdf::color::check_color_spaces(&doc, &target_profile))
 }
 
 #[tauri::command]
 pub fn check_overprint(path: String) -> Result<Vec<OverprintFinding>, String> {
+    let _ = validate_read_path(&path)?;
     let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     Ok(crate::pdf::overprint::check_overprint(&doc))
 }
 
 #[tauri::command]
 pub fn check_transparency(path: String) -> Result<Vec<TransparencyFinding>, String> {
+    let _ = validate_read_path(&path)?;
     let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     Ok(crate::pdf::overprint::check_transparency(&doc))
 }
 
 #[tauri::command]
 pub fn check_hidden_content(path: String) -> Result<Vec<HiddenContentFinding>, String> {
+    let _ = validate_read_path(&path)?;
     let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     Ok(crate::pdf::overprint::check_hidden_content(&doc))
 }
 
 #[tauri::command]
 pub fn check_spot_colors(path: String) -> Result<Vec<SpotColorFinding>, String> {
+    let _ = validate_read_path(&path)?;
     let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     Ok(crate::pdf::color::check_spot_colors(&doc))
 }
 
 #[tauri::command]
-pub fn check_ink_coverage() -> Vec<InkCoverageFinding> {
-    crate::pdf::color::check_ink_coverage()
+pub fn check_ink_coverage(path: String) -> Result<Vec<InkCoverageFinding>, String> {
+    let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
+    Ok(crate::pdf::color::check_ink_coverage(&doc))
 }
 
 #[tauri::command]
@@ -1524,6 +1582,7 @@ pub fn convert_rgb_to_cmyk(
     dst_profile: Option<String>,
     rendering_intent: Option<String>,
 ) -> Result<ConversionResult, String> {
+    let _ = validate_read_path(&path)?;
     let _ = validate_write_path(&output_path)?;
     let mut doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     let scope = scope.as_deref().unwrap_or("both");
@@ -1541,6 +1600,7 @@ pub fn add_output_intent(
     condition_id: String,
     condition: String,
 ) -> Result<(), String> {
+    let _ = validate_read_path(&path)?;
     let _ = validate_write_path(&output_path)?;
     let mut doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     // The ICC profile file path is passed; read it
@@ -1554,6 +1614,7 @@ pub fn add_output_intent(
 
 #[tauri::command]
 pub fn get_pdf_catalog(path: String) -> Result<serde_json::Value, String> {
+    let _ = validate_read_path(&path)?;
     let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     let root_ref = doc
         .trailer
@@ -1667,6 +1728,7 @@ pub fn reorder_pages(
     output_path: String,
 ) -> Result<(), String> {
     use lopdf::Object;
+    let _ = validate_read_path(&path)?;
     let _ = validate_write_path(&output_path)?;
     let mut doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {e}"))?;
     let pages = doc.get_pages();
@@ -1677,6 +1739,12 @@ pub fn reorder_pages(
             new_order.len(),
             all_page_numbers.len()
         ));
+    }
+    let mut seen = std::collections::HashSet::new();
+    for &idx in &new_order {
+        if !seen.insert(idx) {
+            return Err(format!("Duplicate page index {idx} in new_order"));
+        }
     }
     // Get pages tree intermediary ref
     let root_ref = doc
@@ -1718,6 +1786,7 @@ pub fn insert_blank_page(
     output_path: String,
 ) -> Result<(), String> {
     use lopdf::Object;
+    let _ = validate_read_path(&path)?;
     let _ = validate_write_path(&output_path)?;
     let mut doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {e}"))?;
     let width_pts = width_mm / 0.3528;
@@ -1780,6 +1849,7 @@ pub fn insert_blank_page(
 
 #[tauri::command]
 pub fn list_layers(path: String) -> Result<Vec<LayerInfo>, String> {
+    let _ = validate_read_path(&path)?;
     let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {e}"))?;
     let mut layers = Vec::new();
     for (obj_id, obj) in &doc.objects {
@@ -1814,6 +1884,7 @@ pub fn list_layers(path: String) -> Result<Vec<LayerInfo>, String> {
 #[tauri::command]
 pub fn decode_content_stream(path: String, page_index: usize) -> Result<String, String> {
     use crate::pdf::content_stream;
+    let _ = validate_read_path(&path)?;
     let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {e}"))?;
     let pages = doc.get_pages();
     let obj_id = pages
@@ -1886,6 +1957,7 @@ pub fn encode_content_stream(
     output_path: String,
 ) -> Result<(), String> {
     use crate::pdf::content_stream;
+    let _ = validate_read_path(&path)?;
     let _ = validate_write_path(&output_path)?;
     let mut doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {e}"))?;
     let pages = doc.get_pages();
@@ -1901,6 +1973,21 @@ pub fn encode_content_stream(
     doc.save(&output_path)
         .map_err(|e| format!("Failed to save: {e}"))?;
     Ok(())
+}
+
+#[tauri::command]
+pub fn round_trip_page(
+    path: String,
+    page_index: usize,
+    output_path: String,
+) -> Result<serde_json::Value, String> {
+    let decoded = decode_content_stream(path.clone(), page_index)?;
+    encode_content_stream(path, page_index, decoded.clone(), output_path)?;
+    Ok(serde_json::json!({
+        "page_index": page_index,
+        "decoded_bytes": decoded.len(),
+        "success": true,
+    }))
 }
 
 #[tauri::command]
@@ -1930,24 +2017,42 @@ fn extract_text_from_page(doc: &lopdf::Document, page_index: usize) -> String {
         Ok(c) => c,
         Err(_) => return String::new(),
     };
-    let stream_data = match contents {
-        Object::Stream(s) => s.content.clone(),
-        Object::Reference(r) => {
-            if let Ok(o) = doc.get_object(*r) {
-                match o {
-                    Object::Stream(s) => s.content.clone(),
-                    _ => return String::new(),
+    let resolve_stream = |obj: &lopdf::Object| -> Option<Vec<u8>> {
+        match obj {
+            Object::Stream(s) => Some(s.content.clone()),
+            Object::Reference(r) => {
+                if let Ok(o) = doc.get_object(*r) {
+                    if let Object::Stream(s) = o {
+                        return Some(s.content.clone());
+                    }
                 }
+                None
+            }
+            _ => None,
+        }
+    };
+    let mut combined: Vec<u8> = Vec::new();
+    match contents {
+        Object::Array(arr) => {
+            for item in arr {
+                if let Some(data) = resolve_stream(item) {
+                    combined.extend_from_slice(&data);
+                    combined.push(b'\n');
+                }
+            }
+        }
+        other => {
+            if let Some(data) = resolve_stream(other) {
+                combined = data;
             } else {
                 return String::new();
             }
         }
-        _ => return String::new(),
-    };
+    }
     // Try to decode
     let decoded = crate::pdf::content_stream::decode_stream(&lopdf::Stream::new(
         lopdf::Dictionary::new(),
-        stream_data,
+        combined,
     ))
     .unwrap_or_default();
 
@@ -1979,6 +2084,7 @@ fn extract_text_from_page(doc: &lopdf::Document, page_index: usize) -> String {
 
 #[tauri::command]
 pub fn search_text(path: String, query: String) -> Result<Vec<TextMatch>, String> {
+    let _ = validate_read_path(&path)?;
     let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {e}"))?;
     let page_count = doc.get_pages().len();
     let mut results = Vec::new();
@@ -2022,16 +2128,8 @@ pub fn replace_text(
         return Err("`find` string must not be empty".to_string());
     }
     let content = decode_content_stream(path.clone(), page_index)?;
-    let mut replacements = 0;
-    let new_content = content.replace(&find, &replace);
-    if new_content != content {
-        let len_diff = if content.len() > new_content.len() {
-            content.len() - new_content.len()
-        } else {
-            0
-        };
-        replacements = len_diff / find.len();
-    }
+    let replacements = content.matches(find.as_str()).count();
+    let new_content = content.replace(find.as_str(), &replace);
     encode_content_stream(path.clone(), page_index, new_content, output_path.clone())?;
     Ok(ReplaceResult {
         replacements_made: replacements,
@@ -2077,12 +2175,114 @@ pub fn optimize_image(
 // ═══════════════════════════════════════════════════════════════════════════
 
 #[tauri::command]
+pub fn start_hot_folder_watcher(
+    config: crate::pdf::watcher::HotFolderConfig,
+) -> Result<(), String> {
+    crate::pdf::watcher::start_hot_folder_watcher(&config)
+}
+
+#[tauri::command]
+pub fn stop_hot_folder_watcher() -> Result<(), String> {
+    crate::pdf::watcher::stop_hot_folder_watcher()
+}
+
+#[tauri::command]
+pub fn get_check_registry() -> Vec<crate::pdf::registry::CheckDefinition> {
+    crate::pdf::registry::CHECK_REGISTRY.to_vec()
+}
+
+#[tauri::command]
+pub fn run_profile(
+    db: State<'_, Database>,
+    profile_id: i64,
+    path: String,
+) -> Result<crate::pdf::registry::RunProfileResult, String> {
+    let profile = db.get_preflight_profile(profile_id).map_err(|e| e.to_string())?;
+    let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
+    let mut findings: Vec<String> = Vec::new();
+
+    let name_lower = profile.name.to_lowercase();
+    if name_lower.contains("pdf/x-1a") {
+        let f = crate::pdf::pdfx::check_pdfx(&doc, "PDF/X-1a:2003");
+        findings.extend(f.iter().map(|x| x.message.clone()));
+    } else if name_lower.contains("pdf/x-4") {
+        let f = crate::pdf::pdfx::check_pdfx(&doc, "PDF/X-4");
+        findings.extend(f.iter().map(|x| x.message.clone()));
+    }
+    let cs = crate::pdf::color::check_color_spaces(&doc, "Coated FOGRA39");
+    findings.extend(cs.iter().map(|x| x.message.clone()));
+    let sp = crate::pdf::color::check_spot_colors(&doc);
+    findings.extend(sp.iter().map(|x| x.message.clone()));
+    let ic = crate::pdf::color::check_ink_coverage(&doc);
+    findings.extend(ic.iter().map(|x| x.message.clone()));
+
+    Ok(crate::pdf::registry::RunProfileResult {
+        profile_name: profile.name,
+        findings_count: findings.len(),
+    })
+}
+
+#[tauri::command]
 pub fn create_preflight_profile(
     db: State<'_, Database>,
     input: PreflightProfileInput,
 ) -> Result<PreflightProfile, String> {
     db.create_preflight_profile(&input)
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn generate_approval_sheet(
+    info: crate::pdf::approval_sheet::ApprovalSheetInfo,
+    output_path: String,
+) -> Result<(), String> {
+    crate::pdf::approval_sheet::generate_approval_sheet(&info, &output_path)
+}
+
+#[tauri::command]
+pub fn export_preflight_report_json(
+    db: State<'_, Database>,
+    run_id: i64,
+) -> Result<serde_json::Value, String> {
+    let findings = db
+        .list_findings_for_run(run_id)
+        .map_err(|e| e.to_string())?;
+    let rows: Vec<serde_json::Value> = findings
+        .into_iter()
+        .map(|f| {
+            serde_json::json!({
+                "check_name": f.check_name,
+                "severity": f.severity,
+                "page_num": f.page_num,
+                "message": f.message,
+                "fix_hint": f.fix_hint,
+            })
+        })
+        .collect();
+    Ok(serde_json::json!({ "findings": rows }))
+}
+
+#[tauri::command]
+pub fn export_preflight_report_csv(
+    db: State<'_, Database>,
+    run_id: i64,
+) -> Result<String, String> {
+    let findings = db
+        .list_findings_for_run(run_id)
+        .map_err(|e| e.to_string())?;
+    let mut out = "check_name,severity,page_num,message,fix_hint\n".to_string();
+    for f in findings {
+        let page_num = f.page_num.map(|n| n.to_string()).unwrap_or_default();
+        out.push_str(&format!(
+            "{},{},{},\"{}\",\"{}\"\n",
+            f.check_name,
+            f.severity,
+            page_num,
+            f.message.replace('"', "\"\""),
+            f.fix_hint.replace('"', "\"\"")
+        ));
+    }
+    Ok(out)
 }
 
 #[tauri::command]
@@ -2272,50 +2472,13 @@ pub fn toggle_hot_folder(db: State<'_, Database>, id: i64, is_active: bool) -> R
 
 #[tauri::command]
 pub fn compress_pdf(path: String, output_path: String) -> Result<(), String> {
+    let _ = validate_read_path(&path)?;
     let _ = validate_write_path(&output_path)?;
-    use flate2::write::ZlibEncoder;
-    use flate2::Compression;
-    use lopdf::Object;
-    use std::io::Write;
-
-    let mut doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {e}"))?;
-    let mut compressed = 0u32;
-
-    for (_, obj) in doc.objects.iter_mut() {
-        if let Object::Stream(ref mut stream) = obj {
-            // If already compressed with FlateDecode (or its "Fl" abbreviation,
-            // per PDF spec §7.4.4 table 7.9), skip. The Filter entry may be a
-            // single Name or an Array of Names (filter pipeline). (#165)
-            let has_flate = match stream.dict.get(b"Filter") {
-                Ok(Object::Name(n)) => n == b"FlateDecode" || n == b"Fl",
-                Ok(Object::Array(arr)) => arr.iter().any(|f| {
-                    matches!(f,
-                    Object::Name(n) if n == b"FlateDecode" || n == b"Fl")
-                }),
-                _ => false,
-            };
-            if !has_flate {
-                let data = std::mem::take(&mut stream.content);
-                let mut encoder = ZlibEncoder::new(Vec::new(), Compression::best());
-                if encoder.write_all(&data).is_err() {
-                    return Err("Zlib write failed".to_string());
-                }
-                stream.content = encoder
-                    .finish()
-                    .map_err(|e| format!("Zlib finish failed: {e}"))?;
-                stream
-                    .dict
-                    .set("Filter", Object::Name(b"FlateDecode".to_vec()));
-                // Remove length as it'll be recalculated
-                stream.dict.remove(b"Length");
-                compressed += 1;
-            }
-        }
-    }
-    log::info!("Compressed {compressed} streams in PDF");
-    doc.save(&output_path)
-        .map_err(|e| format!("Failed to save: {e}"))?;
-    Ok(())
+    crate::pdf::compress::compress_pdf(
+        &path,
+        &output_path,
+        &crate::pdf::compress::CompressionOptions::default(),
+    )
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2335,24 +2498,6 @@ pub fn detect_barcodes(_path: String) -> Result<Vec<BarcodeResult>, String> {
 #[tauri::command]
 pub fn get_analytics_summary(db: State<'_, Database>) -> Result<AnalyticsSummary, String> {
     db.get_analytics_summary().map_err(|e| e.to_string())
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Phase 5.4 — Approval sheets & report export (#59, #60)
-// ═══════════════════════════════════════════════════════════════════════════
-
-#[tauri::command]
-pub fn generate_approval_sheet(
-    _path: String,
-    _config: ApprovalSheetConfig,
-    _output_path: String,
-) -> Result<(), String> {
-    Err("generate_approval_sheet is not implemented. Tracked in v2 polish issue #135.".to_string())
-}
-
-#[tauri::command]
-pub fn export_preflight_report(_run_id: i64, _format: String) -> Result<String, String> {
-    Err("export_preflight_report is not implemented. Tracked in v2 polish issue #135.".to_string())
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -1,6 +1,14 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PaginatedList<T: Serialize + Clone> {
+    pub rows: Vec<T>,
+    pub total_count: i64,
+    pub limit: i64,
+    pub offset: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LayerInfo {
     pub name: String,
     pub visible: bool,
@@ -340,6 +348,7 @@ pub struct BusinessInfo {
     pub business_name: Option<String>,
     pub industry: Option<String>,
     pub company_size: Option<String>,
+    pub order_number_prefix: Option<String>,
     pub completed_onboarding: bool,
 }
 

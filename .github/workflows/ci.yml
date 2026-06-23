@@ -119,3 +119,4 @@ jobs:
       - name: Build Tauri (verify compile only)
         run: npx --yes @tauri-apps/cli build --no-bundle
         working-directory: src-tauri
+

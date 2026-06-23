@@ -6,7 +6,7 @@ import { Button } from '../design-system'
 import './Welcome.css'
 
 interface WelcomeProps {
-  onImportComplete: () => void
+  onImportComplete: (createdWorkbookId: number | null) => void
 }
 
 export default function Welcome({ onImportComplete }: WelcomeProps) {
@@ -25,7 +25,7 @@ export default function Welcome({ onImportComplete }: WelcomeProps) {
       const wb = await invoke<{ id: number }>('create_workbook', { name: 'Imported Data' })
       const cmd = filePath.endsWith('.csv') ? 'import_csv_file' : 'import_excel_file'
       await invoke<SheetData>(cmd, { workbookId: wb.id, filePath })
-      onImportComplete()
+      onImportComplete(wb.id)
     } catch (e) {
       alert(`Import failed: ${e}`)
     } finally {
@@ -39,6 +39,19 @@ export default function Welcome({ onImportComplete }: WelcomeProps) {
 
   const handleNotionSignIn = () => {
     alert('Notion sign-in integration coming soon')
+  }
+
+  const handleEmptyWorkbook = async () => {
+    setIsLoading(true)
+    try {
+      const wb = await invoke<{ id: number }>('create_workbook', { name: 'Workbook 1' })
+      onImportComplete(wb.id)
+    } catch (e) {
+      alert(`Failed to create workbook: ${e}`)
+      console.error('Failed to create workbook:', e)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -102,10 +115,10 @@ export default function Welcome({ onImportComplete }: WelcomeProps) {
           <Button
             variant="primary"
             fullWidth
-            onClick={() => invoke('create_workbook', { name: `Workbook 1` }).then(onImportComplete)}
+            onClick={handleEmptyWorkbook}
             disabled={isLoading}
           >
-            Start with Empty Workbook
+            {isLoading ? 'Creating...' : 'Start with Empty Workbook'}
           </Button>
         </div>
       </div>

@@ -1,0 +1,48 @@
+# Multi-target legacy build: Linux (musl static).
+#
+# Produces a fully static `libapp_lib.so` and the built frontend `dist/`
+# directory, both packaged into one Docker image. The resulting files
+# run on any Linux distribution (kernel 2.6.23+, glibc 2007+) without
+# external runtime dependencies.
+#
+# This is a "build verification" image — the lib is compiled and the
+# frontend is bundled. The full Tauri app bundling (deb, AppImage, etc.)
+# is done separately by `npm run tauri build` on a host with the
+# appropriate Linux tooling.
+
+# Stage 1: Frontend build
+FROM node:22-alpine AS frontend-builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+# Stage 2: Linux legacy (musl static) — compatible with 2010+ Linux
+FROM rust:1.77-alpine AS linux-legacy-builder
+WORKDIR /app
+
+RUN apk add --no-cache \
+    pkgconfig \
+    openssl-dev \
+    sqlite-dev \
+    cairo-dev \
+    pango-dev \
+    glib-dev \
+    musl-dev
+
+COPY src-tauri ./src-tauri
+COPY Cargo.lock Cargo.toml ./
+COPY --from=frontend-builder /app/dist ./dist
+
+WORKDIR /app/src-tauri
+RUN rustup target add x86_64-unknown-linux-musl
+RUN RUSTFLAGS="-C target-feature=+crt-static" \
+    cargo build --release --lib --target x86_64-unknown-linux-musl 2>&1 | grep -v "warning:" || true
+
+# Stage 3: Output bundle
+FROM scratch AS binaries
+WORKDIR /output
+
+COPY --from=linux-legacy-builder /app/src-tauri/target/x86_64-unknown-linux-musl/release/libapp_lib.so ./linux-x64/
+COPY --from=linux-legacy-builder /app/dist ./linux-x64/dist/

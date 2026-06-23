@@ -12,6 +12,7 @@ pub struct LoggingGuard {
 
 /// Initialize structured logging with file rotation.
 /// Logs go to {app_data_dir}/frappe.log with rotation.
+/// File output: debug level. Stdout output: info level (configurable via env).
 /// Returns a guard that must be kept alive for the lifetime of the app —
 /// dropping it terminates the background log writer thread and file
 /// logging silently stops.
@@ -22,25 +23,29 @@ pub fn init_logging(app_data_dir: &PathBuf) -> LoggingGuard {
     let file_appender = tracing_appender::rolling::daily(&log_dir, "frappe.log");
     let (non_blocking, file_guard) = tracing_appender::non_blocking(file_appender);
 
+    let file_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| "app_lib=debug,info".into());
+    let stdout_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| "app_lib=info,warn".into());
+
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::fmt::layer()
                 .with_writer(non_blocking)
                 .with_ansi(false)
                 .with_target(true)
-                .with_thread_ids(true),
+                .with_thread_ids(true)
+                .with_filter(file_filter),
         )
         .with(
             tracing_subscriber::fmt::layer()
                 .with_writer(std::io::stdout)
                 .with_ansi(true)
-                .with_target(false),
+                .with_target(false)
+                .with_filter(stdout_filter),
         )
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "app_lib=debug,info".into()),
-        )
-        .init();
+        .try_init()
+        .ok();
 
     tracing::info!(
         "structured logging initialized at {}/frappe.log",

@@ -1,24 +1,26 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 import type { Workbook, WorkbookData, SheetData, Client, PdfSummary } from '../types'
+import { Button } from '../design-system'
 import WorkbookList from './WorkbookList'
 import Spreadsheet from './Spreadsheet'
 import Toolbar from './Toolbar'
 import CloudImportDialog from './CloudImportDialog'
-import Dashboard from './Dashboard'
-import OrderList from './OrderList'
-import OrderDetail from './OrderDetail'
-import InvoiceList from './InvoiceList'
-import InvoiceEditor from './InvoiceEditor'
-import EstimateList from './EstimateList'
-import EstimateEditor from './EstimateEditor'
-import InventoryList from './InventoryList'
-import ClientList from './ClientList'
-import ClientForm from './ClientForm'
-import POSView from './POSView'
-import QBSyncPanel from './QBSyncPanel'
-import PDFView from './PDFView'
+
+const Dashboard = lazy(() => import('./Dashboard'))
+const OrderList = lazy(() => import('./OrderList'))
+const OrderDetail = lazy(() => import('./OrderDetail'))
+const InvoiceList = lazy(() => import('./InvoiceList'))
+const InvoiceEditor = lazy(() => import('./InvoiceEditor'))
+const EstimateList = lazy(() => import('./EstimateList'))
+const EstimateEditor = lazy(() => import('./EstimateEditor'))
+const InventoryList = lazy(() => import('./InventoryList'))
+const ClientList = lazy(() => import('./ClientList'))
+const ClientForm = lazy(() => import('./ClientForm'))
+const POSView = lazy(() => import('./POSView'))
+const QBSyncPanel = lazy(() => import('./QBSyncPanel'))
+const PDFView = lazy(() => import('./PDFView'))
 import './ManagementView.css'
 
 type Section =
@@ -46,7 +48,18 @@ const NAV_ITEMS: { id: Section; label: string; icon: string }[] = [
   { id: 'pdf', label: 'PDF Tools', icon: '📄' },
 ]
 
-export default function ManagementView() {
+interface ManagementViewProps {
+  /** Workbook id to auto-select on mount (e.g. one just created in Welcome). */
+  initialWorkbookId?: number | null
+  /** Called once after the initial workbook id has been used, so the parent
+   *  can clear its own copy. */
+  onInitialWorkbookConsumed?: () => void
+}
+
+export default function ManagementView({
+  initialWorkbookId = null,
+  onInitialWorkbookConsumed,
+}: ManagementViewProps = {}) {
   const [section, setSection] = useState<Section>('dashboard')
 
   // Workbook state
@@ -109,6 +122,22 @@ export default function ManagementView() {
   useEffect(() => { loadWorkbooks() }, [loadWorkbooks])
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { if (activeId) loadWorkbook(activeId) }, [activeId, loadWorkbook])
+
+  // Auto-select the workbook the user just created in the Welcome screen
+  // (#237). Fires once on mount when an initial id was provided. Switch to
+  // the workbooks section and set the active id — the existing
+  // `activeId -> loadWorkbook` effect then loads its data. The ref ensures
+  // a re-render (e.g. after the workbook list arrives) does not replay it.
+  const initialIdRef = useRef<number | null>(initialWorkbookId)
+  const consumedInitialRef = useRef(false)
+  useEffect(() => {
+    if (consumedInitialRef.current) return
+    if (initialIdRef.current == null) return
+    consumedInitialRef.current = true
+    setSection('workbooks')
+    setActiveId(initialIdRef.current)
+    onInitialWorkbookConsumed?.()
+  }, [onInitialWorkbookConsumed])
 
   const handleCreateWorkbook = async () => {
     // Use timestamp-based name to guarantee uniqueness across rapid
@@ -247,9 +276,9 @@ export default function ManagementView() {
                 <div className="workbook-empty">
                   <h2>Workbooks</h2>
                   <p>Create or select a workbook to get started.</p>
-                  <button className="btn btn-primary" onClick={handleCreateWorkbook}>
-                    Create Workbook
-                  </button>
+                  <Button variant="primary" size="md" onClick={handleCreateWorkbook}>
+                    + New Workbook
+                  </Button>
                 </div>
               )}
             </div>
@@ -422,7 +451,9 @@ export default function ManagementView() {
       </nav>
 
       <main className="management-content">
-        {renderSection()}
+        <Suspense fallback={<div className="section-loading">Loading...</div>}>
+          {renderSection()}
+        </Suspense>
       </main>
     </div>
   )

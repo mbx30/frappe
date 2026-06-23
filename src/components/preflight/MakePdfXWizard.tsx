@@ -16,12 +16,19 @@ const PROFILE_OPTIONS = [
   { id: 'general', label: 'General Print', desc: 'RGB and TAC>300% as warnings. No OutputIntent required. Best for small shops.' },
 ]
 
+const ICC_PROFILES = [
+  { value: 'FOGRA39-ISO-Coated-v2', label: 'FOGRA39 (ISO Coated v2)' },
+  { value: 'FOGRA47-ISO-Uncoated-v3', label: 'FOGRA47 (ISO Uncoated v3)' },
+  { value: 'FOGRA45-ISO-LWC-Improved', label: 'FOGRA45 (ISO LWC Improved)' },
+]
+
 export default function MakePdfXWizard({ filePath, preflightResult, onRerunPreflight }: MakePdfXWizardProps) {
   const [step, setStep] = useState<WizardStep>('preflight')
   const [profile, setProfile] = useState('x4')
   const [fixBleed, setFixBleed] = useState(true)
   const [fixOutputIntent, setFixOutputIntent] = useState(true)
   const [fixColors, setFixColors] = useState(true)
+  const [iccProfile, setIccProfile] = useState(ICC_PROFILES[0].value)
   const [applying, setApplying] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [outputPath, setOutputPath] = useState<string | null>(null)
@@ -89,13 +96,15 @@ export default function MakePdfXWizard({ filePath, preflightResult, onRerunPrefl
       }
 
       if (fixOutputIntent && hasNoOutputIntent && (profile === 'x4' || profile === 'x1a')) {
+        if (!iccProfile) throw new Error('ICC profile is required for OutputIntent')
         const intentOut = `${base}_pdfx.pdf`
-        const conditionId = profile === 'x4' ? 'FOGRA39 (ISO Coated v2)' : 'FOGRA39 (ISO Coated v2)'
-        const condition = profile === 'x4' ? 'ISO Coated v2 (FOGRA39)' : 'ISO Coated v2 (FOGRA39)'
+        const selectedProfileData = ICC_PROFILES.find(p => p.value === iccProfile)
+        const conditionId = selectedProfileData?.label || 'FOGRA39 (ISO Coated v2)'
+        const condition = selectedProfileData?.label || 'ISO Coated v2 (FOGRA39)'
         await invoke('add_output_intent', {
           path: currentPath,
           outputPath: intentOut,
-          iccProfile: '',
+          iccProfile,
           conditionId,
           condition,
         })
@@ -163,6 +172,21 @@ export default function MakePdfXWizard({ filePath, preflightResult, onRerunPrefl
               <input type="checkbox" checked={fixOutputIntent} onChange={e => setFixOutputIntent(e.target.checked)} disabled={!hasNoOutputIntent} />
               {profile === 'x4' ? 'Embed PDF/X-4 OutputIntent' : 'Embed PDF/X-1a OutputIntent'}
             </label>
+            {fixOutputIntent && hasNoOutputIntent && (
+              <div className="pdfx-icc-selection">
+                <label htmlFor="icc-profile">Select ICC Profile:</label>
+                <select
+                  id="icc-profile"
+                  value={iccProfile}
+                  onChange={e => setIccProfile(e.target.value)}
+                  className="pdfx-select"
+                >
+                  {ICC_PROFILES.map(p => (
+                    <option key={p.value} value={p.value}>{p.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <label className="pdfx-fixup-row">
               <input type="checkbox" checked={fixColors} onChange={e => setFixColors(e.target.checked)} disabled={!hasRgbContent} />
               Convert RGB→CMYK
@@ -199,7 +223,7 @@ export default function MakePdfXWizard({ filePath, preflightResult, onRerunPrefl
             <p><strong>Target:</strong> {PROFILE_OPTIONS.find(p => p.id === profile)?.label}</p>
             <ul>
               {fixBleed && hasBleedIssues && <li>Add 3mm bleed</li>}
-              {fixOutputIntent && hasNoOutputIntent && <li>Add OutputIntent ({profile === 'x4' ? 'PDF/X-4' : 'PDF/X-1a'})</li>}
+              {fixOutputIntent && hasNoOutputIntent && <li>Add OutputIntent ({profile === 'x4' ? 'PDF/X-4' : 'PDF/X-1a'}) with {ICC_PROFILES.find(p => p.value === iccProfile)?.label}</li>}
               {fixColors && hasRgbContent && <li>Convert RGB objects to CMYK</li>}
               {!fixBleed && !fixOutputIntent && !fixColors && <li>No fixups selected — running preflight only</li>}
             </ul>
@@ -207,7 +231,7 @@ export default function MakePdfXWizard({ filePath, preflightResult, onRerunPrefl
           </div>
           <div className="pdfx-wizard-actions">
             <button className="btn btn-secondary" onClick={() => setStep('preflight')}>Back</button>
-            <button className="btn btn-primary" onClick={handleApply} disabled={applying}>
+            <button className="btn btn-primary" onClick={handleApply} disabled={applying || (fixOutputIntent && hasNoOutputIntent && !iccProfile)}>
               {applying ? 'Applying...' : 'Generate PDF/X'}
             </button>
           </div>

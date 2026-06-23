@@ -78,13 +78,14 @@ export default function InvoiceEditor({ invoiceId, onSave, onCancel }: InvoiceEd
   }, [invoiceId, loadInvoice])
 
   const handleAddLineItem = () => {
-    const newItem: InvoiceLineItem = {
+    const newItem: InvoiceLineItem & { tempId?: string } = {
       id: 0,
       invoice_id: invoice?.id || 0,
       description: '',
       quantity: 1,
       unit_price: 0,
       sort_order: lineItems.length,
+      tempId: `temp-${Date.now()}-${Math.random()}`,
     }
     setLineItems([...lineItems, newItem])
   }
@@ -308,44 +309,47 @@ export default function InvoiceEditor({ invoiceId, onSave, onCancel }: InvoiceEd
           <Card>
             <div className="card-title">Line Items</div>
             <div className="line-items-list">
-              {lineItems.map((item, index) => (
-                <div key={index} className="line-item">
-                  <Input
-                    placeholder="Description"
-                    value={item.description}
-                    onChange={(e) => handleUpdateLineItem(index, { description: e.target.value })}
-                    maxLength={200}
-                  />
-                  <div className="line-item-row">
+              {lineItems.map((item, index) => {
+                const key = (item as InvoiceLineItem & { tempId?: string }).tempId || `item-${item.id}`
+                return (
+                  <div key={key} className="line-item">
                     <Input
-                      type="number"
-                      placeholder="Qty"
-                      value={item.quantity}
-                      onChange={(e) => handleUpdateLineItem(index, { quantity: Math.max(0.001, parseFloat(e.target.value) || 0) })}
-                      inputMode="decimal"
-                      min="0.001"
+                      placeholder="Description"
+                      value={item.description}
+                      onChange={(e) => handleUpdateLineItem(index, { description: e.target.value })}
+                      maxLength={200}
                     />
-                    <Input
-                      type="number"
-                      placeholder="Unit Price"
-                      value={item.unit_price}
-                      onChange={(e) => handleUpdateLineItem(index, { unit_price: Math.max(0, parseFloat(e.target.value) || 0) })}
-                      inputMode="decimal"
-                      min="0"
-                    />
-                    <div className="line-item-total">
-                      ${(item.quantity * item.unit_price).toFixed(2)}
+                    <div className="line-item-row">
+                      <Input
+                        type="number"
+                        placeholder="Qty"
+                        value={item.quantity}
+                        onChange={(e) => handleUpdateLineItem(index, { quantity: parseFloat(e.target.value) || 0 })}
+                        inputMode="decimal"
+                        min="0"
+                      />
+                      <Input
+                        type="number"
+                        placeholder="Unit Price"
+                        value={item.unit_price}
+                        onChange={(e) => handleUpdateLineItem(index, { unit_price: Math.max(0, parseFloat(e.target.value) || 0) })}
+                        inputMode="decimal"
+                        min="0"
+                      />
+                      <div className="line-item-total">
+                        ${(item.quantity * item.unit_price).toFixed(2)}
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRemoveLineItem(index)}
+                      >
+                        Remove
+                      </Button>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleRemoveLineItem(index)}
-                    >
-                      Remove
-                    </Button>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
 
             <Button variant="secondary" fullWidth onClick={handleAddLineItem} style={{ marginTop: '12px' }}>

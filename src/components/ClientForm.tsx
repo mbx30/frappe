@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { Button, Input, Select, Card } from '../design-system'
 import type { Client } from '../types'
@@ -10,19 +10,21 @@ interface ClientFormProps {
   onCancel: () => void
 }
 
-const emptyForm = {
-  name: '',
-  company: '',
-  email: '',
-  phone: '',
-  address: '',
-  tags: '',
-  status: 'active' as Client['status'],
-  notes: '',
-}
-
 export default function ClientForm({ client, onSave, onCancel }: ClientFormProps) {
-  const [form, setForm] = useState(emptyForm)
+  const freshEmptyForm = useMemo(
+    () => ({
+      name: '',
+      company: '',
+      email: '',
+      phone: '',
+      address: '',
+      tags: '',
+      status: 'active' as Client['status'],
+      notes: '',
+    }),
+    []
+  )
+  const [form, setForm] = useState(freshEmptyForm)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -40,10 +42,10 @@ export default function ClientForm({ client, onSave, onCancel }: ClientFormProps
         notes: client.notes,
       })
     } else {
-      setForm(emptyForm)
+      setForm(freshEmptyForm)
     }
     /* eslint-enable react-hooks/set-state-in-effect */
-  }, [client])
+  }, [client, freshEmptyForm])
 
   const validate = (): string | null => {
     if (!form.name.trim()) return 'Client name is required'

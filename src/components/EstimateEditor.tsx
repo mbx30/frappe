@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { Button, Input, Select, Card } from '../design-system'
 import type { Estimate, EstimateData, EstimateLineItem, EstimateStatus } from '../types'
@@ -69,43 +69,53 @@ export default function EstimateEditor({ estimateId, onSave, onCancel }: Estimat
     } else {
       initializeNewEstimate()
     }
-    /* eslint-enable react-hooks/set-state-in-effect */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [estimateId])
+
+  const handleAddLineItem = useCallback((category: EstimateLineItem['category']) => {
+    setEstimateData((prev) => {
+      if (!prev) return prev
+      const newItem: EstimateLineItem & { tempId?: string } = {
+        id: 0,
+        estimate_id: prev.estimate.id || 0,
+        description: '',
+        category,
+        quantity: 1,
+        unit_price: 0,
+        sort_order: prev.line_items.length,
+        tempId: `temp-${Date.now()}-${Math.random()}`,
+      }
+      return {
+        ...prev,
+        line_items: [...prev.line_items, newItem],
+      }
+    })
+  }, [])
+
+  const handleUpdateLineItem = useCallback((index: number, updates: Partial<EstimateLineItem>) => {
+    setEstimateData((prev) => {
+      if (!prev) return prev
+      const updated = [...prev.line_items]
+      updated[index] = { ...updated[index], ...updates }
+      return { ...prev, line_items: updated }
+    })
+  }, [])
+
+  const handleRemoveLineItem = useCallback((index: number) => {
+    setEstimateData((prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        line_items: prev.line_items.filter((_, i) => i !== index),
+      }
+    })
+  }, [])
 
   if (isLoading || !estimateData) {
     return <div className="estimate-editor-loading">Loading...</div>
   }
 
   const { estimate, line_items } = estimateData
-
-  const handleAddLineItem = (category: EstimateLineItem['category']) => {
-    const newItem: EstimateLineItem = {
-      id: 0,
-      estimate_id: estimate.id || 0,
-      description: '',
-      category,
-      quantity: 1,
-      unit_price: 0,
-      sort_order: line_items.length,
-    }
-    setEstimateData({
-      ...estimateData,
-      line_items: [...line_items, newItem],
-    })
-  }
-
-  const handleUpdateLineItem = (index: number, updates: Partial<EstimateLineItem>) => {
-    const updated = [...line_items]
-    updated[index] = { ...updated[index], ...updates }
-    setEstimateData({ ...estimateData, line_items: updated })
-  }
-
-  const handleRemoveLineItem = (index: number) => {
-    setEstimateData({
-      ...estimateData,
-      line_items: line_items.filter((_, i) => i !== index),
-    })
-  }
 
   const calculateTotals = () => {
     const subtotal = line_items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0)
@@ -330,8 +340,9 @@ export default function EstimateEditor({ estimateId, onSave, onCancel }: Estimat
 
                   {categoryItems.map((item) => {
                     const actualIndex = line_items.indexOf(item)
+                    const key = (item as EstimateLineItem & { tempId?: string }).tempId || `item-${item.id}`
                     return (
-                      <div key={actualIndex} className="line-item">
+                      <div key={key} className="line-item">
                         <Input
                           placeholder="Description"
                           value={item.description}

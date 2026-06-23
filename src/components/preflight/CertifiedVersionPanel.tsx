@@ -97,7 +97,7 @@ export default function CertifiedVersionPanel({ jobId, filePath }: CertifiedVers
                 </div>
                 <div className="certified-version-info">
                   <span className="certified-version-author">{v.author}</span>
-                  <span className="certified-version-date">{v.created_at}</span>
+                  <span className="certified-version-date">{new Date(v.created_at).toLocaleString()}</span>
                   <span className="certified-version-size">{formatBytes(v.file_size_bytes)}</span>
                 </div>
                 {v.comment && <p className="certified-version-comment">{v.comment}</p>}

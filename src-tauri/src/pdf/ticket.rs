@@ -153,8 +153,8 @@ pub fn generate_job_ticket(input: &JobTicketInput, output_path: &str) -> Result<
         y_pos -= 7.0;
     }
 
-    // Notes
-    if !input.notes.is_empty() {
+    // Notes — only render if there's enough vertical space (minimum 40mm gap)
+    if !input.notes.is_empty() && y_pos >= 50.0 {
         current_layer.use_text("--- Notes ---", 11.0, Mm(15.0), Mm(y_pos - 5.0), &font);
         // Wrap notes into lines of ~80 chars and render each, capping at 20
         // lines so they never run off the page or overlap the footer.

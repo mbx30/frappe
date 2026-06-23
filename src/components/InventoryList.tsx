@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, memo } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { Button, Card, Badge } from '../design-system'
 import type { InventoryItem, InventoryAlert } from '../types'
@@ -9,7 +9,7 @@ interface InventoryListProps {
   onEditItem?: (id: number) => void
 }
 
-export default function InventoryList({ onCreateNew, onEditItem }: InventoryListProps) {
+export default memo(function InventoryList({ onCreateNew, onEditItem }: InventoryListProps) {
   const [items, setItems] = useState<InventoryItem[]>([])
   const [alerts, setAlerts] = useState<InventoryAlert[]>([])
   const [isLoading, setIsLoading] = useState(true)

@@ -24,6 +24,15 @@ sqlcipher = []
 name = "app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+# Release profile: small, optimized binary for distribution.
+# Output runs on Windows 10+ (Tauri requires WebView2), macOS 12+,
+# and Linux (glibc 2.17+ for dynamic, or any Linux via musl static build).
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+
 [build-dependencies]
 tauri-build = { version = "2.6.2", features = [] }
 
@@ -57,11 +66,13 @@ uuid = { version = "1", features = ["v4"] }
 dirs = "6"
 url = "2"
 # IMPORTANT: When enabling the `sqlcipher` feature above, also change the
-# rusqlite feature from "bundled" to "bundled-sqlcipher" and add:
-#   libsqlite3-sys = { version = "0.32", features = ["bundled-sqlcipher-vendored-openssl"] }
+# rusqlite feature from "bundled" to "bundled-sqlcipher" and the build host
+# must provide OpenSSL (Strawberry Perl for the vendored build, or OPENSSL_DIR
+# pointing at a pre-built OpenSSL).
 # (Requires OpenSSL on the build host — see feature comment.)
 rusqlite = { version = "0.34", features = ["bundled"] }
 # OS-level exclusive file lock for the sidecar `frappe.lock` file so two app
 # instances cannot run simultaneously (#147). `fs2` provides
 # `FileExt::try_lock_exclusive` across Windows + macOS.
 fs2 = "0.4"
+lru = "0.12"

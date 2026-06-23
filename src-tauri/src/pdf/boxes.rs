@@ -32,12 +32,20 @@ fn parse_rect(arr: &[Object]) -> Option<(f64, f64, f64, f64)> {
     Some((x1.min(x2), y1.min(y2), (x2 - x1).abs(), (y2 - y1).abs()))
 }
 
-fn get_box(page_dict: &lopdf::Dictionary, key: &[u8]) -> Option<(f64, f64, f64, f64)> {
-    page_dict
-        .get(key)
-        .ok()
-        .and_then(|o| o.as_array().ok())
-        .and_then(|a| parse_rect(a))
+fn get_box(
+    doc: &Document,
+    page_dict: &lopdf::Dictionary,
+    key: &[u8],
+) -> Option<(f64, f64, f64, f64)> {
+    let obj = page_dict.get(key).ok()?;
+    match obj {
+        Object::Reference(id) => doc
+            .get_object(*id)
+            .ok()
+            .and_then(|o| o.as_array().ok())
+            .and_then(|a| parse_rect(a)),
+        other => other.as_array().ok().and_then(|a| parse_rect(a)),
+    }
 }
 
 pub fn check_page_boxes(doc: &Document) -> Vec<PageBoxFinding> {
@@ -65,11 +73,11 @@ pub fn check_page_boxes(doc: &Document) -> Vec<PageBoxFinding> {
             }
         };
 
-        let media_box = get_box(&page_dict, b"MediaBox");
-        let crop_box = get_box(&page_dict, b"CropBox");
-        let bleed_box = get_box(&page_dict, b"BleedBox");
-        let trim_box = get_box(&page_dict, b"TrimBox");
-        let art_box = get_box(&page_dict, b"ArtBox");
+        let media_box = get_box(doc, &page_dict, b"MediaBox");
+        let crop_box = get_box(doc, &page_dict, b"CropBox");
+        let bleed_box = get_box(doc, &page_dict, b"BleedBox");
+        let trim_box = get_box(doc, &page_dict, b"TrimBox");
+        let art_box = get_box(doc, &page_dict, b"ArtBox");
 
         match media_box {
             Some((x, y, w, h)) => {

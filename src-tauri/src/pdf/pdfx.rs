@@ -168,7 +168,7 @@ pub fn check_version_compatibility(path: &str, profile: &str) -> Vec<PdfXFinding
     let (min_version, profile_name) = match profile {
         "x1a" => (1.3, "PDF/X-1a"),
         "x3" => (1.3, "PDF/X-3"),
-        "x4" => (1.6, "PDF/X-4"),
+        "x4" => (1.4, "PDF/X-4"),
         _ => return findings,
     };
 

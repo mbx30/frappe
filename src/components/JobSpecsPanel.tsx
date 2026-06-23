@@ -76,7 +76,7 @@ export default function JobSpecsPanel({ order, onSaved }: JobSpecsPanelProps) {
   const handleSaveSpecs = async () => {
     if (isSaving || !order.id) return
     const qty = parseInt(specs.quantity) || 0
-    if (qty < 0) { setSpecsError('Quantity cannot be negative'); return }
+    if (qty < 1) { setSpecsError('Quantity must be at least 1'); return }
     setSpecsError(null)
     setIsSaving(true)
     try {
