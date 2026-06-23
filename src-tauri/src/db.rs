@@ -1304,9 +1304,8 @@ impl Database {
             )
             .unwrap_or_default();
         let like_pattern = format!("{}%", prefix);
-        let mut stmt = conn.prepare(
-            "SELECT order_number FROM orders WHERE order_number LIKE ?1",
-        )?;
+        let mut stmt =
+            conn.prepare("SELECT order_number FROM orders WHERE order_number LIKE ?1")?;
         let rows = stmt.query_map(params![like_pattern], |row| row.get::<_, String>(0))?;
         let mut max_n: i64 = 0;
         let mut any_match = false;
@@ -1315,9 +1314,18 @@ impl Database {
             any_match = true;
             // strip prefix, then parse the trailing digits (ignore separators)
             let tail = n.strip_prefix(prefix.as_str()).unwrap_or(&n);
-            let digits: String = tail.chars().rev().take_while(|c| c.is_ascii_digit()).collect::<String>().chars().rev().collect();
+            let digits: String = tail
+                .chars()
+                .rev()
+                .take_while(|c| c.is_ascii_digit())
+                .collect::<String>()
+                .chars()
+                .rev()
+                .collect();
             if let Ok(v) = digits.parse::<i64>() {
-                if v > max_n { max_n = v; }
+                if v > max_n {
+                    max_n = v;
+                }
             }
         }
         if !any_match {
@@ -2425,8 +2433,10 @@ impl Database {
                 rows
             }
             (None, Some(sf)) => {
-                let mut stmt =
-                    conn.prepare(&format!("{} WHERE status = ?1 ORDER BY name LIMIT 500", COLS))?;
+                let mut stmt = conn.prepare(&format!(
+                    "{} WHERE status = ?1 ORDER BY name LIMIT 500",
+                    COLS
+                ))?;
                 let rows = stmt
                     .query_map(params![sf], map_client)?
                     .collect::<Result<Vec<_>>>();
@@ -3575,7 +3585,10 @@ impl Database {
             let mut stmt = tx.prepare(
                 "SELECT id, file_path FROM batch_results WHERE batch_id = ?1 AND status = 'pending' ORDER BY id LIMIT 2000"
             )?;
-            let x = stmt.query_map(params![batch_id], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))?
+            let x = stmt
+                .query_map(params![batch_id], |row| {
+                    Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+                })?
                 .collect::<Result<Vec<_>>>()?;
             x
         };
@@ -4230,7 +4243,9 @@ mod tests {
         ];
         for (fn_name, limit_token) in required {
             let needle = format!("pub fn {fn_name}");
-            let start = src.find(&needle).unwrap_or_else(|| panic!("{fn_name} not found"));
+            let start = src
+                .find(&needle)
+                .unwrap_or_else(|| panic!("{fn_name} not found"));
             // Each list function is short (well under 2 KiB); scanning a fixed
             // window after the declaration catches the LIMIT inside the
             // prepare() call without depending on the exact brace matching.

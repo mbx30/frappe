@@ -42,9 +42,7 @@ pub fn compress_pdf(
     options: &CompressionOptions,
 ) -> Result<CompressionResult, String> {
     let start = std::time::Instant::now();
-    let original_bytes = std::fs::metadata(path)
-        .map(|m| m.len())
-        .unwrap_or(0);
+    let original_bytes = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
 
     let mut doc = lopdf::Document::load(path).map_err(|e| format!("Failed to open PDF: {e}"))?;
     let mut streams_compressed = 0u32;
@@ -61,9 +59,9 @@ pub fn compress_pdf(
         if let Object::Stream(ref mut stream) = obj {
             let has_flate = match stream.dict.get(b"Filter") {
                 Ok(Object::Name(n)) => n == b"FlateDecode" || n == b"Fl",
-                Ok(Object::Array(arr)) => arr.iter().any(|f| {
-                    matches!(f, Object::Name(n) if n == b"FlateDecode" || n == b"Fl")
-                }),
+                Ok(Object::Array(arr)) => arr
+                    .iter()
+                    .any(|f| matches!(f, Object::Name(n) if n == b"FlateDecode" || n == b"Fl")),
                 _ => false,
             };
 
@@ -84,8 +82,12 @@ pub fn compress_pdf(
                 if encoder.write_all(&data).is_err() {
                     return Err("Zlib write failed".to_string());
                 }
-                stream.content = encoder.finish().map_err(|e| format!("Zlib finish failed: {e}"))?;
-                stream.dict.set("Filter", Object::Name(b"FlateDecode".to_vec()));
+                stream.content = encoder
+                    .finish()
+                    .map_err(|e| format!("Zlib finish failed: {e}"))?;
+                stream
+                    .dict
+                    .set("Filter", Object::Name(b"FlateDecode".to_vec()));
                 stream.dict.remove(b"Length");
                 streams_compressed += 1;
             }
@@ -100,9 +102,7 @@ pub fn compress_pdf(
     doc.save(output_path)
         .map_err(|e| format!("Failed to save: {e}"))?;
 
-    let compressed_bytes = std::fs::metadata(output_path)
-        .map(|m| m.len())
-        .unwrap_or(0);
+    let compressed_bytes = std::fs::metadata(output_path).map(|m| m.len()).unwrap_or(0);
 
     let ratio = if original_bytes > 0 {
         1.0 - (compressed_bytes as f64 / original_bytes as f64) as f32

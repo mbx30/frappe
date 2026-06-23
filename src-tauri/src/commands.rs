@@ -2197,7 +2197,9 @@ pub fn run_profile(
     profile_id: i64,
     path: String,
 ) -> Result<crate::pdf::registry::RunProfileResult, String> {
-    let profile = db.get_preflight_profile(profile_id).map_err(|e| e.to_string())?;
+    let profile = db
+        .get_preflight_profile(profile_id)
+        .map_err(|e| e.to_string())?;
     let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     let mut findings: Vec<String> = Vec::new();
 
@@ -2263,10 +2265,7 @@ pub fn export_preflight_report_json(
 }
 
 #[tauri::command]
-pub fn export_preflight_report_csv(
-    db: State<'_, Database>,
-    run_id: i64,
-) -> Result<String, String> {
+pub fn export_preflight_report_csv(db: State<'_, Database>, run_id: i64) -> Result<String, String> {
     let findings = db
         .list_findings_for_run(run_id)
         .map_err(|e| e.to_string())?;
