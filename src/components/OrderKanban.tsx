@@ -126,10 +126,13 @@ export default function OrderKanban({ orders, onOrdersChange }: OrderKanbanProps
                       <span
                         className={`due-date ${isOverdue(order.due_date) ? 'overdue' : isDueToday(order.due_date) ? 'due-today' : ''}`}
                       >
-                        {new Date(order.due_date).toLocaleDateString(undefined, {
-                          month: 'short',
-                          day: 'numeric',
-                        })}
+                        {(() => {
+                          const [y, m, d] = order.due_date.split('-').map(Number)
+                          return new Date(y, m - 1, d).toLocaleDateString(undefined, {
+                            month: 'short',
+                            day: 'numeric',
+                          })
+                        })()}
                       </span>
 
                       {order.artwork_approved && (

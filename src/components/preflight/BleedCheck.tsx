@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import type { BleedFinding } from '../../types'
 
@@ -18,6 +18,21 @@ export default function BleedCheck({ filePath, findings, minBleedMm, onMinBleedC
   const [fixAmount, setFixAmount] = useState(3)
   const [fixing, setFixing] = useState(false)
   const [fixResult, setFixResult] = useState<string | null>(null)
+  const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const handleSliderChange = (value: number) => {
+    onMinBleedChange(value)
+    if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current)
+    debounceTimeoutRef.current = setTimeout(() => {
+      onRerun(value)
+    }, 300)
+  }
+
+  useEffect(() => {
+    return () => {
+      if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current)
+    }
+  }, [])
 
   const hasErrors = findings.some(f => f.severity === 'error')
 
@@ -25,7 +40,7 @@ export default function BleedCheck({ filePath, findings, minBleedMm, onMinBleedC
     setFixing(true)
     setFixResult(null)
     try {
-      const outPath = filePath.replace('.pdf', `_bleed${fixAmount}mm.pdf`)
+      const outPath = filePath.replace(/\.pdf$/i, `_bleed${fixAmount}mm.pdf`)
       await invoke('add_bleed', { path: filePath, amountMm: fixAmount, outputPath: outPath })
       setFixResult(`Bleed added — saved as ${outPath}`)
     } catch (e) {
@@ -42,7 +57,7 @@ export default function BleedCheck({ filePath, findings, minBleedMm, onMinBleedC
         <label className="dpi-slider">
           Min bleed: {minBleedMm}mm
           <input type="range" min="1" max="10" step="0.5" value={minBleedMm}
-            onChange={e => { const v = Number(e.target.value); onMinBleedChange(v); onRerun(v) }} />
+            onChange={e => handleSliderChange(Number(e.target.value))} />
         </label>
       </div>
       {findings.length === 0 ? (

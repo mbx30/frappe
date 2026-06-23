@@ -47,7 +47,6 @@ function App() {
     return (
       <BusinessOnboarding
         onComplete={() => {
-          setOnboardingStep('complete')
           checkOnboarding()
         }}
       />

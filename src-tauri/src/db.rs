@@ -1624,7 +1624,10 @@ impl Database {
             .map(|c| c > 0)
             .unwrap_or(false);
         if !exists {
-            return Err(rusqlite::Error::QueryReturnedNoRows);
+            return Err(rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_NOTFOUND),
+                Some(format!("Order {} not found", order_id)),
+            ));
         }
 
         let previous_status: String = tx.query_row(
@@ -2844,7 +2847,7 @@ impl Database {
             .lock()
             .map_err(|_| rusqlite::Error::InvalidQuery)?;
         let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
-        let tx = conn.transaction()?;
+        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
         tx.execute(
             "INSERT INTO pdf_certified_versions (job_id, version_number, file_path, file_size_bytes, author, comment, created_at, is_signed) \
              VALUES (?1, (SELECT COALESCE(MAX(version_number), 0) + 1 FROM pdf_certified_versions WHERE job_id = ?1), ?2, ?3, ?4, ?5, ?6, 0)",

@@ -90,7 +90,7 @@ export default function OrderDetail({ orderId, onSave, onCancel }: OrderDetailPr
     } else {
       initializeNewOrder()
     }
-    /* eslint-enable react-hooks/set-state-in-effect */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderId])
 
   const handleStatusChange = async (newStatus: string) => {
@@ -396,7 +396,7 @@ export default function OrderDetail({ orderId, onSave, onCancel }: OrderDetailPr
                         size="sm"
                         onClick={() => handleStatusChange(nextStatus)}
                         fullWidth
-                        disabled={isTransitioning}
+                        disabled={isTransitioning || order.id === 0}
                       >
                         {isTransitioning ? '...' : '→'} {statusLabels[nextStatus]}
                       </Button>

@@ -51,8 +51,8 @@ export default function ArtApprovalPanel({ orderId, orderNumber }: ArtApprovalPa
 
   const handleSubmit = async () => {
     if (isSaving) return
-    if (!newForm.filePath.trim() && !newForm.staffNotes.trim()) {
-      setError('Add a file path or staff notes for this proof submission.')
+    if (!newForm.filePath.trim()) {
+      setError('File path or reference is required.')
       return
     }
     if (newForm.followUpHours < 1 || newForm.followUpHours > 720) {

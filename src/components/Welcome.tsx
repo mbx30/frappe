@@ -41,6 +41,19 @@ export default function Welcome({ onImportComplete }: WelcomeProps) {
     alert('Notion sign-in integration coming soon')
   }
 
+  const handleEmptyWorkbook = async () => {
+    setIsLoading(true)
+    try {
+      await invoke('create_workbook', { name: 'Workbook 1' })
+      onImportComplete()
+    } catch (e) {
+      alert(`Failed to create workbook: ${e}`)
+      console.error('Failed to create workbook:', e)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   return (
     <div className="welcome-container">
       <div className="welcome-content">
@@ -102,10 +115,10 @@ export default function Welcome({ onImportComplete }: WelcomeProps) {
           <Button
             variant="primary"
             fullWidth
-            onClick={() => invoke('create_workbook', { name: `Workbook 1` }).then(onImportComplete)}
+            onClick={handleEmptyWorkbook}
             disabled={isLoading}
           >
-            Start with Empty Workbook
+            {isLoading ? 'Creating...' : 'Start with Empty Workbook'}
           </Button>
         </div>
       </div>
