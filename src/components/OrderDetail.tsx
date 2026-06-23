@@ -396,7 +396,7 @@ export default function OrderDetail({ orderId, onSave, onCancel }: OrderDetailPr
                         size="sm"
                         onClick={() => handleStatusChange(nextStatus)}
                         fullWidth
-                        disabled={isTransitioning}
+                        disabled={isTransitioning || order.id === 0}
                       >
                         {isTransitioning ? '...' : '→'} {statusLabels[nextStatus]}
                       </Button>

@@ -1624,7 +1624,10 @@ impl Database {
             .map(|c| c > 0)
             .unwrap_or(false);
         if !exists {
-            return Err(rusqlite::Error::QueryReturnedNoRows);
+            return Err(rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_NOTFOUND),
+                Some(format!("Order {} not found", order_id)),
+            ));
         }
 
         let previous_status: String = tx.query_row(
