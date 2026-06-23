@@ -255,4 +255,4 @@ export default memo(function InventoryList({ onCreateNew, onEditItem }: Inventor
       )}
     </div>
   )
-}
+})

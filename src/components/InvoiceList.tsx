@@ -140,4 +140,4 @@ export default memo(function InvoiceList({ onCreateNew, onEditInvoice }: Invoice
       )}
     </div>
   )
-}
+})

@@ -173,4 +173,4 @@ export default memo(function ClientList({ onSelectClient, onNewClient }: ClientL
       </div>
     </div>
   )
-}
+})

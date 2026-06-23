@@ -8,8 +8,10 @@ export default defineConfig({
     cssCodeSplit: true,
     rollupOptions: {
       output: {
-        manualChunks: {
-          'tauri-api': ['@tauri-apps/api'],
+        manualChunks: (id: string) => {
+          if (id.includes('@tauri-apps/api')) {
+            return 'tauri-api';
+          }
         },
       },
     },
