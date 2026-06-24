@@ -152,9 +152,9 @@ pub fn detect_pdf_type(pdf_path: &PathBuf) -> Result<PdfType, String> {
 /// If found, the page likely has embedded text.
 fn has_page_text(doc: &lopdf::Document, page_id: (u32, u16)) -> Result<bool, String> {
     let page = doc
-        .get_object_mut(page_id)
+        .get_object(page_id)
         .map_err(|e| format!("Failed to get page object: {}", e))?
-        .as_dict_mut()
+        .as_dict()
         .map_err(|_| "Page is not a dictionary".to_string())?;
 
     // Get content stream (may be direct or indirect reference)
@@ -770,7 +770,7 @@ fn parse_google_vision_response(
 static RATE_LIMIT_COUNTER: std::sync::atomic::AtomicUsize =
     std::sync::atomic::AtomicUsize::new(0);
 static RATE_LIMIT_WINDOW_START: std::sync::Mutex<std::time::Instant> =
-    std::sync::Mutex::new(std::time::Instant::now);
+    std::sync::Mutex::new(std::time::Instant::now());
 
 const RATE_LIMIT_PER_MINUTE: usize = 1800;
 
@@ -870,7 +870,7 @@ fn overlay_ocr_text(
     let mut doc = Document::load(input_path)
         .map_err(|e| format!("Failed to load PDF: {}", e))?;
 
-    let pages = doc.get_pages_mut();
+    let pages = doc.get_pages();
 
     // Track page index in the results
     for page_result in results {
@@ -954,7 +954,7 @@ fn extract_number(obj: &lopdf::Object) -> Result<f32, String> {
 /// (word) Tj                    % Show text
 /// ET                           % End text
 /// ```
-fn generate_text_layer(regions: &[OcrTextRegion], page_width: f32, page_height: f32) -> Result<String, String> {
+fn generate_text_layer(regions: &[OcrTextRegion], _page_width: f32, page_height: f32) -> Result<String, String> {
     if regions.is_empty() {
         return Ok(String::new());
     }
@@ -966,7 +966,7 @@ fn generate_text_layer(regions: &[OcrTextRegion], page_width: f32, page_height: 
     content.push_str("3 Tr\n"); // Text rendering mode 3: invisible (searchable but hidden)
 
     for region in regions {
-        let (bbox_x, bbox_y, bbox_w, bbox_h) = region.bbox;
+        let (bbox_x, bbox_y, _bbox_w, bbox_h) = region.bbox;
 
         // Convert bounding box to PDF coordinates
         // Image space: (0,0) = top-left, X right, Y down
@@ -1026,6 +1026,8 @@ fn append_content_stream(page: &mut lopdf::Dictionary, new_content: &str) -> Res
             let stream_obj = lopdf::Object::Stream(lopdf::Stream {
                 content: new_data,
                 dict: stream.dict.clone(),
+                allows_compression: true,
+                start_position: None,
             });
 
             page.set("Contents", stream_obj);
@@ -1035,6 +1037,8 @@ fn append_content_stream(page: &mut lopdf::Dictionary, new_content: &str) -> Res
             let stream = lopdf::Stream {
                 content: new_content.as_bytes().to_vec(),
                 dict: Default::default(),
+                allows_compression: true,
+                start_position: None,
             };
             page.set("Contents", lopdf::Object::Stream(stream));
         }
@@ -1043,6 +1047,8 @@ fn append_content_stream(page: &mut lopdf::Dictionary, new_content: &str) -> Res
             let stream = lopdf::Stream {
                 content: new_content.as_bytes().to_vec(),
                 dict: Default::default(),
+                allows_compression: true,
+                start_position: None,
             };
             page.set("Contents", lopdf::Object::Stream(stream));
         }

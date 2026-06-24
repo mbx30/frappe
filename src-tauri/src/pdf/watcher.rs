@@ -11,7 +11,7 @@
 //! `hot_folder_event` for live UI updates.
 
 use lopdf::Document;
-use notify::{RecursiveMode, Watcher};
+use notify::RecursiveMode;
 use notify_debouncer_full::{new_debouncer, DebounceEventResult, Debouncer, FileIdMap};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
