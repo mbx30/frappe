@@ -174,6 +174,28 @@ export const en: Record<string, string> = {
   'pdfsettings.icc.label': 'Default ICC profile',
   'pdfsettings.pdfx.label': 'Default PDF/X standard',
 
+  // ── PreferencesPanel (#241) ──────────────────────────────────
+  'preferences.title': 'Preferences',
+  'preferences.desc': 'Application-wide settings. Stored in the local database and applied across all features.',
+  'preferences.pdf_settings': 'PDF defaults',
+  'preferences.bleed_mm': 'Default bleed tolerance (mm)',
+  'preferences.dpi': 'Default image DPI threshold',
+  'preferences.icc': 'Default ICC profile',
+  'preferences.pdfx_standard': 'Default PDF/X standard',
+  'preferences.ai.title': 'AI visual check',
+  'preferences.ai.desc': 'Send page renders to an OpenAI-compatible vision model. You must also save the API key in the keychain (service: frappe-ai, key: openai_api_key).',
+  'preferences.ai.enable': 'Enable AI visual checks',
+  'preferences.ai.endpoint': 'API endpoint',
+  'preferences.telemetry.title': 'Telemetry',
+  'preferences.telemetry.desc': 'Opt in to anonymous crash reports and error telemetry. No data is sent without this turned on.',
+  'preferences.telemetry.opt_in': 'Send anonymous crash reports',
+  'preferences.keyboard.title': 'Keyboard',
+  'preferences.keyboard.mac': 'Use ⌘ instead of Ctrl for shortcuts',
+  'preferences.ui.title': 'Interface',
+  'preferences.ui.locale': 'Default language',
+  'preferences.ui.show_advanced': 'Show advanced options in preflight',
+  'preferences.saved': 'Preferences saved.',
+
   // ── Common ─────────────────────────────────────────────────────
   'common.reset': 'Reset',
   'common.save': 'Save',
