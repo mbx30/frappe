@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, CSSProperties, ReactNode } from 'react'
+import { useRef, useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { VariableSizeList, ListChildComponentProps } from 'react-window'
 
 interface VirtualListProps<T> {

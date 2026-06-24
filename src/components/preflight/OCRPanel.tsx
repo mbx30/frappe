@@ -21,13 +21,11 @@ export default function OCRPanel({ filePath, pageCount }: OCRPanelProps) {
   const [useAllPages, setUseAllPages] = useState(true)
 
   // API key management
-  const [apiKeySet, setApiKeySet] = useState(false)
   const [testingConnection, setTestingConnection] = useState(false)
   const [connectionValid, setConnectionValid] = useState<boolean | null>(null)
 
   // Cost estimation (for Google Vision)
   const [costEstimate, setCostEstimate] = useState<CostEstimate | null>(null)
-  const [loadingCost, setLoadingCost] = useState(false)
 
   // OCR execution
   const [running, setRunning] = useState(false)
@@ -59,14 +57,11 @@ export default function OCRPanel({ filePath, pageCount }: OCRPanelProps) {
   }, [backend, filePath])
 
   const estimateCost = async () => {
-    setLoadingCost(true)
     try {
       const estimate = await invoke<CostEstimate>('estimate_google_vision_cost', { path: filePath })
       setCostEstimate(estimate)
     } catch (e) {
       console.error('Failed to estimate cost:', e)
-    } finally {
-      setLoadingCost(false)
     }
   }
 
@@ -127,7 +122,6 @@ export default function OCRPanel({ filePath, pageCount }: OCRPanelProps) {
     return 'Unknown'
   }
 
-  const isTesseractAvailable = backend === 'Tesseract'
   const needsApiKey = backend === 'GoogleCloudVision'
 
   return (

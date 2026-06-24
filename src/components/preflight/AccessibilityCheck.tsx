@@ -66,8 +66,6 @@ export default function AccessibilityCheck({ filePath }: AccessibilityCheckProps
       const collected: AccessibilityFinding[] = []
 
       const cat = await invoke<Record<string, string>>('get_pdf_catalog', { path: filePath })
-      const pageCount = Number(cat.PageCount ?? 0)
-      const pdfVersion = cat.PDFVersion ?? ''
 
       // ── (1) Tag tree / structure ──────────────────────────────
       const hasStructTree = !!cat.StructTreeRoot

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { invoke, convertFileSrc } from '@tauri-apps/api/core'
-import type { PdfSummary, CombinedPreflightResult } from '../types'
+import type { PdfSummary, CombinedPreflightResult, TextMatch } from '../types'
 import PreflightReport from './preflight/PreflightReport'
 import PdfInspector from './preflight/PdfInspector'
 import ColorConversionPanel from './preflight/ColorConversionPanel'
