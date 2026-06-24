@@ -2,12 +2,15 @@ import { useState, useEffect, useCallback, memo } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { Button, Input, Select, Badge } from '../design-system'
 import type { Client } from '../types'
+import { VirtualList } from './common/VirtualList'
 import './ClientList.css'
 
 interface ClientListProps {
   onSelectClient: (client: Client) => void
   onNewClient: () => void
 }
+
+const VIRTUAL_THRESHOLD = 200
 
 const statusColors: Record<string, 'success' | 'info'> = {
   active: 'success',
@@ -121,49 +124,87 @@ export default memo(function ClientList({ onSelectClient, onNewClient }: ClientL
               <th></th>
             </tr>
           </thead>
-          <tbody>
-            {clients.map((client) => (
-              <tr key={client.id} className="client-row" onClick={() => onSelectClient(client)}>
-                <td className="col-name">{client.name}</td>
-                <td className="col-company">{client.company || <span className="empty-cell">—</span>}</td>
-                <td className="col-email">
-                  {client.email ? (
-                    <a href={`mailto:${client.email}`} onClick={(e) => e.stopPropagation()}>
-                      {client.email}
-                    </a>
-                  ) : (
-                    <span className="empty-cell">—</span>
-                  )}
-                </td>
-                <td className="col-phone">{client.phone || <span className="empty-cell">—</span>}</td>
-                <td className="col-tags">
-                  {client.tags
-                    ? client.tags
-                        .split(',')
-                        .map((t) => t.trim())
-                        .filter(Boolean)
-                        .map((tag, i) => (
-                          <span key={`${tag}-${i}`} className="tag-chip">
-                            {tag}
-                          </span>
-                        ))
-                    : null}
-                </td>
-                <td className="col-status">
-                  <Badge tone={statusColors[client.status]}>{client.status}</Badge>
-                </td>
-                <td className="col-actions" onClick={(e) => e.stopPropagation()}>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleDelete(client.id, client.name)}
-                  >
-                    Delete
-                  </Button>
+          {clients.length > VIRTUAL_THRESHOLD ? (
+            <tbody>
+              <tr>
+                <td colSpan={7} style={{ padding: 0 }}>
+                  <VirtualList
+                    items={clients}
+                    itemHeight={48}
+                    height={520}
+                    keyExtractor={(c) => c.id}
+                    renderItem={(client) => (
+                      <div className="client-row client-row--virtual" onClick={() => onSelectClient(client)}>
+                        <span className="col-name">{client.name}</span>
+                        <span className="col-company">{client.company || '—'}</span>
+                        <span className="col-email">{client.email || '—'}</span>
+                        <span className="col-phone">{client.phone || '—'}</span>
+                        <span className="col-tags">
+                          {client.tags
+                            ? client.tags.split(',').map((t) => t.trim()).filter(Boolean).map((tag, i) => (
+                                <span key={`${tag}-${i}`} className="tag-chip">{tag}</span>
+                              ))
+                            : null}
+                        </span>
+                        <span className="col-status">
+                          <Badge tone={statusColors[client.status]}>{client.status}</Badge>
+                        </span>
+                        <span className="col-actions" onClick={(e) => e.stopPropagation()}>
+                          <Button variant="ghost" size="sm" onClick={() => handleDelete(client.id, client.name)}>
+                            Delete
+                          </Button>
+                        </span>
+                      </div>
+                    )}
+                  />
                 </td>
               </tr>
-            ))}
-          </tbody>
+            </tbody>
+          ) : (
+            <tbody>
+              {clients.map((client) => (
+                <tr key={client.id} className="client-row" onClick={() => onSelectClient(client)}>
+                  <td className="col-name">{client.name}</td>
+                  <td className="col-company">{client.company || <span className="empty-cell">—</span>}</td>
+                  <td className="col-email">
+                    {client.email ? (
+                      <a href={`mailto:${client.email}`} onClick={(e) => e.stopPropagation()}>
+                        {client.email}
+                      </a>
+                    ) : (
+                      <span className="empty-cell">—</span>
+                    )}
+                  </td>
+                  <td className="col-phone">{client.phone || <span className="empty-cell">—</span>}</td>
+                  <td className="col-tags">
+                    {client.tags
+                      ? client.tags
+                          .split(',')
+                          .map((t) => t.trim())
+                          .filter(Boolean)
+                          .map((tag, i) => (
+                            <span key={`${tag}-${i}`} className="tag-chip">
+                              {tag}
+                            </span>
+                          ))
+                      : null}
+                  </td>
+                  <td className="col-status">
+                    <Badge tone={statusColors[client.status]}>{client.status}</Badge>
+                  </td>
+                  <td className="col-actions" onClick={(e) => e.stopPropagation()}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDelete(client.id, client.name)}
+                    >
+                      Delete
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          )}
         </table>
         </div>
       )}

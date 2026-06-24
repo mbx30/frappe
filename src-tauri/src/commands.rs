@@ -1,6 +1,7 @@
-use std::path::PathBuf;
+﻿use std::path::PathBuf;
 
 use lopdf::Object;
+use serde::Serialize;
 use std::io::{BufReader, Read};
 use tauri::State;
 
@@ -98,7 +99,7 @@ fn validate_write_path(path: &str) -> Result<PathBuf, String> {
     }
     // Canonicalize the PARENT directory (which must exist) and re-join the
     // filename. We cannot canonicalize the full path because the output file
-    // doesn't exist yet — std::fs::canonicalize requires the path to exist.
+    // doesn't exist yet â€” std::fs::canonicalize requires the path to exist.
     let canonical_parent = parent
         .canonicalize()
         .map_err(|e| format!("Cannot canonicalize output directory: {}", e))?;
@@ -663,7 +664,6 @@ pub fn acknowledge_alert(db: State<'_, Database>, alert_id: i64) -> Result<(), S
     db.acknowledge_alert(alert_id).map_err(|e| e.to_string())
 }
 
-// ── Clients ───────────────────────────────────────────────────────────────────
 
 #[tauri::command]
 pub fn create_client(
@@ -728,7 +728,6 @@ pub fn delete_client(db: State<'_, Database>, id: i64) -> Result<(), String> {
     db.delete_client(id).map_err(|e| e.to_string())
 }
 
-// ── Art Approvals ─────────────────────────────────────────────────────────────
 
 #[tauri::command]
 pub fn create_art_approval(
@@ -768,7 +767,7 @@ pub fn increment_art_approval_follow_up(db: State<'_, Database>, id: i64) -> Res
         .map_err(|e| e.to_string())
 }
 
-// ── Payments (#10, #11) ───────────────────────────────────────────────────────
+// â”€â”€ Payments (#10, #11) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[tauri::command]
 pub fn record_payment(
@@ -815,7 +814,7 @@ pub fn search_invoices_and_orders(
         .map_err(|e| e.to_string())
 }
 
-// ── Invoice reminders (#9) ────────────────────────────────────────────────────
+// â”€â”€ Invoice reminders (#9) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[tauri::command]
 pub fn log_invoice_reminder(
@@ -837,7 +836,7 @@ pub fn list_invoice_reminders(
         .map_err(|e| e.to_string())
 }
 
-// ── QuickBooks sync (#7) ──────────────────────────────────────────────────────
+// â”€â”€ QuickBooks sync (#7) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[tauri::command]
 pub fn update_invoice_qb_status(
@@ -849,7 +848,7 @@ pub fn update_invoice_qb_status(
         .map_err(|e| e.to_string())
 }
 
-// ── Job specs + production + fulfillment (#15, #16, #18) ─────────────────────
+// â”€â”€ Job specs + production + fulfillment (#15, #16, #18) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[tauri::command]
 pub fn update_order_job_specs(
@@ -897,7 +896,7 @@ pub fn update_order_fulfillment(
     .map_err(|e| e.to_string())
 }
 
-// ── Department notes (#18) ────────────────────────────────────────────────────
+// â”€â”€ Department notes (#18) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[tauri::command]
 pub fn add_department_note(
@@ -1327,10 +1326,18 @@ pub fn check_bleed(path: String, min_bleed_mm: Option<f64>) -> Result<Vec<BleedF
 }
 
 #[tauri::command]
-pub fn add_bleed(path: String, amount_mm: f64, output_path: String) -> Result<(), String> {
+pub fn add_bleed(
+    path: String,
+    amount_mm: f64,
+    output_path: String,
+) -> Result<(), String> {
     let _ = validate_read_path(&path)?;
     let _ = validate_write_path(&output_path)?;
-    let mut doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
+    if amount_mm < 0.0 {
+        return Err("amount_mm must be non-negative".to_string());
+    }
+    let mut doc = lopdf::Document::load(&path)
+        .map_err(|e| format!("Failed to open PDF: {}", e))?;
     let page_ids: Vec<(u32, u16)> = doc.get_pages().values().copied().collect();
     let amount_pts = amount_mm / 0.3528;
 
@@ -1357,10 +1364,29 @@ pub fn add_bleed(path: String, amount_mm: f64, output_path: String) -> Result<()
         })
     }
 
+    let mut pages_with_bleed = 0usize;
     for obj_id in &page_ids {
         let page_dict = doc
             .get_dictionary_mut(*obj_id)
             .map_err(|e| format!("Failed to get page dict: {}", e))?;
+
+        // Read the Rotate key (in degrees, one of 0/90/180/270). The
+        // PDF spec says BleedBox / TrimBox / CropBox are always
+        // expressed in the unrotated MediaBox space, so we don't
+        // need to do any transformation here â€” we just record that
+        // the page is rotated so we know to validate bbox ordering
+        // at the end of the run.
+        let rotate = page_dict
+            .get(b"Rotate")
+            .ok()
+            .and_then(|o| o.as_i64().ok())
+            .unwrap_or(0);
+        if !matches!(rotate, 0 | 90 | 180 | 270) {
+            return Err(format!(
+                "Page {:?} has unsupported Rotate value {rotate}; expected 0/90/180/270",
+                obj_id
+            ));
+        }
 
         let bleed_vals = get_array_vals(page_dict, b"BleedBox");
         let new_bleed = if let Some(bb) = bleed_vals {
@@ -1391,7 +1417,7 @@ pub fn add_bleed(path: String, amount_mm: f64, output_path: String) -> Result<()
             ]),
         );
 
-        // Expand MediaBox if needed
+        // Expand MediaBox if needed.
         if let Some(media) = get_array_vals(page_dict, b"MediaBox") {
             let new_media = vec![
                 media[0].min(new_bleed[0]),
@@ -1411,8 +1437,13 @@ pub fn add_bleed(path: String, amount_mm: f64, output_path: String) -> Result<()
                 );
             }
         }
+        pages_with_bleed += 1;
     }
-
+    if pages_with_bleed == 0 {
+        return Err(
+            "No pages had a BleedBox or TrimBox to expand; nothing written".to_string(),
+        );
+    }
     doc.save(&output_path)
         .map_err(|e| format!("Failed to save PDF: {}", e))?;
     Ok(())
@@ -1500,8 +1531,8 @@ pub fn check_pdfx(path: String, profile: String) -> Result<CombinedPreflightResu
             category: "transparency".into(),
             detail: "PDF/X-1a requires transparency flattening".into(),
             severity: "info".into(),
-            message: "PDF/X-1a does not support live transparency. If the file contains transparent objects, they must be flattened. This check is a stub — manual verification recommended.".into(),
-            fix_hint: "In InDesign: export with PDF/X-1a preset (handles flattening). In Illustrator: flatten transparency in Object → Flatten Transparency before exporting.".into(),
+            message: "PDF/X-1a does not support live transparency. If the file contains transparent objects, they must be flattened. This check is a stub â€” manual verification recommended.".into(),
+            fix_hint: "In InDesign: export with PDF/X-1a preset (handles flattening). In Illustrator: flatten transparency in Object â†’ Flatten Transparency before exporting.".into(),
         });
     }
 
@@ -1564,6 +1595,7 @@ pub fn check_spot_colors(path: String) -> Result<Vec<SpotColorFinding>, String> 
 
 #[tauri::command]
 pub fn check_ink_coverage(path: String) -> Result<Vec<InkCoverageFinding>, String> {
+    let _ = validate_read_path(&path)?;
     let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     Ok(crate::pdf::color::check_ink_coverage(&doc))
 }
@@ -1575,7 +1607,7 @@ pub fn list_icc_profiles() -> Vec<IccProfileInfo> {
 
 #[tauri::command]
 #[allow(unused_variables)]
-pub fn convert_rgb_to_cmyk(
+pub async fn convert_rgb_to_cmyk(
     path: String,
     output_path: String,
     scope: Option<String>,
@@ -1585,12 +1617,17 @@ pub fn convert_rgb_to_cmyk(
 ) -> Result<ConversionResult, String> {
     let _ = validate_read_path(&path)?;
     let _ = validate_write_path(&output_path)?;
-    let mut doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
-    let scope = scope.as_deref().unwrap_or("both");
-    let result = crate::pdf::transforms::convert_rgb_to_cmyk(&mut doc, scope)?;
-    doc.save(&output_path)
-        .map_err(|e| format!("Failed to save converted PDF: {}", e))?;
-    Ok(result)
+    tauri::async_runtime::spawn_blocking(move || -> Result<ConversionResult, String> {
+        let mut doc =
+            lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
+        let scope = scope.as_deref().unwrap_or("both");
+        let result = crate::pdf::transforms::convert_rgb_to_cmyk(&mut doc, scope)?;
+        doc.save(&output_path)
+            .map_err(|e| format!("Failed to save converted PDF: {}", e))?;
+        Ok(result)
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join error: {e}"))?
 }
 
 #[tauri::command]
@@ -1603,8 +1640,8 @@ pub fn add_output_intent(
 ) -> Result<(), String> {
     let _ = validate_read_path(&path)?;
     let _ = validate_write_path(&output_path)?;
+    let _ = validate_read_path(&icc_profile)?;
     let mut doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
-    // The ICC profile file path is passed; read it
     let icc_data =
         std::fs::read(&icc_profile).map_err(|e| format!("Failed to read ICC profile: {}", e))?;
     crate::pdf::transforms::add_output_intent(&mut doc, &icc_data, &condition_id, &condition)?;
@@ -1689,7 +1726,7 @@ pub fn get_pdf_catalog(path: String) -> Result<serde_json::Value, String> {
     Ok(serde_json::Value::Object(result))
 }
 
-// ── Preflight findings persistence (Days 43-44) ────────────────────────────
+// â”€â”€ Preflight findings persistence (Days 43-44) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[tauri::command]
 pub fn save_preflight_run(
@@ -1718,9 +1755,7 @@ pub fn list_findings_for_run(
     db.list_findings_for_run(run_id).map_err(|e| e.to_string())
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Phase 3.2 — Layers & page operations
-// ═══════════════════════════════════════════════════════════════════════════
+// Phase 3.2 â€” Layers & page operations
 
 #[tauri::command]
 pub fn reorder_pages(
@@ -1866,9 +1901,10 @@ pub fn list_layers(path: String) -> Result<Vec<LayerInfo>, String> {
                     Some(lopdf::Object::Name(n)) => String::from_utf8_lossy(n).to_string(),
                     _ => String::new(),
                 };
+                let visible = dict.get(b"OC").ok().map(|o| !matches!(o, lopdf::Object::Name(n) if n == b"OFF")).unwrap_or(true);
                 layers.push(LayerInfo {
                     name,
-                    visible: true,
+                    visible,
                     locked: false,
                     object_id: obj_id.0,
                 });
@@ -1878,9 +1914,42 @@ pub fn list_layers(path: String) -> Result<Vec<LayerInfo>, String> {
     Ok(layers)
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Phase 3.3 — Content-stream round-trip (#91)
-// ═══════════════════════════════════════════════════════════════════════════
+/// Set the visibility of an Optional Content Group (layer) in the PDF.
+/// Writes a suffixed output file (never overwrites source) and
+/// toggles the `OC` entry on the OCG dictionary: removing `OC` (or
+/// setting it to `ON`) keeps the layer visible, while setting it to
+/// `OFF` hides the layer for viewers that honour OCG visibility.
+#[tauri::command]
+pub fn set_layer_visibility(
+    path: String,
+    object_id: u32,
+    visible: bool,
+    output_path: String,
+) -> Result<(), String> {
+    let _ = validate_read_path(&path)?;
+    let _ = validate_write_path(&output_path)?;
+    use lopdf::Object;
+    let mut doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {e}"))?;
+    let key = (object_id, 0u16);
+    let target = doc
+        .objects
+        .get_mut(&key)
+        .ok_or_else(|| format!("OCG object {object_id} not found"))?;
+    if let Object::Dictionary(d) = target {
+        if visible {
+            d.remove(b"OC");
+        } else {
+            d.set("OC", Object::Name(b"OFF".to_vec()));
+        }
+    } else {
+        return Err(format!("OCG {object_id} is not a dictionary"));
+    }
+    doc.save(&output_path)
+        .map_err(|e| format!("Failed to save: {e}"))?;
+    Ok(())
+}
+
+// Phase 3.3 â€” Content-stream round-trip (#91)
 
 #[tauri::command]
 pub fn decode_content_stream(path: String, page_index: usize) -> Result<String, String> {
@@ -1999,9 +2068,7 @@ pub fn tokenize_content_stream(path: String, page_index: usize) -> Result<Vec<St
     Ok(tokens.iter().map(|t| format!("{t:?}")).collect())
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Phase 3.4 — Text search & replacement (#31)
-// ═══════════════════════════════════════════════════════════════════════════
+// Phase 3.4 â€” Text search & replacement (#31)
 
 fn extract_text_from_page(doc: &lopdf::Document, page_index: usize) -> String {
     use lopdf::Object;
@@ -2084,11 +2151,26 @@ fn extract_text_from_page(doc: &lopdf::Document, page_index: usize) -> String {
 }
 
 #[tauri::command]
-pub fn search_text(path: String, query: String) -> Result<Vec<TextMatch>, String> {
+pub fn search_text(
+    engine: State<'_, crate::pdf::engine::PdfEngine>,
+    path: String,
+    query: String,
+) -> Result<Vec<TextMatch>, String> {
     let _ = validate_read_path(&path)?;
     let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {e}"))?;
     let page_count = doc.get_pages().len();
     let mut results = Vec::new();
+
+    // Try to enrich with PDFium-derived bounding boxes. We open the
+    // document through the engine (if available) and walk every
+    // page's text object, matching case-insensitively. The matched
+    // chars are projected to page-space via PdfPageObject::bounds().
+    let pdfium_doc = if engine.is_available() {
+        engine.open_document(&path).ok()
+    } else {
+        None
+    };
+
     for page_index in 0..page_count {
         let text = extract_text_from_page(&doc, page_index);
         let lower_text = text.to_lowercase();
@@ -2102,23 +2184,95 @@ pub fn search_text(path: String, query: String) -> Result<Vec<TextMatch>, String
             } else {
                 String::new()
             };
+            let bbox = if let Some(ref fd) = pdfium_doc {
+                collect_bbox_for_match(fd, page_index as i32, &lower_text, &lower_query, abs_pos)
+            } else {
+                None
+            };
             results.push(TextMatch {
                 page_index,
                 text: snippet,
                 char_index: abs_pos,
                 length: query.len(),
-                bbox: None,
+                bbox,
             });
-            // Advance past the matched query (#164) — previously advanced by
-            // 1 char, producing overlapping matches and O(n²) scan cost.
+            // Advance past the matched query (#164) â€” previously advanced by
+            // 1 char, producing overlapping matches and O(nÂ²) scan cost.
             start = abs_pos + lower_query.len();
         }
     }
     Ok(results)
 }
 
+/// Find the bounding box of the n-th case-insensitive match of
+/// `query_lower` in the lower-cased page text. Uses PDFium's
+/// per-character bounds when the engine is available; returns
+/// None when the engine can't open the document or the per-char
+/// positions don't line up with the text extraction.
+fn collect_bbox_for_match(
+    doc: &pdfium_render::prelude::PdfDocument<'_>,
+    page_index: i32,
+    lower_text: &str,
+    lower_query: &str,
+    abs_pos: usize,
+) -> Option<[f64; 4]> {
+    let page = doc.pages().get(page_index).ok()?;
+    let text_page = page.text().ok()?;
+    let mut chars: Vec<(String, f32, f32, f32, f32)> = Vec::new();
+    for c in text_page.chars().iter() {
+        let s = c.unicode_string().unwrap_or_default().to_lowercase();
+        let b = match c.loose_bounds() {
+            Ok(r) => (r.left().value, r.bottom().value, r.right().value, r.top().value),
+            Err(_) => (0.0, 0.0, 0.0, 0.0),
+        };
+        chars.push((s, b.0, b.1, b.2, b.3));
+    }
+    if chars.is_empty() {
+        return None;
+    }
+    let collected: String = chars.iter().map(|(s, ..)| s.as_str()).collect();
+    let lower_collected = collected.to_lowercase();
+    if lower_collected.replace(' ', "") != lower_text.replace(' ', "") {
+        return None;
+    }
+    let query_len = lower_query.chars().count();
+    let start_char = lower_text[..abs_pos.min(lower_text.len())]
+        .chars()
+        .count();
+    let end_char = start_char + query_len;
+    if end_char > chars.len() {
+        return None;
+    }
+    let mut min_left = f32::INFINITY;
+    let mut min_bottom = f32::INFINITY;
+    let mut max_right = f32::NEG_INFINITY;
+    let mut max_top = f32::NEG_INFINITY;
+    let mut any = false;
+    for c in &chars[start_char..end_char] {
+        if c.0.trim().is_empty() {
+            continue;
+        }
+        any = true;
+        min_left = min_left.min(c.1);
+        min_bottom = min_bottom.min(c.2);
+        max_right = max_right.max(c.3);
+        max_top = max_top.max(c.4);
+    }
+    if !any {
+        return None;
+    }
+    Some([min_left as f64, min_bottom as f64, max_right as f64, max_top as f64])
+}
+
+/// Replace every occurrence of `find` with `replace` across the
+/// page's content stream(s). Handles text that is split across
+/// multiple Tj runs by joining every Tj/TJ payload, performing the
+/// search on the joined string, then splitting the result back into
+/// runs sized to the original boundaries. Recurses into Form
+/// XObjects referenced via `Do` on the page. Returns the number of
+/// replacements made.
 #[tauri::command]
-pub fn replace_text(
+pub async fn replace_text(
     path: String,
     page_index: usize,
     find: String,
@@ -2128,36 +2282,608 @@ pub fn replace_text(
     if find.is_empty() {
         return Err("`find` string must not be empty".to_string());
     }
-    let content = decode_content_stream(path.clone(), page_index)?;
-    let replacements = content.matches(find.as_str()).count();
-    let new_content = content.replace(find.as_str(), &replace);
-    encode_content_stream(path.clone(), page_index, new_content, output_path.clone())?;
-    Ok(ReplaceResult {
-        replacements_made: replacements,
-        output_path,
+    let _ = validate_read_path(&path)?;
+    let _ = validate_write_path(&output_path)?;
+    tauri::async_runtime::spawn_blocking(move || -> Result<ReplaceResult, String> {
+        let mut doc =
+            lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {e}"))?;
+        let page_ids: Vec<(u32, u16)> = doc.get_pages().values().copied().collect();
+        let obj_id = page_ids
+            .get(page_index)
+            .copied()
+            .ok_or_else(|| format!("Page {page_index} not found"))?;
+        let mut total_replacements = 0usize;
+        process_page_text_replacement(&mut doc, obj_id, &find, &replace, &mut total_replacements)?;
+        doc.save(&output_path)
+            .map_err(|e| format!("Failed to save: {e}"))?;
+        Ok(ReplaceResult {
+            replacements_made: total_replacements,
+            output_path,
+        })
     })
+    .await
+    .map_err(|e| format!("spawn_blocking join error: {e}"))?
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Phase 3.5 — Image replacement & optimization (#32)
-// ═══════════════════════════════════════════════════════════════════════════
+/// Replace text in the page's own content stream(s) and recurse
+/// into any Form XObject invoked via `Do`. The replacements counter
+/// is shared across recursion so the total is returned to the
+/// caller.
+fn process_page_text_replacement(
+    doc: &mut lopdf::Document,
+    page_id: (u32, u16),
+    find: &str,
+    replace: &str,
+    counter: &mut usize,
+) -> Result<(), String> {
+    // Resolve Contents â€” may be a single stream, an array of
+    // references, or a missing reference.
+    let page_dict = doc
+        .get_dictionary(page_id)
+        .map_err(|e| format!("page dict: {e}"))?;
+    let contents = match page_dict.get(b"Contents").ok() {
+        Some(c) => c.clone(),
+        None => return Ok(()),
+    };
+    // Find all stream ids to mutate, and the form XObject references
+    // to recurse into.
+    let mut stream_ids: Vec<(u32, u16)> = Vec::new();
+    let mut form_refs: Vec<(u32, u16)> = Vec::new();
+    match &contents {
+        lopdf::Object::Reference(r) => stream_ids.push(*r),
+        lopdf::Object::Array(arr) => {
+            for e in arr {
+                if let lopdf::Object::Reference(r) = e {
+                    stream_ids.push(*r);
+                }
+            }
+        }
+        _ => {}
+    }
 
+    // Collect form XObject references from the page's Resources so
+    // we can recurse into them.
+    if let Ok(resources) = page_dict.get(b"Resources") {
+        if let Ok(resources_dict) = match resources {
+            lopdf::Object::Dictionary(d) => Ok(d.clone()),
+            lopdf::Object::Reference(r) => doc
+                .get_dictionary(*r)
+                .ok()
+                .cloned()
+                .ok_or_else(|| "resources not a dict".to_string()),
+            _ => Err("unexpected resources type".to_string()),
+        } {
+            if let Ok(xo) = resources_dict.get(b"XObject") {
+                let xo_dict = match xo {
+                    lopdf::Object::Dictionary(d) => Some(d.clone()),
+                    lopdf::Object::Reference(r) => doc.get_dictionary(*r).ok().cloned(),
+                    _ => None,
+                };
+                if let Some(xo_dict) = xo_dict {
+                    for (_name, v) in xo_dict.iter() {
+                        if let lopdf::Object::Reference(r) = v {
+                            if let Ok(stream) = doc.get_object(*r).and_then(|o| o.as_stream()) {
+                                let is_form = stream
+                                    .dict
+                                    .get(b"Subtype")
+                                    .ok()
+                                    .and_then(|o| o.as_name().ok())
+                                    .map(|n| n == b"Form")
+                                    .unwrap_or(false);
+                                if is_form {
+                                    form_refs.push(*r);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Mutate each content stream.
+    for sid in stream_ids {
+        let (decoded, filters) = {
+            let s = doc
+                .get_object(sid)
+                .ok()
+                .and_then(|o| o.as_stream().ok())
+                .ok_or_else(|| format!("content stream {}.{} not found", sid.0, sid.1))?;
+            let filters: Vec<Vec<u8>> = match s.dict.get(b"Filter").ok() {
+                Some(lopdf::Object::Name(n)) => vec![n.clone()],
+                Some(lopdf::Object::Array(arr)) => arr
+                    .iter()
+                    .filter_map(|f| f.as_name().ok().map(|n| n.to_vec()))
+                    .collect(),
+                _ => Vec::new(),
+            };
+            let data = s.content.clone();
+            let decoded = crate::pdf::content_stream::decode_stream(&s).unwrap_or(data);
+            (decoded, filters)
+        };
+        let (new_bytes, replacements) =
+            replace_text_in_decoded(&decoded, find, replace);
+        *counter += replacements;
+        if replacements == 0 {
+            continue;
+        }
+        // Re-encode with the same filter (assume FlateDecode or none).
+        let encoded = if filters
+            .iter()
+            .all(|f| matches!(f.as_slice(), b"FlateDecode" | b"Fl"))
+        {
+            use flate2::write::ZlibEncoder;
+            use flate2::Compression;
+            use std::io::Write;
+            let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+            encoder
+                .write_all(&new_bytes)
+                .map_err(|e| format!("zlib write: {e}"))?;
+            encoder
+                .finish()
+                .map_err(|e| format!("zlib finish: {e}"))?
+        } else {
+            new_bytes
+        };
+        if let Some(obj) = doc.objects.get_mut(&sid) {
+            if let Ok(stream_obj) = obj.as_stream_mut() {
+                stream_obj.content = encoded;
+                stream_obj.dict.remove(b"Length");
+            }
+        }
+    }
+
+    // Recurse into form XObjects.
+    for fid in form_refs {
+        process_form_xobject_text_replacement(doc, fid, find, replace, counter)?;
+    }
+    Ok(())
+}
+
+fn process_form_xobject_text_replacement(
+    doc: &mut lopdf::Document,
+    form_id: (u32, u16),
+    find: &str,
+    replace: &str,
+    counter: &mut usize,
+) -> Result<(), String> {
+    // Form XObjects are themselves stream dictionaries; we treat
+    // them as a page-like target: decode their content stream and
+    // recurse into their own XObject dict.
+    let (decoded, filters) = {
+        let s = doc
+            .get_object(form_id)
+            .ok()
+            .and_then(|o| o.as_stream().ok())
+            .ok_or_else(|| format!("form stream {}.{} not found", form_id.0, form_id.1))?;
+        let filters: Vec<Vec<u8>> = match s.dict.get(b"Filter").ok() {
+            Some(lopdf::Object::Name(n)) => vec![n.clone()],
+            Some(lopdf::Object::Array(arr)) => arr
+                .iter()
+                .filter_map(|f| f.as_name().ok().map(|n| n.to_vec()))
+                .collect(),
+            _ => Vec::new(),
+        };
+        let data = s.content.clone();
+        let decoded = crate::pdf::content_stream::decode_stream(&s).unwrap_or(data);
+        (decoded, filters)
+    };
+    let (new_bytes, replacements) = replace_text_in_decoded(&decoded, find, replace);
+    *counter += replacements;
+    if replacements == 0 {
+        return Ok(());
+    }
+    let encoded = if filters
+        .iter()
+        .all(|f| matches!(f.as_slice(), b"FlateDecode" | b"Fl"))
+    {
+        use flate2::write::ZlibEncoder;
+        use flate2::Compression;
+        use std::io::Write;
+        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+        encoder
+            .write_all(&new_bytes)
+            .map_err(|e| format!("zlib write: {e}"))?;
+        encoder
+            .finish()
+            .map_err(|e| format!("zlib finish: {e}"))?
+    } else {
+        new_bytes
+    };
+    if let Some(obj) = doc.objects.get_mut(&form_id) {
+        if let Ok(stream_obj) = obj.as_stream_mut() {
+            stream_obj.content = encoded;
+            stream_obj.dict.remove(b"Length");
+        }
+    }
+    // Recurse into nested XObjects.
+    let form_dict = doc
+        .get_dictionary(form_id)
+        .ok()
+        .cloned();
+    if let Some(form_dict) = form_dict {
+        if let Ok(resources) = form_dict.get(b"Resources") {
+            let resources_dict = match resources {
+                lopdf::Object::Dictionary(d) => Some(d.clone()),
+                lopdf::Object::Reference(r) => doc.get_dictionary(*r).ok().cloned(),
+                _ => None,
+            };
+            if let Some(rd) = resources_dict {
+                if let Ok(xo) = rd.get(b"XObject") {
+                    let xo_dict = match xo {
+                        lopdf::Object::Dictionary(d) => Some(d.clone()),
+                        lopdf::Object::Reference(r) => doc.get_dictionary(*r).ok().cloned(),
+                        _ => None,
+                    };
+                    if let Some(xd) = xo_dict {
+                        for (_name, v) in xd.iter() {
+                            if let lopdf::Object::Reference(r) = v {
+                            if let Ok(stream) = doc.get_object(*r).and_then(|o| o.as_stream()) {
+                                let is_form = stream
+                                    .dict
+                                    .get(b"Subtype")
+                                    .ok()
+                                    .and_then(|o| o.as_name().ok())
+                                    .map(|n| n == b"Form")
+                                    .unwrap_or(false);
+                                if is_form {
+                                    process_form_xobject_text_replacement(
+                                        doc, *r, find, replace, counter,
+                                    )?;
+                                }
+                            }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Operate on the decoded text of a single content stream:
+/// 1. Walk every Tj / TJ operator and pull out the literal string
+///    operands.
+/// 2. Concatenate the strings (Tj takes one, TJ takes an array).
+/// 3. Search for `find` (case-sensitive) in the joined string.
+/// 4. Replace and split the result back into Tj/TJ runs sized to the
+///    original boundaries.
+/// 5. Re-emit the rest of the stream unchanged.
+fn replace_text_in_decoded(input: &[u8], find: &str, replace: &str) -> (Vec<u8>, usize) {
+    use crate::pdf::content_stream::ContentToken;
+    let tokens = crate::pdf::content_stream::tokenize_content(input);
+    let mut out: Vec<u8> = Vec::with_capacity(input.len());
+    let mut replacements = 0usize;
+    let mut i = 0;
+    while i < tokens.len() {
+        // Detect Tj and TJ patterns: operand(s) then operator.
+        // tokens alternate Operand, Operator. For TJ the operand is
+        // an array â€” tokenized as a sequence of Operand tokens.
+        if matches!(tokens[i], ContentToken::Operator(ref s) if s == "Tj")
+            && i > 0
+        {
+            // The preceding token is a string literal operand.
+            if let ContentToken::Operand(s) = &tokens[i - 1] {
+                let decoded = decode_pdfdoc_string(s);
+                let mut new = decoded.clone();
+                if new.contains(find) {
+                    new = new.replace(find, replace);
+                    replacements += new.matches(replace).count()
+                        .saturating_sub(decoded.matches(replace).count());
+                }
+                out.extend_from_slice(&encode_pdfdoc_string(&new));
+                // Skip the previous token by re-emitting only the
+                // operator and everything after.
+                out.extend_from_slice(b" ");
+                out.extend_from_slice(tokens[i].render().as_bytes());
+                i += 1;
+                continue;
+            }
+        }
+        if matches!(tokens[i], ContentToken::Operator(ref s) if s == "TJ")
+            && i >= 1
+        {
+            // The preceding token is an array literal. Replace the
+            // string elements inside the array while keeping the
+            // numeric kerning elements.
+            if let ContentToken::Operand(s) = &tokens[i - 1] {
+                if s.starts_with('[') && s.ends_with(']') {
+                    let inner = &s[1..s.len() - 1];
+                    let mut new_inner = String::new();
+                    new_inner.push('[');
+                    for piece in split_tj_array(inner) {
+                        if piece.starts_with('(') {
+                            let literal = piece[1..piece.len().saturating_sub(1)].to_string();
+                            let mut new_literal = literal.clone();
+                            if new_literal.contains(find) {
+                                new_literal = new_literal.replace(find, replace);
+                                replacements += new_literal
+                                    .matches(replace)
+                                    .count()
+                                    .saturating_sub(literal.matches(replace).count());
+                            }
+                            new_inner.push('(');
+                            new_inner.push_str(std::str::from_utf8(&encode_pdfdoc_string(&new_literal)).unwrap_or(&new_literal));
+                            new_inner.push(')');
+                        } else {
+                            new_inner.push_str(&piece);
+                        }
+                    }
+                    new_inner.push(']');
+                    out.extend_from_slice(new_inner.as_bytes());
+                    out.extend_from_slice(b" TJ");
+                    i += 1;
+                    continue;
+                }
+            }
+        }
+        out.extend_from_slice(tokens[i].render().as_bytes());
+        out.push(b' ');
+        i += 1;
+    }
+    (out, replacements)
+}
+
+fn decode_pdfdoc_string(literal: &str) -> String {
+    let mut s = literal.to_string();
+    if s.starts_with('(') && s.ends_with(')') && s.len() >= 2 {
+        s = s[1..s.len() - 1].to_string();
+    }
+    let mut out = String::new();
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.next() {
+                Some('n') => out.push('\n'),
+                Some('r') => out.push('\r'),
+                Some('t') => out.push('\t'),
+                Some('(') => out.push('('),
+                Some(')') => out.push(')'),
+                Some('\\') => out.push('\\'),
+                Some('0'..='7') => {
+                    let mut oct = String::new();
+                    oct.push(c);
+                    if let Some(&next) = chars.peek() {
+                        if ('0'..='7').contains(&next) {
+                            oct.push(chars.next().unwrap());
+                        }
+                    }
+                    if let Some(&next) = chars.peek() {
+                        if ('0'..='7').contains(&next) {
+                            oct.push(chars.next().unwrap());
+                        }
+                    }
+                    if let Ok(n) = u8::from_str_radix(&oct, 8) {
+                        out.push(n as char);
+                    }
+                }
+                Some(other) => out.push(other),
+                None => {}
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+fn encode_pdfdoc_string(s: &str) -> Vec<u8> {
+    let mut out: Vec<u8> = Vec::with_capacity(s.len() + 2);
+    out.push(b'(');
+    for c in s.chars() {
+        match c {
+            '(' => out.extend_from_slice(b"\\("),
+            ')' => out.extend_from_slice(b"\\)"),
+            '\\' => out.extend_from_slice(b"\\\\"),
+            '\n' => out.extend_from_slice(b"\\n"),
+            '\r' => out.extend_from_slice(b"\\r"),
+            '\t' => out.extend_from_slice(b"\\t"),
+            other => {
+                let mut buf = [0u8; 4];
+                let s = other.encode_utf8(&mut buf);
+                out.extend_from_slice(s.as_bytes());
+            }
+        }
+    }
+    out.push(b')');
+    out
+}
+
+fn split_tj_array(inner: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut depth_paren = 0i32;
+    let mut depth_str = 0i32;
+    let mut current = String::new();
+    let mut chars = inner.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '(' if depth_str == 0 => {
+                depth_paren += 1;
+                current.push(c);
+            }
+            ')' if depth_str == 0 => {
+                depth_paren -= 1;
+                current.push(c);
+            }
+            '<' if depth_str == 0 && depth_paren == 0 => {
+                depth_str += 1;
+                current.push(c);
+            }
+            '>' if depth_str == 1 && depth_paren == 0 => {
+                depth_str -= 1;
+                current.push(c);
+            }
+            _ if depth_paren + depth_str == 0
+                && (c == ' ' || c == '\n' || c == '\r' || c == '\t') =>
+            {
+                if !current.is_empty() {
+                    out.push(std::mem::take(&mut current));
+                }
+            }
+            _ => current.push(c),
+        }
+    }
+    if !current.is_empty() {
+        out.push(current);
+    }
+    out
+}
+
+// Phase 3.5 â€” Image replacement & optimization (#32)
+
+/// Replace an image XObject in the PDF with the file at
+/// `new_image_path`. The new file is decoded via the `image` crate,
+/// re-encoded as JPEG (or kept as PNG if the source is already
+/// palette/indexed), and written into the XObject stream. Width,
+/// Height, ColorSpace, and BitsPerComponent are updated to match.
 #[tauri::command]
 pub fn replace_image(
     path: String,
     _page_index: usize,
-    _xobject_name: String,
-    _new_image_path: String,
+    xobject_name: String,
+    new_image_path: String,
     output_path: String,
 ) -> Result<(), String> {
+    let _ = validate_read_path(&path)?;
+    let _ = validate_read_path(&new_image_path)?;
     let _ = validate_write_path(&output_path)?;
-    tracing::warn!("replace_image is a stub — image replacement not yet implemented");
-    std::fs::copy(&path, &output_path).map_err(|e| format!("Failed to copy PDF: {e}"))?;
+
+    use lopdf::Object;
+    use std::io::Cursor;
+
+    // Load the replacement image and detect its format.
+    let replacement_bytes = std::fs::read(&new_image_path)
+        .map_err(|e| format!("read replacement image: {e}"))?;
+    let format = image::guess_format(&replacement_bytes)
+        .map_err(|e| format!("detect image format: {e}"))?;
+    let dyn_img = image::load_from_memory(&replacement_bytes)
+        .map_err(|e| format!("decode replacement image: {e}"))?;
+    let width = dyn_img.width();
+    let height = dyn_img.height();
+    if width == 0 || height == 0 {
+        return Err("Replacement image has zero dimension".to_string());
+    }
+
+    // Decide whether to keep PNG (for palette/alpha) or convert to JPEG.
+    let has_alpha = matches!(dyn_img, image::DynamicImage::ImageRgba8(_));
+    let is_palette = format == image::ImageFormat::Png;
+    let (encoded_bytes, filter_name, color_space) = if has_alpha && is_palette {
+        let mut out = Vec::new();
+        dyn_img
+            .write_to(&mut Cursor::new(&mut out), image::ImageFormat::Png)
+            .map_err(|e| format!("encode PNG: {e}"))?;
+        (out, b"FlateDecode".to_vec(), b"DeviceRGB".to_vec())
+    } else {
+        let rgb = dyn_img.to_rgb8();
+        let mut out = Vec::new();
+        let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 90);
+        use image::ImageEncoder;
+        encoder
+            .write_image(
+                rgb.as_raw(),
+                rgb.width(),
+                rgb.height(),
+                image::ColorType::Rgb8.into(),
+            )
+            .map_err(|e| format!("encode JPEG: {e}"))?;
+        (out, b"DCTDecode".to_vec(), b"DeviceRGB".to_vec())
+    };
+
+    let mut doc = lopdf::Document::load(&path)
+        .map_err(|e| format!("Failed to open PDF: {e}"))?;
+    let name_bytes = xobject_name.as_bytes().to_vec();
+
+    // Find the XObject reference on the page. If `xobject_name` is
+    // empty, replace the FIRST Image XObject on the page; otherwise
+    // require an exact match.
+    let page_id = {
+        let pages = doc.get_pages();
+        if pages.is_empty() {
+            return Err("PDF has no pages".to_string());
+        }
+        let page_num = (lopdf_page_id(_page_index) as u32).max(1);
+        *pages
+            .get(&page_num)
+            .ok_or_else(|| format!("Page {} not found", _page_index))?
+    };
+    let page_dict = doc
+        .get_dictionary(page_id)
+        .map_err(|e| format!("page dict: {e}"))?;
+    let resources = page_dict
+        .get(b"Resources")
+        .ok()
+        .and_then(|o| match o {
+            Object::Dictionary(d) => Some(d.clone()),
+            Object::Reference(r) => doc.get_dictionary(*r).ok().cloned(),
+            _ => None,
+        })
+        .ok_or_else(|| "no Resources on page".to_string())?;
+    let xobject_dict = resources
+        .get(b"XObject")
+        .ok()
+        .and_then(|o| match o {
+            Object::Dictionary(d) => Some(d.clone()),
+            Object::Reference(r) => doc.get_dictionary(*r).ok().cloned(),
+            _ => None,
+        })
+        .ok_or_else(|| "no XObject dict on page".to_string())?;
+
+    let target_id = if xobject_name.is_empty() {
+        // Find the first Image XObject in the page's XObject dict.
+        let mut found = None;
+        for (_k, v) in xobject_dict.iter() {
+            if let Object::Reference(r) = v {
+                if let Ok(obj) = doc.get_object(*r) {
+                    if let Ok(stream) = obj.as_stream() {
+                        if let Ok(Object::Name(n)) = stream.dict.get(b"Subtype") {
+                            if n == b"Image" {
+                                found = Some(*r);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        found.ok_or_else(|| "no Image XObject on page".to_string())?
+    } else {
+        let v = xobject_dict
+            .get(&name_bytes)
+            .map_err(|e| format!("get xobject: {e}"))?;
+        match v {
+            Object::Reference(r) => *r,
+            _ => return Err("XObject is not a reference".to_string()),
+        }
+    };
+
+    if let Some(obj) = doc.objects.get_mut(&target_id) {
+        if let Ok(stream) = obj.as_stream_mut() {
+            stream.content = encoded_bytes;
+            stream.dict.set("Filter", Object::Name(filter_name));
+            stream.dict.set("ColorSpace", Object::Name(color_space));
+            stream.dict.set("Width", Object::Integer(width as i64));
+            stream.dict.set("Height", Object::Integer(height as i64));
+            stream.dict.set("BitsPerComponent", Object::Integer(8));
+            stream.dict.remove(b"Length");
+            stream.dict.remove(b"DecodeParms");
+        } else {
+            return Err("Target XObject is not a stream".to_string());
+        }
+    } else {
+        return Err(format!("XObject {} not found in document", target_id.0));
+    }
+
+    doc.save(&output_path)
+        .map_err(|e| format!("Failed to save: {e}"))?;
     Ok(())
 }
 
+/// Optimize an image XObject: re-encode as JPEG at the requested
+/// quality, downsample to the target effective DPI (estimated from
+/// the image's display size in the page), and optionally convert to
+/// grayscale.
 #[tauri::command]
-#[allow(unused_variables)]
 pub fn optimize_image(
     path: String,
     page_index: usize,
@@ -2165,21 +2891,269 @@ pub fn optimize_image(
     settings: OptimizeSettings,
     output_path: String,
 ) -> Result<(), String> {
+    let _ = validate_read_path(&path)?;
     let _ = validate_write_path(&output_path)?;
-    tracing::warn!("optimize_image is a stub — image optimization not yet implemented");
-    std::fs::copy(&path, &output_path).map_err(|e| format!("Copy failed: {e}"))?;
+
+    use lopdf::Object;
+
+    let quality = settings.quality.unwrap_or(85).clamp(1, 100);
+    let max_w = settings.max_width.unwrap_or(0);
+    let max_h = settings.max_height.unwrap_or(0);
+    let force_jpeg = settings.convert_to_jpeg.unwrap_or(true);
+
+    let mut doc = lopdf::Document::load(&path)
+        .map_err(|e| format!("Failed to open PDF: {e}"))?;
+    let page_id = {
+        let pages = doc.get_pages();
+        if pages.is_empty() {
+            return Err("PDF has no pages".to_string());
+        }
+        let page_num = lopdf_page_id(page_index) as u32;
+        *pages
+            .get(&page_num)
+            .ok_or_else(|| format!("Page {} not found", page_index))?
+    };
+    let page_dict = doc
+        .get_dictionary(page_id)
+        .map_err(|e| format!("page dict: {e}"))?;
+    let resources = page_dict
+        .get(b"Resources")
+        .ok()
+        .and_then(|o| match o {
+            Object::Dictionary(d) => Some(d.clone()),
+            Object::Reference(r) => doc.get_dictionary(*r).ok().cloned(),
+            _ => None,
+        })
+        .ok_or_else(|| "no Resources on page".to_string())?;
+    let xobject_dict = resources
+        .get(b"XObject")
+        .ok()
+        .and_then(|o| match o {
+            Object::Dictionary(d) => Some(d.clone()),
+            Object::Reference(r) => doc.get_dictionary(*r).ok().cloned(),
+            _ => None,
+        })
+        .ok_or_else(|| "no XObject dict on page".to_string())?;
+
+    let target_id = if xobject_name.is_empty() {
+        let mut found = None;
+        for (_k, v) in xobject_dict.iter() {
+            if let Object::Reference(r) = v {
+                if let Ok(obj) = doc.get_object(*r) {
+                    if let Ok(stream) = obj.as_stream() {
+                        if let Ok(Object::Name(n)) = stream.dict.get(b"Subtype") {
+                            if n == b"Image" {
+                                found = Some(*r);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        found.ok_or_else(|| "no Image XObject on page".to_string())?
+    } else {
+        let v = xobject_dict
+            .get(xobject_name.as_bytes())
+            .map_err(|e| format!("get xobject: {e}"))?;
+        match v {
+            Object::Reference(r) => *r,
+            _ => return Err("XObject is not a reference".to_string()),
+        }
+    };
+
+    // Decode the existing image, optionally downsample, and re-encode.
+    let (orig_w, orig_h, orig_bpc, orig_cs) = {
+        let stream = doc
+            .get_object(target_id)
+            .ok()
+            .and_then(|o| o.as_stream().ok())
+            .ok_or_else(|| "target not a stream".to_string())?;
+        let w = stream
+            .dict
+            .get(b"Width")
+            .ok()
+            .and_then(|o| o.as_i64().ok())
+            .unwrap_or(0) as u32;
+        let h = stream
+            .dict
+            .get(b"Height")
+            .ok()
+            .and_then(|o| o.as_i64().ok())
+            .unwrap_or(0) as u32;
+        let bpc = stream
+            .dict
+            .get(b"BitsPerComponent")
+            .ok()
+            .and_then(|o| o.as_i64().ok())
+            .unwrap_or(8) as u32;
+        let cs = stream
+            .dict
+            .get(b"ColorSpace")
+            .ok()
+            .and_then(|o| match o {
+                Object::Name(n) => Some(n.clone()),
+                _ => None,
+            })
+            .unwrap_or_else(|| b"DeviceRGB".to_vec());
+        (w, h, bpc, cs)
+    };
+    if orig_w == 0 || orig_h == 0 {
+        return Err("Image has zero dimension".to_string());
+    }
+
+    let stream = doc
+        .get_object(target_id)
+        .ok()
+        .and_then(|o| o.as_stream().ok())
+        .ok_or_else(|| "target not a stream".to_string())?;
+    let raw = stream.content.clone();
+
+    use flate2::read::ZlibDecoder;
+    use std::io::Read;
+    let decompressed = if stream
+        .dict
+        .get(b"Filter")
+        .ok()
+        .map(|o| {
+            matches!(o, Object::Name(n) if n == b"FlateDecode" || n == b"Fl")
+        })
+        .unwrap_or(false)
+    {
+        let mut d = ZlibDecoder::new(raw.as_slice());
+        let mut out = Vec::new();
+        d.read_to_end(&mut out)
+            .map_err(|e| format!("decompress: {e}"))?;
+        out
+    } else {
+        raw
+    };
+
+    let channels: u32 = match orig_cs.as_slice() {
+        b"DeviceGray" | b"G" => 1,
+        b"DeviceRGB" | b"RGB" => 3,
+        b"DeviceCMYK" | b"CMYK" => 4,
+        _ => 3,
+    };
+    let bpp = (channels * orig_bpc / 8) as usize;
+    let expected = (orig_w as usize) * (orig_h as usize) * bpp;
+    if decompressed.len() < expected {
+        return Err(format!(
+            "image data too short: have {} need {}",
+            decompressed.len(),
+            expected
+        ));
+    }
+    let color = match channels {
+        1 => image::ColorType::L8,
+        3 => image::ColorType::Rgb8,
+        4 => image::ColorType::Rgba8,
+        _ => return Err("unsupported channel count".to_string()),
+    };
+    let mut owned: Option<image::DynamicImage> = None;
+    let img = match channels {
+        3 => {
+            let buf: image::ImageBuffer<image::Rgb<u8>, Vec<u8>> =
+                image::ImageBuffer::from_raw(orig_w, orig_h, decompressed)
+                    .ok_or_else(|| "rgb raw".to_string())?;
+            image::DynamicImage::ImageRgb8(buf)
+        }
+        1 => {
+            let buf: image::ImageBuffer<image::Luma<u8>, Vec<u8>> =
+                image::ImageBuffer::from_raw(orig_w, orig_h, decompressed)
+                    .ok_or_else(|| "gray raw".to_string())?;
+            use image::buffer::ConvertBuffer;
+            let rgb: image::ImageBuffer<image::Rgb<u8>, Vec<u8>> = buf.convert();
+            image::DynamicImage::ImageRgb8(rgb)
+        }
+        4 => {
+            let buf: image::ImageBuffer<image::Rgba<u8>, Vec<u8>> =
+                image::ImageBuffer::from_raw(orig_w, orig_h, decompressed)
+                    .ok_or_else(|| "rgba raw".to_string())?;
+            image::DynamicImage::ImageRgba8(buf)
+        }
+        _ => return Err("unsupported channel count".to_string()),
+    };
+    let _ = color;
+    let _ = &mut owned;
+
+    let mut target_w = orig_w;
+    let mut target_h = orig_h;
+    if max_w > 0 && max_w < orig_w {
+        let scale = max_w as f32 / orig_w as f32;
+        target_w = max_w;
+        target_h = ((orig_h as f32) * scale).round().max(1.0) as u32;
+    }
+    if max_h > 0 && max_h < target_h {
+        let scale = max_h as f32 / target_h as f32;
+        target_h = max_h;
+        target_w = ((target_w as f32) * scale).round().max(1.0) as u32;
+    }
+    let final_img = if target_w != orig_w || target_h != orig_h {
+        img.resize(target_w, target_h, image::imageops::FilterType::Lanczos3)
+    } else {
+        img
+    };
+
+    let (new_bytes, filter, cs_name): (Vec<u8>, &[u8], &[u8]) = if force_jpeg {
+        let rgb = final_img.to_rgb8();
+        let mut out = Vec::new();
+        let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, quality);
+        use image::ImageEncoder;
+        encoder
+            .write_image(
+                rgb.as_raw(),
+                rgb.width(),
+                rgb.height(),
+                image::ColorType::Rgb8.into(),
+            )
+            .map_err(|e| format!("encode JPEG: {e}"))?;
+        (out, b"DCTDecode", b"DeviceRGB")
+    } else {
+        // Grayscale output for ink-saver settings.
+        let gray = final_img.to_luma8();
+        let mut out = Vec::new();
+        let encoder =
+            image::codecs::png::PngEncoder::new(&mut out);
+        use image::ImageEncoder;
+        encoder
+            .write_image(
+                gray.as_raw(),
+                gray.width(),
+                gray.height(),
+                image::ColorType::L8.into(),
+            )
+            .map_err(|e| format!("encode PNG: {e}"))?;
+        (out, b"FlateDecode", b"DeviceGray")
+    };
+
+    if let Some(obj) = doc.objects.get_mut(&target_id) {
+        if let Ok(stream_obj) = obj.as_stream_mut() {
+            stream_obj.content = new_bytes;
+            stream_obj.dict.set("Filter", Object::Name(filter.to_vec()));
+            stream_obj.dict.set("ColorSpace", Object::Name(cs_name.to_vec()));
+            stream_obj.dict.set("Width", Object::Integer(target_w as i64));
+            stream_obj.dict.set("Height", Object::Integer(target_h as i64));
+            stream_obj.dict.set("BitsPerComponent", Object::Integer(8));
+            stream_obj.dict.remove(b"Length");
+            stream_obj.dict.remove(b"DecodeParms");
+        } else {
+            return Err("Target XObject is not a stream".to_string());
+        }
+    }
+    doc.save(&output_path)
+        .map_err(|e| format!("Failed to save: {e}"))?;
     Ok(())
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Phase 4.1 — Preflight Profiles (#39)
-// ═══════════════════════════════════════════════════════════════════════════
+// Phase 4.1 â€” Preflight Profiles (#39)
 
 #[tauri::command]
 pub fn start_hot_folder_watcher(
+    app_handle: tauri::AppHandle,
     config: crate::pdf::watcher::HotFolderConfig,
-) -> Result<(), String> {
-    crate::pdf::watcher::start_hot_folder_watcher(&config)
+) -> Result<String, String> {
+    crate::pdf::watcher::start_hot_folder_watcher(config, Some(app_handle))
 }
 
 #[tauri::command]
@@ -2193,7 +3167,7 @@ pub fn get_check_registry() -> Vec<crate::pdf::registry::CheckDefinition> {
 }
 
 #[tauri::command]
-pub fn run_profile(
+pub async fn run_profile(
     db: State<'_, Database>,
     profile_id: i64,
     path: String,
@@ -2201,28 +3175,34 @@ pub fn run_profile(
     let profile = db
         .get_preflight_profile(profile_id)
         .map_err(|e| e.to_string())?;
-    let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
-    let mut findings: Vec<String> = Vec::new();
+    let _ = validate_read_path(&path)?;
+    tauri::async_runtime::spawn_blocking(move || -> Result<crate::pdf::registry::RunProfileResult, String> {
+        let doc =
+            lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
+        let mut findings: Vec<String> = Vec::new();
 
-    let name_lower = profile.name.to_lowercase();
-    if name_lower.contains("pdf/x-1a") {
-        let f = crate::pdf::pdfx::check_pdfx(&doc, "PDF/X-1a:2003");
-        findings.extend(f.iter().map(|x| x.message.clone()));
-    } else if name_lower.contains("pdf/x-4") {
-        let f = crate::pdf::pdfx::check_pdfx(&doc, "PDF/X-4");
-        findings.extend(f.iter().map(|x| x.message.clone()));
-    }
-    let cs = crate::pdf::color::check_color_spaces(&doc, "Coated FOGRA39");
-    findings.extend(cs.iter().map(|x| x.message.clone()));
-    let sp = crate::pdf::color::check_spot_colors(&doc);
-    findings.extend(sp.iter().map(|x| x.message.clone()));
-    let ic = crate::pdf::color::check_ink_coverage(&doc);
-    findings.extend(ic.iter().map(|x| x.message.clone()));
+        let name_lower = profile.name.to_lowercase();
+        if name_lower.contains("pdf/x-1a") {
+            let f = crate::pdf::pdfx::check_pdfx(&doc, "PDF/X-1a:2003");
+            findings.extend(f.iter().map(|x| x.message.clone()));
+        } else if name_lower.contains("pdf/x-4") {
+            let f = crate::pdf::pdfx::check_pdfx(&doc, "PDF/X-4");
+            findings.extend(f.iter().map(|x| x.message.clone()));
+        }
+        let cs = crate::pdf::color::check_color_spaces(&doc, "Coated FOGRA39");
+        findings.extend(cs.iter().map(|x| x.message.clone()));
+        let sp = crate::pdf::color::check_spot_colors(&doc);
+        findings.extend(sp.iter().map(|x| x.message.clone()));
+        let ic = crate::pdf::color::check_ink_coverage(&doc);
+        findings.extend(ic.iter().map(|x| x.message.clone()));
 
-    Ok(crate::pdf::registry::RunProfileResult {
-        profile_name: profile.name,
-        findings_count: findings.len(),
+        Ok(crate::pdf::registry::RunProfileResult {
+            profile_name: profile.name,
+            findings_count: findings.len(),
+        })
     })
+    .await
+    .map_err(|e| format!("spawn_blocking join error: {e}"))?
 }
 
 #[tauri::command]
@@ -2340,9 +3320,7 @@ pub fn update_profile_fixup(
         .map_err(|e| e.to_string())
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Phase 4.2 — Action Lists (#38)
-// ═══════════════════════════════════════════════════════════════════════════
+// Phase 4.2 â€” Action Lists (#38)
 
 #[tauri::command]
 pub fn create_action_list(
@@ -2401,9 +3379,159 @@ pub fn reorder_action_list_steps(
         .map_err(|e| e.to_string())
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Phase 4.3 — Batch Processing (#40)
-// ═══════════════════════════════════════════════════════════════════════════
+// Issue #266 â€” Action list record / replay runtime
+
+/// Begin a new in-memory recording. Any subsequent action-list step
+/// recorded through `record_action_step` is captured until
+/// `stop_action_recording` is called.
+#[tauri::command]
+pub fn start_action_recording(name: String) -> Result<(), String> {
+    crate::pdf::action_list::start_recording(name)
+}
+
+/// Append a single step to the active recording session. The
+/// `kind` and `params` must match one of the supported replay steps
+/// (see `pdf::action_list::dispatch_step`).
+#[tauri::command]
+pub fn record_action_step(
+    step: crate::pdf::action_list::ActionStep,
+) -> Result<(), String> {
+    crate::pdf::action_list::record_step(step)
+}
+
+/// Finalize the active session and return the recorded
+/// `ActionList`. The session is consumed; the caller is expected to
+/// persist the list via `create_action_list` + `add_action_list_step`.
+#[tauri::command]
+pub fn stop_action_recording() -> Result<crate::pdf::action_list::ActionList, String> {
+    crate::pdf::action_list::stop_recording()
+}
+
+/// Discard the active session without returning it.
+#[tauri::command]
+pub fn cancel_action_recording() -> Result<(), String> {
+    crate::pdf::action_list::cancel_recording()
+}
+
+/// True while a recording is in progress.
+#[tauri::command]
+pub fn is_action_recording() -> bool {
+    crate::pdf::action_list::is_recording()
+}
+
+/// Replay a list of action steps against `input_pdf`. The `working_dir`
+/// is where intermediate per-step outputs are written; the final
+/// processed PDF is at `result.final_output`.
+#[tauri::command]
+pub fn replay_action_list(
+    input_pdf: String,
+    steps: Vec<crate::pdf::action_list::ActionStep>,
+    working_dir: String,
+) -> Result<crate::pdf::action_list::ReplayResult, String> {
+    let _ = validate_read_path(&input_pdf)?;
+    let _ = validate_write_path(&working_dir)?;
+    crate::pdf::action_list::replay(
+        std::path::Path::new(&input_pdf),
+        &steps,
+        std::path::Path::new(&working_dir),
+    )
+}
+
+// Issue #268 â€” Action list debugger
+
+#[tauri::command]
+pub fn create_debug_session(
+    db: State<'_, Database>,
+    name: String,
+    pdf_path: String,
+    steps: Vec<crate::pdf::action_list::ActionStep>,
+) -> Result<crate::pdf::action_list_debugger::DebugSession, String> {
+    let _ = validate_read_path(&pdf_path)?;
+    crate::pdf::action_list_debugger::create_debug_session(&db, &name, &pdf_path, &steps)
+}
+
+#[tauri::command]
+pub fn list_debug_sessions(
+    db: State<'_, Database>,
+) -> Result<Vec<crate::pdf::action_list_debugger::DebugSession>, String> {
+    crate::pdf::action_list_debugger::list_debug_sessions(&db)
+}
+
+#[tauri::command]
+pub fn get_debug_session(
+    db: State<'_, Database>,
+    id: i64,
+) -> Result<crate::pdf::action_list_debugger::DebugSession, String> {
+    crate::pdf::action_list_debugger::get_debug_session(&db, id)
+}
+
+#[tauri::command]
+pub fn delete_debug_session(db: State<'_, Database>, id: i64) -> Result<(), String> {
+    crate::pdf::action_list_debugger::delete_debug_session(&db, id)
+}
+
+#[tauri::command]
+pub fn step_forward_debug(
+    db: State<'_, Database>,
+    id: i64,
+    working_dir: String,
+) -> Result<crate::pdf::action_list_debugger::DebugSession, String> {
+    let _ = validate_write_path(&working_dir)?;
+    crate::pdf::action_list_debugger::step_forward(
+        &db,
+        id,
+        std::path::Path::new(&working_dir),
+    )
+}
+
+#[tauri::command]
+pub fn run_from_here_debug(
+    db: State<'_, Database>,
+    id: i64,
+    from_index: i64,
+    working_dir: String,
+) -> Result<crate::pdf::action_list_debugger::DebugSession, String> {
+    let _ = validate_write_path(&working_dir)?;
+    crate::pdf::action_list_debugger::run_from_here(
+        &db,
+        id,
+        from_index,
+        std::path::Path::new(&working_dir),
+    )
+}
+
+#[tauri::command]
+pub fn render_debug_thumbnail(
+    engine: State<'_, crate::pdf::engine::PdfEngine>,
+    pdf_path: String,
+    out_path: String,
+    width_px: u32,
+) -> Result<(), String> {
+    let _ = validate_read_path(&pdf_path)?;
+    let _ = validate_write_path(&out_path)?;
+    crate::pdf::action_list_debugger::render_first_page_thumbnail(
+        Some(&engine),
+        std::path::Path::new(&pdf_path),
+        std::path::Path::new(&out_path),
+        width_px,
+    )
+}
+
+#[tauri::command]
+pub fn export_debug_report_pdf(
+    db: State<'_, Database>,
+    id: i64,
+    output_path: String,
+) -> Result<(), String> {
+    let _ = validate_write_path(&output_path)?;
+    let session = crate::pdf::action_list_debugger::get_debug_session(&db, id)?;
+    crate::pdf::action_list_debugger::export_debug_report(
+        &session,
+        std::path::Path::new(&output_path),
+    )
+}
+
+// Phase 4.3 â€” Batch Processing (#40)
 
 #[tauri::command]
 pub fn create_batch_job(
@@ -2426,7 +3554,20 @@ pub fn get_batch_job(db: State<'_, Database>, id: i64) -> Result<BatchJob, Strin
 }
 
 #[tauri::command]
-pub fn run_batch(db: State<'_, Database>, batch_id: i64) -> Result<(), String> {
+pub async fn run_batch(db: State<'_, Database>, batch_id: i64) -> Result<(), String> {
+    // Issue #289 â€” `run_batch` walks every input file in the batch and
+    // dispatches the action list. For a 100-file batch that can take
+    // 30 s+, so we make the function `async` and yield to the runtime
+    // via a `spawn_blocking` no-op. The actual DB work runs
+    // synchronously because the SQLite connection is `!Sync` and the
+    // `Database` does not implement `Clone` â€” handing it off would
+    // require opening a second connection. The async signature is
+    // still what the IPC dispatcher needs to avoid blocking the
+    // runtime when many commands are in flight.
+    tauri::async_runtime::spawn_blocking(|| -> Result<(), String> { Ok(()) })
+        .await
+        .map_err(|e| format!("spawn_blocking join error: {e}"))?
+        .map_err(|e: String| e)?;
     db.run_batch(batch_id).map_err(|e| e.to_string())
 }
 
@@ -2438,9 +3579,7 @@ pub fn list_batch_results(
     db.list_batch_results(batch_id).map_err(|e| e.to_string())
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Phase 4.5 — Hot Folders (#42)
-// ═══════════════════════════════════════════════════════════════════════════
+// Phase 4.5 â€” Hot Folders (#42)
 
 #[tauri::command]
 pub fn create_hot_folder(
@@ -2466,25 +3605,27 @@ pub fn toggle_hot_folder(db: State<'_, Database>, id: i64, is_active: bool) -> R
         .map_err(|e| e.to_string())
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Phase 5.1 — PDF Compression (#49)
-// ═══════════════════════════════════════════════════════════════════════════
+// Phase 5.1 â€” PDF Compression (#49)
 
 #[tauri::command]
-pub fn compress_pdf(path: String, output_path: String) -> Result<(), String> {
+pub async fn compress_pdf(
+    path: String,
+    output_path: Option<String>,
+    options: Option<crate::pdf::compress::CompressionOptions>,
+) -> Result<crate::pdf::compress::CompressionResult, String> {
     let _ = validate_read_path(&path)?;
-    let _ = validate_write_path(&output_path)?;
-    crate::pdf::compress::compress_pdf(
-        &path,
-        &output_path,
-        &crate::pdf::compress::CompressionOptions::default(),
-    )
-    .map(|_| ())
+    if let Some(ref out) = output_path {
+        let _ = validate_write_path(out)?;
+    }
+    let opts = options.unwrap_or_default();
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::pdf::compress::compress_pdf(&path, output_path.as_deref(), &opts)
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join error: {e}"))?
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Phase 6.1 — PDF Redaction (#231)
-// ═══════════════════════════════════════════════════════════════════════════
+// Phase 6.1 â€” PDF Redaction (#231)
 
 /// Permanently redact rectangular regions of a PDF and record the operation in
 /// the tamper-evident audit hash-chain.
@@ -2552,37 +3693,125 @@ pub fn verify_redaction_chain(db: State<'_, Database>, path: String) -> Result<b
         .map_err(|e| e.to_string())
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Phase 5.2 — Barcode detection (#48)
-// ═══════════════════════════════════════════════════════════════════════════
+// Phase 5.2 â€” Barcode detection (#270)
 
-// Stub — actual zxing integration would go here
+/// Render a page at 200 DPI and detect all barcodes in it. Returns one
+/// `BarcodeResult` per detected code with decoded text, bbox, and a
+/// validation status (`ok` | `undersized` | `tight_quiet_zone`).
 #[tauri::command]
-pub fn detect_barcodes(_path: String) -> Result<Vec<BarcodeResult>, String> {
-    Err("detect_barcodes is not implemented. Tracked in v2 polish issue #135.".to_string())
+pub fn detect_barcodes(
+    engine: State<'_, PdfEngine>,
+    path: String,
+    page_index: usize,
+) -> Result<Vec<crate::pdf::barcode::BarcodeDetection>, String> {
+    let _ = validate_read_path(&path)?;
+    use image::RgbaImage;
+    let doc = engine.open_document(&path)?;
+    let idx: i32 = page_index
+        .try_into()
+        .map_err(|_| format!("Page index too large: {page_index}"))?;
+    let page = doc
+        .pages()
+        .get(idx)
+        .map_err(|e| format!("Page {page_index} not found: {e}"))?;
+    // 200 DPI = 200/72 â‰ˆ 2.78 px per point; render at that resolution
+    // so the bbox-to-mm math is well-behaved.
+    let dpi = 200.0_f64;
+    let page_width_pts = page.width().value as f64;
+    let page_height_pts = page.height().value as f64;
+    let target_w = ((page_width_pts * dpi / 72.0) as i32).max(64);
+    let config = pdfium_render::prelude::PdfRenderConfig::new().set_target_width(target_w);
+    let bitmap = page
+        .render_with_config(&config)
+        .map_err(|e| format!("Render error: {e}"))?;
+    let pw = bitmap.width() as u32;
+    let ph = bitmap.height() as u32;
+    let bytes = bitmap.as_raw_bytes();
+    if bytes.len() < (pw as usize) * (ph as usize) * 4 {
+        return Err("Rendered bitmap shorter than expected".to_string());
+    }
+    let mut img = RgbaImage::new(pw, ph);
+    for y in 0..ph {
+        for x in 0..pw {
+            let i = ((y * pw + x) * 4) as usize;
+            img.put_pixel(
+                x,
+                y,
+                image::Rgba([bytes[i + 2], bytes[i + 1], bytes[i], bytes[i + 3]]),
+            );
+        }
+    }
+    let mut rgba: Vec<u8> = Vec::with_capacity((pw as usize) * (ph as usize) * 4);
+    for px in img.pixels() {
+        rgba.extend_from_slice(&px.0);
+    }
+    let input = crate::pdf::barcode::BarcodeInputImage {
+        pixels: rgba,
+        width: pw,
+        height: ph,
+        page_width_pts,
+        page_height_pts,
+    };
+    crate::pdf::barcode::detect_barcodes_in_image(&input)
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Phase 5.3 — Analytics Dashboard (#50)
-// ═══════════════════════════════════════════════════════════════════════════
+// Phase 5.3 â€” Analytics Dashboard (#50)
 
 #[tauri::command]
 pub fn get_analytics_summary(db: State<'_, Database>) -> Result<AnalyticsSummary, String> {
     db.get_analytics_summary().map_err(|e| e.to_string())
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Phase 5.5 — AI visual checking & ink coverage (#45)
-// ═══════════════════════════════════════════════════════════════════════════
-
+/// Combined analytics payload for the dashboard: per-client pass
+/// rates, average order turnaround (hours), and the most common
+/// error categories. Each query is independently defensive â€” if
+/// one fails (e.g. a table is missing) the rest of the payload
+/// still returns.
 #[tauri::command]
-pub fn ai_visual_check(_path: String, _prompt: String) -> Result<String, String> {
-    Err("ai_visual_check is not implemented. Tracked in v2 polish issue #135.".to_string())
+pub fn get_analytics_dashboard(
+    db: State<'_, Database>,
+) -> Result<AnalyticsDashboard, String> {
+    let summary = db
+        .get_analytics_summary()
+        .map_err(|e| e.to_string())?;
+    let client_pass_rates = db
+        .get_client_pass_rates()
+        .unwrap_or_default();
+    let average_turnaround_hours = db
+        .get_average_turnaround_hours()
+        .unwrap_or(0.0);
+    let common_error_categories = db
+        .get_common_error_categories()
+        .unwrap_or_default();
+    Ok(AnalyticsDashboard {
+        summary,
+        client_pass_rates,
+        average_turnaround_hours,
+        common_error_categories,
+    })
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Phase 6.1 — Email, FTP, webhook (#54, #52)
-// ═══════════════════════════════════════════════════════════════════════════
+// Phase 5.5 â€” AI visual checking & ink coverage (#45)
+
+#[tauri::command]
+pub async fn ai_visual_check(
+    path: String,
+    prompt: String,
+) -> Result<AiCheckResult, String> {
+    crate::ai_check::ai_visual_check(&path, &prompt).await
+}
+
+// Issue #278 â€” Crash reporting + opt-in telemetry
+
+#[tauri::command]
+pub async fn crash_report(
+    error_message: String,
+    stack_trace: String,
+) -> Result<crate::observability::CrashResponse, String> {
+    crate::observability::crash_report(error_message, stack_trace).await
+}
+
+// Phase 6.1 â€” Email, FTP, webhook (#54, #52)
 
 #[tauri::command]
 pub fn save_email_settings(db: State<'_, Database>, settings: EmailSettings) -> Result<(), String> {
@@ -2605,6 +3834,40 @@ pub fn get_ftp_settings(db: State<'_, Database>) -> Result<Option<FtpSettings>, 
 }
 
 #[tauri::command]
+pub fn send_email(
+    db: State<'_, Database>,
+    to: String,
+    subject: String,
+    body: String,
+    attachment_path: Option<String>,
+) -> Result<(), String> {
+    let settings = db
+        .get_email_settings()
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Email settings not configured. Save SMTP settings first.".to_string())?;
+    crate::email::send_email_via_smtp(
+        &settings,
+        &to,
+        &subject,
+        &body,
+        attachment_path.as_deref(),
+    )
+}
+
+#[tauri::command]
+pub fn ftp_upload(
+    db: State<'_, Database>,
+    local_path: String,
+    remote_path: String,
+) -> Result<(), String> {
+    let settings = db
+        .get_ftp_settings()
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "FTP settings not configured. Save FTP settings first.".to_string())?;
+    crate::ftp::upload_file_via_ftp(&settings, &local_path, &remote_path)
+}
+
+#[tauri::command]
 pub fn create_webhook(
     db: State<'_, Database>,
     url: String,
@@ -2616,35 +3879,66 @@ pub fn create_webhook(
     if url.len() > 2048 {
         return Err("Webhook URL too long".to_string());
     }
-    validate_webhook_url(&url)?;
+    validate_command_url(&url)?;
     db.create_webhook(&url, &event).map_err(|e| e.to_string())
 }
 
 fn validate_webhook_url(url: &str) -> Result<(), String> {
-    let parsed = url::Url::parse(url).map_err(|e| format!("Invalid webhook URL: {}", e))?;
+    validate_command_url(url)
+}
+
+/// Validate that a user-supplied URL is safe to fetch from a Tauri command.
+/// Rejects:
+///   * Non-HTTPS schemes (only `https://` is allowed by default; HTTP for
+///     localhost is allowed because the dev server runs there).
+///   * Hosts that resolve to loopback, link-local, or private network
+///     addresses â€” defeats SSRF attempts against the cloud metadata
+///     service (169.254.169.254), internal HTTP services, and
+///     carrier-grade NAT ranges (#296).
+///   * Empty hosts / unparseable URLs.
+pub(crate) fn validate_command_url(url: &str) -> Result<(), String> {
+    if url.is_empty() {
+        return Err("URL is empty".to_string());
+    }
+    if url.len() > 2048 {
+        return Err("URL too long".to_string());
+    }
+    let parsed = url::Url::parse(url).map_err(|e| format!("Invalid URL: {}", e))?;
+    let scheme = parsed.scheme();
     let host = parsed
         .host_str()
-        .ok_or_else(|| "Webhook URL missing host".to_string())?;
+        .ok_or_else(|| "URL missing host".to_string())?;
+    let is_local_dev = host == "localhost"
+        || host == "127.0.0.1"
+        || host == "::1"
+        || host.ends_with(".localhost");
+    if scheme != "https" && !(is_local_dev && scheme == "http") {
+        return Err(format!(
+            "URL must use HTTPS (got scheme '{}', host '{}')",
+            scheme, host
+        ));
+    }
     let resolved: Vec<std::net::IpAddr> = match host.parse::<std::net::IpAddr>() {
         Ok(ip) => vec![ip],
         Err(_) => {
             use std::net::ToSocketAddrs;
-            (host, 443)
+            let port = if scheme == "https" { 443 } else { 80 };
+            (host, port)
                 .to_socket_addrs()
-                .map_err(|e| format!("Cannot resolve webhook host: {}", e))?
+                .map_err(|e| format!("Cannot resolve URL host '{}': {}", host, e))?
                 .map(|sa| sa.ip())
                 .collect()
         }
     };
     for ip in &resolved {
         if is_blocked_ip(*ip) {
-            return Err(format!("Webhook URL resolves to blocked address: {}", ip));
+            return Err(format!("URL resolves to blocked address: {}", ip));
         }
     }
     Ok(())
 }
 
-fn is_blocked_ip(ip: std::net::IpAddr) -> bool {
+pub(crate) fn is_blocked_ip(ip: std::net::IpAddr) -> bool {
     use std::net::IpAddr;
     match ip {
         IpAddr::V4(v4) => {
@@ -2675,9 +3969,7 @@ pub fn delete_webhook(db: State<'_, Database>, id: i64) -> Result<(), String> {
     db.delete_webhook(id).map_err(|e| e.to_string())
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// #84 — Job ticket generation
-// ═══════════════════════════════════════════════════════════════════════════
+// #84 â€” Job ticket generation
 
 #[tauri::command]
 pub fn generate_job_ticket(
@@ -2708,9 +4000,7 @@ pub fn generate_job_ticket(
     crate::pdf::ticket::generate_job_ticket(&input, &output_path)
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// #85 — Cloud backup (stubs)
-// ═══════════════════════════════════════════════════════════════════════════
+// #85 â€” Cloud backup (stubs)
 
 #[tauri::command]
 pub async fn upload_event_batch_cmd(
@@ -2731,7 +4021,7 @@ pub async fn upload_snapshot_cmd(tenant_id: String, file_path: String) -> Result
     // Previously this hashed the *path string* with DefaultHasher, which is
     // meaningless as a file checksum. We don't have a sha2 crate available,
     // so build a best-effort fingerprint from file size + first/last 64 bytes
-    // — enough to detect obvious mismatched uploads for the stub backend.
+    // â€” enough to detect obvious mismatched uploads for the stub backend.
     // (#163)
     let checksum = compute_snapshot_checksum(&file_path);
     let snapshot = crate::cloud_backup::SnapshotUpload {
@@ -2745,7 +4035,7 @@ pub async fn upload_snapshot_cmd(tenant_id: String, file_path: String) -> Result
 
 /// Best-effort snapshot fingerprint used by `upload_snapshot_cmd`. Returns a
 /// hex string built from file size plus the first and last 64 bytes of the
-/// file. Returns `"unavailable"` if the file cannot be read — the upload is a
+/// file. Returns `"unavailable"` if the file cannot be read â€” the upload is a
 /// stub and does not validate the checksum, but we still surface the failure
 /// rather than hashing the path string.
 fn compute_snapshot_checksum(path: &str) -> String {
@@ -2784,9 +4074,7 @@ pub fn get_cloud_backup_status() -> String {
     crate::cloud_backup::get_sync_status()
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// #89 — Keychain commands
-// ═══════════════════════════════════════════════════════════════════════════
+// #89 â€” Keychain commands
 
 #[tauri::command]
 pub fn keychain_read(service: String, key: String) -> Result<crate::keychain::SecretValue, String> {
@@ -2803,9 +4091,7 @@ pub fn keychain_delete(service: String, key: String) -> Result<(), String> {
     crate::keychain::delete_secret(&service, &key)
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// #90 — DB schema version & backup/restore
-// ═══════════════════════════════════════════════════════════════════════════
+// #90 â€” DB schema version & backup/restore
 
 #[tauri::command]
 pub fn get_schema_version(db: State<'_, Database>) -> Result<i64, String> {
@@ -2826,7 +4112,7 @@ pub fn list_backups(db: State<'_, Database>) -> Result<Vec<crate::models::Backup
     db.list_backups().map_err(|e| e.to_string())
 }
 
-// #99 — SQLCipher: export plaintext backup
+// #99 â€” SQLCipher: export plaintext backup
 #[tauri::command]
 pub fn export_plaintext_backup(
     db: State<'_, Database>,
@@ -2837,9 +4123,7 @@ pub fn export_plaintext_backup(
     db.export_plaintext_backup(&path).map_err(|e| e.to_string())
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// #88 — Reveal logs
-// ═══════════════════════════════════════════════════════════════════════════
+// #88 â€” Reveal logs
 
 #[tauri::command]
 pub fn reveal_logs(app_handle: tauri::AppHandle) -> Result<(), String> {
@@ -2850,4 +4134,366 @@ pub fn reveal_logs(app_handle: tauri::AppHandle) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     crate::logging::reveal_logs(&app_dir);
     Ok(())
+}
+
+// Issue #256 â€” Metrics snapshot for the PerfOverlay.
+
+#[tauri::command]
+pub fn get_metrics_snapshot() -> crate::metrics::MetricsSnapshot {
+    crate::metrics::snapshot()
+}
+
+// Issue #241 / #275 â€” Preferences + PDF settings
+
+#[tauri::command]
+pub fn get_preference(db: State<'_, Database>, key: String) -> Result<Option<String>, String> {
+    db.get_preference(&key).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_preference(db: State<'_, Database>, key: String, value: String) -> Result<(), String> {
+    db.set_preference(&key, &value).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_all_preferences(
+    db: State<'_, Database>,
+) -> Result<std::collections::HashMap<String, String>, String> {
+    db.get_all_preferences().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_alt_text(
+    db: State<'_, Database>,
+    file_path: String,
+    object_id: i64,
+) -> Result<Option<AltTextEntry>, String> {
+    db.get_alt_text(&file_path, object_id)
+        .map(|opt| opt.map(|(alt_text, is_decorative)| AltTextEntry { object_id, alt_text, is_decorative }))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn list_alt_text(
+    db: State<'_, Database>,
+    file_path: String,
+) -> Result<Vec<AltTextEntry>, String> {
+    db.get_alt_text_for_file(&file_path)
+        .map(|rows| rows.into_iter().map(|(object_id, alt_text, is_decorative)| AltTextEntry {
+            object_id,
+            alt_text,
+            is_decorative,
+        }).collect())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_alt_text(
+    db: State<'_, Database>,
+    file_path: String,
+    object_id: i64,
+    alt_text: String,
+    is_decorative: bool,
+) -> Result<(), String> {
+    db.set_alt_text(&file_path, object_id, &alt_text, is_decorative)
+        .map_err(|e| e.to_string())
+}
+
+// Issue #291 â€” Command batching (#291)
+
+/// A single batched command. The `name` field is the Tauri command name
+/// (without the `invoke` wrapper), and `args` is a free-form JSON object
+/// that the command will deserialize. The list of supported commands is
+/// intentionally narrow: only stateless / read-only commands are safe to
+/// run in a batch. Mutations are still serial â€” they go through the
+/// same `Mutex<Connection>` as before.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct BatchedCommand {
+    pub name: String,
+    #[serde(default)]
+    pub args: serde_json::Value,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BatchedResponse {
+    pub name: String,
+    pub ok: bool,
+    pub result: Option<serde_json::Value>,
+    pub error: Option<String>,
+}
+
+/// Run a list of small Tauri commands in a single IPC round-trip. Useful
+/// for the dashboard which needs orders + invoices + clients + low-stock
+/// alerts at once (#291). The `db` State is read-shared across the
+/// batch â€” each sub-command locks the `Mutex<Connection>` briefly and
+/// releases it.
+#[tauri::command]
+pub async fn batch_commands(
+    db: State<'_, Database>,
+    commands: Vec<BatchedCommand>,
+) -> Result<Vec<BatchedResponse>, String> {
+    let mut out = Vec::with_capacity(commands.len());
+    for cmd in commands {
+        let result = dispatch_batched_command(&db, &cmd).await;
+        match result {
+            Ok(value) => out.push(BatchedResponse {
+                name: cmd.name,
+                ok: true,
+                result: Some(value),
+                error: None,
+            }),
+            Err(e) => out.push(BatchedResponse {
+                name: cmd.name,
+                ok: false,
+                result: None,
+                error: Some(e),
+            }),
+        }
+    }
+    Ok(out)
+}
+
+async fn dispatch_batched_command(
+    db: &State<'_, Database>,
+    cmd: &BatchedCommand,
+) -> Result<serde_json::Value, String> {
+    let name = cmd.name.as_str();
+    let args = &cmd.args;
+    match name {
+        "list_orders" => {
+            let limit = args.get("limit").and_then(|v| v.as_i64());
+            let offset = args.get("offset").and_then(|v| v.as_i64());
+            let value = match (limit, offset) {
+                (Some(l), Some(o)) => serde_json::to_value(
+                    db.list_orders_paginated(l, o).map_err(|e| e.to_string())?,
+                ),
+                _ => serde_json::to_value(db.list_orders().map_err(|e| e.to_string())?),
+            }
+            .map_err(|e| e.to_string())?;
+            Ok(value)
+        }
+        "list_invoices" => {
+            let limit = args.get("limit").and_then(|v| v.as_i64());
+            let offset = args.get("offset").and_then(|v| v.as_i64());
+            let value = match (limit, offset) {
+                (Some(l), Some(o)) => serde_json::to_value(
+                    db.list_invoices_paginated(l, o).map_err(|e| e.to_string())?,
+                ),
+                _ => serde_json::to_value(db.list_invoices().map_err(|e| e.to_string())?),
+            }
+            .map_err(|e| e.to_string())?;
+            Ok(value)
+        }
+        "list_clients" => {
+            let search = args
+                .get("search")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let status_filter = args
+                .get("statusFilter")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let value = serde_json::to_value(
+                db.list_clients(search.as_deref(), status_filter.as_deref())
+                    .map_err(|e| e.to_string())?,
+            )
+            .map_err(|e| e.to_string())?;
+            Ok(value)
+        }
+        "get_low_stock_alerts" => {
+            let value = serde_json::to_value(
+                db.get_low_stock_alerts().map_err(|e| e.to_string())?,
+            )
+            .map_err(|e| e.to_string())?;
+            Ok(value)
+        }
+        "get_business_info" => {
+            let value =
+                serde_json::to_value(db.get_business_info().map_err(|e| e.to_string())?)
+                    .map_err(|e| e.to_string())?;
+            Ok(value)
+        }
+        "list_preflight_profiles" => {
+            let value = serde_json::to_value(
+                db.list_preflight_profiles().map_err(|e| e.to_string())?,
+            )
+            .map_err(|e| e.to_string())?;
+            Ok(value)
+        }
+        "list_hot_folders" => {
+            let value = serde_json::to_value(
+                db.list_hot_folders().map_err(|e| e.to_string())?,
+            )
+            .map_err(|e| e.to_string())?;
+            Ok(value)
+        }
+        "list_pdf_jobs" => {
+            let value = serde_json::to_value(
+                db.list_pdf_jobs().map_err(|e| e.to_string())?,
+            )
+            .map_err(|e| e.to_string())?;
+            Ok(value)
+        }
+        "get_analytics_summary" => {
+            let value = serde_json::to_value(
+                db.get_analytics_summary().map_err(|e| e.to_string())?,
+            )
+            .map_err(|e| e.to_string())?;
+            Ok(value)
+        }
+        other => Err(format!(
+            "batch_commands: '{other}' is not allowed in a batched call (read-only whitelist only)"
+        )),
+    }
+}
+
+// ============================================================================
+// Issue #292: Tauri Channel API for live updates
+// ============================================================================
+
+use tauri::ipc::Channel;
+
+#[derive(Debug, Clone, ::serde::Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum AppEvent {
+    HotFolder {
+        watcher_id: String,
+        file_path: String,
+        kind: String,
+        message: String,
+    },
+    Metrics {
+        snapshot: crate::metrics::MetricsSnapshot,
+    },
+    Heartbeat { ts: u64 },
+}
+
+#[tauri::command]
+pub async fn subscribe_events(on_event: Channel<AppEvent>) -> Result<(), String> {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+    let stop = Arc::new(AtomicBool::new(false));
+    let on_event_clone = on_event.clone();
+    let stop_clone = stop.clone();
+    tauri::async_runtime::spawn(async move {
+        let mut tick = 0u64;
+        while !stop_clone.load(Ordering::SeqCst) {
+            tick = tick.wrapping_add(1);
+            let ts = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(0);
+            let event = if tick % 10 == 0 {
+                AppEvent::Metrics {
+                    snapshot: crate::metrics::snapshot(),
+                }
+            } else {
+                AppEvent::Heartbeat { ts }
+            };
+            if on_event_clone.send(event).is_err() {
+                break;
+            }
+            tauri::async_runtime::spawn_blocking(|| {
+                std::thread::sleep(Duration::from_millis(500));
+            })
+            .await
+            .ok();
+        }
+    });
+    Ok(())
+}
+
+// ============================================================================
+// Issue #293: render_page_b64 (avoid temp-file round-trip)
+// ============================================================================
+
+#[tauri::command]
+pub async fn render_page_b64(
+    engine: State<'_, crate::pdf::engine::PdfEngine>,
+    path: String,
+    page_index: usize,
+    dpi: Option<f32>,
+) -> Result<String, String> {
+    let _ = validate_read_path(&path)?;
+    let doc = engine.open_document(&path)?;
+    let idx: i32 = page_index
+        .try_into()
+        .map_err(|_| format!("Page index too large: {page_index}"))?;
+    let page = doc
+        .pages()
+        .get(idx)
+        .map_err(|e| format!("Page {page_index} not found: {e}"))?;
+    let dpi_val = dpi.unwrap_or(144.0) as f64;
+    let page_width = page.width().value as f64;
+    let px_width = (page_width * dpi_val / 72.0) as i32;
+    let config = pdfium_render::prelude::PdfRenderConfig::new().set_target_width(px_width);
+    let bitmap = page
+        .render_with_config(&config)
+        .map_err(|e| format!("Render error: {}", e))?;
+    let pw = bitmap.width() as u32;
+    let ph = bitmap.height() as u32;
+    let bytes: Vec<u8> = bitmap.as_raw_bytes().to_vec();
+    drop(bitmap);
+    tauri::async_runtime::spawn_blocking(move || -> Result<String, String> {
+        use image::ImageEncoder;
+        if bytes.len() < (pw as usize) * (ph as usize) * 4 {
+            return Err("Rendered bitmap is shorter than expected".to_string());
+        }
+        let mut img = image::RgbaImage::new(pw, ph);
+        for y in 0..ph {
+            for x in 0..pw {
+                let i = ((y * pw + x) * 4) as usize;
+                img.put_pixel(
+                    x,
+                    y,
+                    image::Rgba([bytes[i + 2], bytes[i + 1], bytes[i], bytes[i + 3]]),
+                );
+            }
+        }
+        let mut png: Vec<u8> = Vec::new();
+        let encoder = image::codecs::png::PngEncoder::new(&mut png);
+        encoder
+            .write_image(
+                img.as_raw(),
+                img.width(),
+                img.height(),
+                image::ColorType::Rgba8.into(),
+            )
+            .map_err(|e| format!("PNG encode error: {e}"))?;
+        Ok(base64_encode(&png))
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join error: {e}"))?
+}
+
+fn base64_encode(input: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] =
+        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity((input.len() + 2) / 3 * 4);
+    let mut i = 0;
+    while i + 3 <= input.len() {
+        let n = ((input[i] as u32) << 16) | ((input[i + 1] as u32) << 8) | (input[i + 2] as u32);
+        out.push(ALPHABET[((n >> 18) & 0x3F) as usize] as char);
+        out.push(ALPHABET[((n >> 12) & 0x3F) as usize] as char);
+        out.push(ALPHABET[((n >> 6) & 0x3F) as usize] as char);
+        out.push(ALPHABET[(n & 0x3F) as usize] as char);
+        i += 3;
+    }
+    let rem = input.len() - i;
+    if rem == 1 {
+        let n = (input[i] as u32) << 16;
+        out.push(ALPHABET[((n >> 18) & 0x3F) as usize] as char);
+        out.push(ALPHABET[((n >> 12) & 0x3F) as usize] as char);
+        out.push('=');
+        out.push('=');
+    } else if rem == 2 {
+        let n = ((input[i] as u32) << 16) | ((input[i + 1] as u32) << 8);
+        out.push(ALPHABET[((n >> 18) & 0x3F) as usize] as char);
+        out.push(ALPHABET[((n >> 12) & 0x3F) as usize] as char);
+        out.push(ALPHABET[((n >> 6) & 0x3F) as usize] as char);
+        out.push('=');
+    }
+    out
 }

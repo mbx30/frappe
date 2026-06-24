@@ -3,9 +3,11 @@
 use rusqlite::{params, Connection, Result};
 use std::path::PathBuf;
 use std::sync::Mutex;
+use std::time::Duration;
 
 use fs2::FileExt;
 
+use crate::cache::QueryCache;
 use crate::models::*;
 
 /// Backend enforcement of the order status state machine (#160).
@@ -143,6 +145,20 @@ pub struct Database {
     /// Acquired in `Database::new` via `fs2::FileExt::try_lock_exclusive`;
     /// the lock is released when the file handle is dropped at process exit.
     _db_lock: Mutex<Option<std::fs::File>>,
+    /// 30 s TTL cache for the PDF job list. Invalidated on save / delete
+    /// (#252). The dashboard polls this list every few seconds when on the
+    /// PDF view screen; without a cache the read is the hottest path in the
+    /// app.
+    pdf_jobs_cache: QueryCache<Vec<PdfSummary>>,
+    /// 60 s TTL cache for the preflight profile list. Invalidated on any
+    /// create / delete / update of a profile (#252).
+    preflight_profiles_cache: QueryCache<Vec<PreflightProfile>>,
+    /// 30 s TTL cache for the hot-folder list. Invalidated on any
+    /// create / delete / toggle of a hot folder (#252).
+    hot_folders_cache: QueryCache<Vec<HotFolder>>,
+    /// 60 s TTL cache for the singleton business-info row (#252). The
+    /// business header is rendered on every PDF so this is on the hot path.
+    business_info_cache: QueryCache<Option<BusinessInfo>>,
 }
 
 impl Database {
@@ -241,6 +257,10 @@ impl Database {
                 key,
                 db_path: db_path.clone(),
                 _db_lock: Mutex::new(Some(lock_file)),
+                pdf_jobs_cache: QueryCache::with_ttl(4, Duration::from_secs(30)),
+                preflight_profiles_cache: QueryCache::with_ttl(8, Duration::from_secs(60)),
+                hot_folders_cache: QueryCache::with_ttl(4, Duration::from_secs(30)),
+                business_info_cache: QueryCache::with_ttl(2, Duration::from_secs(60)),
             };
             db.initialize_schema()?;
             return Ok(db);
@@ -256,6 +276,10 @@ impl Database {
                 key: DatabaseKey::generate(), // placeholder
                 db_path: db_path.clone(),
                 _db_lock: Mutex::new(Some(lock_file)),
+                pdf_jobs_cache: QueryCache::with_ttl(4, Duration::from_secs(30)),
+                preflight_profiles_cache: QueryCache::with_ttl(8, Duration::from_secs(60)),
+                hot_folders_cache: QueryCache::with_ttl(4, Duration::from_secs(30)),
+                business_info_cache: QueryCache::with_ttl(2, Duration::from_secs(60)),
             };
             db.initialize_schema()?;
             Ok(db)
@@ -329,6 +353,10 @@ impl Database {
             key: key.clone(),
             db_path: db_path.clone(),
             _db_lock: Mutex::new(Some(lock_file)),
+            pdf_jobs_cache: QueryCache::with_ttl(4, Duration::from_secs(30)),
+            preflight_profiles_cache: QueryCache::with_ttl(8, Duration::from_secs(60)),
+            hot_folders_cache: QueryCache::with_ttl(4, Duration::from_secs(30)),
+            business_info_cache: QueryCache::with_ttl(2, Duration::from_secs(60)),
         })
     }
 
@@ -776,7 +804,26 @@ impl Database {
                 BEFORE DELETE ON redaction_operations
             BEGIN
                 SELECT RAISE(ABORT, 'redaction_operations is append-only');
-            END;"
+            END;
+            -- Key/value preference store (#241, #275). One row per
+            -- preference name. Updated in place via INSERT OR REPLACE.
+            CREATE TABLE IF NOT EXISTS preferences (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL DEFAULT '',
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            -- Image alt-text overrides (#234). One row per
+            -- (file_path, object_id) tuple; updated via INSERT OR
+            -- REPLACE. Used by the alt-text renderer and the
+            -- AccessibilityCheck sweep.
+            CREATE TABLE IF NOT EXISTS image_alt_text (
+                file_path TEXT NOT NULL,
+                object_id INTEGER NOT NULL,
+                alt_text TEXT NOT NULL DEFAULT '',
+                is_decorative INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                PRIMARY KEY (file_path, object_id)
+            );"
         )?;
         // Seed built-in preflight profiles
         let profile_count: i64 = conn
@@ -1398,6 +1445,9 @@ impl Database {
     }
 
     pub fn get_business_info(&self) -> Result<Option<BusinessInfo>> {
+        if let Some(cached) = self.business_info_cache.get("row") {
+            return Ok(cached);
+        }
         let conn = self
             .conn
             .lock()
@@ -1414,11 +1464,16 @@ impl Database {
                 completed_onboarding: row.get::<_, i32>(4)? != 0,
             })
         });
-        match result {
+        drop(stmt);
+        drop(conn);
+        let result = match result {
             Ok(info) => Ok(Some(info)),
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(e),
-        }
+        }?;
+        self.business_info_cache.put("row", result.clone());
+        crate::metrics::inc_db_query();
+        Ok(result)
     }
 
     pub fn save_business_info(
@@ -1437,6 +1492,8 @@ impl Database {
              VALUES (1, ?1, ?2, ?3, ?4, 1, datetime('now'))",
             params![business_name, industry, company_size, order_number_prefix],
         )?;
+        drop(conn);
+        self.business_info_cache.invalidate_all();
         Ok(())
     }
 
@@ -3253,10 +3310,17 @@ impl Database {
             "INSERT INTO pdf_jobs (file_path, file_name, page_count, pdf_version, file_size_bytes, title, creator, producer, is_encrypted, creation_date) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![summary.file_path, summary.file_name, summary.page_count as i64, summary.pdf_version, summary.file_size_bytes as i64, summary.title, summary.creator, summary.producer, summary.is_encrypted as i32, summary.creation_date],
         )?;
-        Ok(conn.last_insert_rowid())
+        let id = conn.last_insert_rowid();
+        drop(conn);
+        self.pdf_jobs_cache.invalidate_all();
+        crate::metrics::inc_db_query();
+        Ok(id)
     }
 
     pub fn list_pdf_jobs(&self) -> Result<Vec<PdfSummary>> {
+        if let Some(cached) = self.pdf_jobs_cache.get("list") {
+            return Ok(cached);
+        }
         let conn = self
             .conn
             .lock()
@@ -3279,7 +3343,12 @@ impl Database {
                 creation_date: row.get(10)?,
             })
         })?;
-        rows.collect()
+        let result: Vec<PdfSummary> = rows.collect::<Result<Vec<_>>>()?;
+        drop(stmt);
+        drop(conn);
+        self.pdf_jobs_cache.put("list", result.clone());
+        crate::metrics::inc_db_query();
+        Ok(result)
     }
 
     pub fn delete_pdf_job(&self, id: i64) -> Result<()> {
@@ -3288,6 +3357,8 @@ impl Database {
             .lock()
             .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute("DELETE FROM pdf_jobs WHERE id = ?1", params![id])?;
+        drop(conn);
+        self.pdf_jobs_cache.invalidate_all();
         Ok(())
     }
 
@@ -3400,6 +3471,8 @@ impl Database {
             params![input.name, input.description],
         )?;
         let id = conn.last_insert_rowid();
+        drop(conn);
+        self.preflight_profiles_cache.invalidate_all();
         Ok(PreflightProfile {
             id,
             name: input.name.clone(),
@@ -3411,6 +3484,9 @@ impl Database {
     }
 
     pub fn list_preflight_profiles(&self) -> Result<Vec<PreflightProfile>> {
+        if let Some(cached) = self.preflight_profiles_cache.get("list") {
+            return Ok(cached);
+        }
         let conn = self
             .conn
             .lock()
@@ -3428,7 +3504,12 @@ impl Database {
                 updated_at: row.get(5)?,
             })
         })?;
-        rows.collect()
+        let result: Vec<PreflightProfile> = rows.collect::<Result<Vec<_>>>()?;
+        drop(stmt);
+        drop(conn);
+        self.preflight_profiles_cache.put("list", result.clone());
+        crate::metrics::inc_db_query();
+        Ok(result)
     }
 
     pub fn get_preflight_profile(&self, id: i64) -> Result<PreflightProfile> {
@@ -3461,6 +3542,8 @@ impl Database {
             "DELETE FROM preflight_profiles WHERE id = ?1 AND is_builtin = 0",
             params![id],
         )?;
+        drop(conn);
+        self.preflight_profiles_cache.invalidate_all();
         Ok(())
     }
 
@@ -3494,6 +3577,8 @@ impl Database {
             "UPDATE profile_checks SET enabled = ?1, severity = ?2 WHERE id = ?3",
             params![enabled as i32, severity, check_id],
         )?;
+        drop(conn);
+        self.preflight_profiles_cache.invalidate_all();
         Ok(())
     }
 
@@ -3526,6 +3611,8 @@ impl Database {
             "UPDATE profile_fixups SET enabled = ?1, params = ?2 WHERE id = ?3",
             params![enabled as i32, params, fixup_id],
         )?;
+        drop(conn);
+        self.preflight_profiles_cache.invalidate_all();
         Ok(())
     }
 
@@ -3863,6 +3950,8 @@ impl Database {
             params![input.name, input.watch_path, input.action_list_id, input.output_path, input.file_pattern],
         )?;
         let id = conn.last_insert_rowid();
+        drop(conn);
+        self.hot_folders_cache.invalidate_all();
         Ok(HotFolder {
             id,
             name: input.name.clone(),
@@ -3877,6 +3966,9 @@ impl Database {
     }
 
     pub fn list_hot_folders(&self) -> Result<Vec<HotFolder>> {
+        if let Some(cached) = self.hot_folders_cache.get("list") {
+            return Ok(cached);
+        }
         let conn = self
             .conn
             .lock()
@@ -3897,7 +3989,12 @@ impl Database {
                 updated_at: row.get(8)?,
             })
         })?;
-        rows.collect()
+        let result: Vec<HotFolder> = rows.collect::<Result<Vec<_>>>()?;
+        drop(stmt);
+        drop(conn);
+        self.hot_folders_cache.put("list", result.clone());
+        crate::metrics::inc_db_query();
+        Ok(result)
     }
 
     pub fn delete_hot_folder(&self, id: i64) -> Result<()> {
@@ -3906,6 +4003,8 @@ impl Database {
             .lock()
             .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute("DELETE FROM hot_folders WHERE id = ?1", params![id])?;
+        drop(conn);
+        self.hot_folders_cache.invalidate_all();
         Ok(())
     }
 
@@ -3918,10 +4017,104 @@ impl Database {
             "UPDATE hot_folders SET is_active = ?1, updated_at = datetime('now') WHERE id = ?2",
             params![is_active as i32, id],
         )?;
+        drop(conn);
+        self.hot_folders_cache.invalidate_all();
         Ok(())
     }
 
     // ── Phase 5.3 — Analytics (#50) ────────────────────────────────────
+
+    /// Per-client pass-rate analytics. Returns one row per client with
+    /// their total preflight runs, error count, and pass rate as a
+    /// fraction in [0, 1]. Pass rate is derived from the
+    /// `preflight_run_summary` table joined to `orders` and `clients`.
+    pub fn get_client_pass_rates(&self) -> Result<Vec<ClientPassRate>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let mut stmt = match conn.prepare(
+            "SELECT COALESCE(c.name, 'Unassigned') AS client_name,
+                    COUNT(pr.id) AS runs,
+                    COALESCE(SUM(pr.total_errors), 0) AS errors,
+                    COALESCE(SUM(pr.total_warnings), 0) AS warnings
+             FROM preflight_run_summary pr
+             LEFT JOIN orders o ON pr.job_id = o.id
+             LEFT JOIN clients c ON o.client_id = c.id
+             GROUP BY client_name
+             ORDER BY runs DESC
+             LIMIT 100",
+        ) {
+            Ok(s) => s,
+            Err(_) => return Ok(Vec::new()),
+        };
+        let rows = stmt
+            .query_map([], |row| {
+                let runs: i64 = row.get(1)?;
+                let errors: i64 = row.get(2)?;
+                let pass_rate = if runs > 0 {
+                    (runs - errors) as f64 / runs as f64
+                } else {
+                    0.0
+                };
+                Ok(ClientPassRate {
+                    client_name: row.get(0)?,
+                    runs,
+                    errors,
+                    warnings: row.get(3)?,
+                    pass_rate,
+                })
+            })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.into())
+    }
+
+    /// Average turnaround (in hours) for orders that have both a
+    /// created_at and a shipped_at timestamp. Returns 0.0 when no
+    /// orders have shipped yet.
+    pub fn get_average_turnaround_hours(&self) -> Result<f64> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let avg_hours: Option<f64> = conn
+            .query_row(
+                "SELECT AVG((julianday(shipped_at) - julianday(created_at)) * 24.0)
+                 FROM orders
+                 WHERE shipped_at IS NOT NULL
+                   AND created_at IS NOT NULL
+                   AND shipped_at >= created_at",
+                [],
+                |row| row.get(0),
+            )
+            .ok()
+            .flatten();
+        Ok(avg_hours.unwrap_or(0.0))
+    }
+
+    /// Common error categories ranked by frequency, capped at 25.
+    /// Pulls from `preflight_findings` where severity = 'error'.
+    pub fn get_common_error_categories(&self) -> Result<Vec<(String, i64)>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let mut stmt = match conn.prepare(
+            "SELECT check_name, COUNT(*) AS cnt
+             FROM preflight_findings
+             WHERE severity = 'error'
+             GROUP BY check_name
+             ORDER BY cnt DESC
+             LIMIT 25",
+        ) {
+            Ok(s) => s,
+            Err(_) => return Ok(Vec::new()),
+        };
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.into())
+    }
 
     pub fn get_analytics_summary(&self) -> Result<AnalyticsSummary> {
         let conn = self
@@ -4196,6 +4389,113 @@ impl Database {
             })
         })?;
         rows.collect()
+    }
+
+    // ── Preferences (#241, #275) ──────────────────────────────────────────
+
+    pub fn get_preference(&self, key: &str) -> Result<Option<String>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let result = conn.query_row(
+            "SELECT value FROM preferences WHERE key = ?1",
+            params![key],
+            |row| row.get::<_, String>(0),
+        );
+        match result {
+            Ok(v) => Ok(Some(v)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn set_preference(&self, key: &str, value: &str) -> Result<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        conn.execute(
+            "INSERT OR REPLACE INTO preferences (key, value, updated_at) VALUES (?1, ?2, datetime('now'))",
+            params![key, value],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_all_preferences(&self) -> Result<std::collections::HashMap<String, String>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let mut stmt = conn.prepare("SELECT key, value FROM preferences")?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        let mut out = std::collections::HashMap::new();
+        for row in rows {
+            let (k, v) = row?;
+            out.insert(k, v);
+        }
+        Ok(out)
+    }
+
+    // ── Alt text (#234) ─────────────────────────────────────────────
+
+    pub fn get_alt_text(
+        &self,
+        file_path: &str,
+        object_id: i64,
+    ) -> Result<Option<(String, bool)>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let result = conn.query_row(
+            "SELECT alt_text, is_decorative FROM image_alt_text WHERE file_path = ?1 AND object_id = ?2",
+            params![file_path, object_id],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, i32>(1)? != 0)),
+        );
+        match result {
+            Ok(v) => Ok(Some(v)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn get_alt_text_for_file(&self, file_path: &str) -> Result<Vec<(i64, String, bool)>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let mut stmt = conn.prepare(
+            "SELECT object_id, alt_text, is_decorative FROM image_alt_text WHERE file_path = ?1 ORDER BY object_id",
+        )?;
+        let rows = stmt.query_map(params![file_path], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i32>(2)? != 0,
+            ))
+        })?;
+        rows.collect()
+    }
+
+    pub fn set_alt_text(
+        &self,
+        file_path: &str,
+        object_id: i64,
+        alt_text: &str,
+        is_decorative: bool,
+    ) -> Result<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        conn.execute(
+            "INSERT OR REPLACE INTO image_alt_text (file_path, object_id, alt_text, is_decorative, updated_at) VALUES (?1, ?2, ?3, ?4, datetime('now'))",
+            params![file_path, object_id, alt_text, is_decorative as i32],
+        )?;
+        Ok(())
     }
 
     // ── Schema versioning (#90) ──────────────────────────────────────────

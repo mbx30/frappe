@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import type { BleedFinding } from '../../types'
+import { t } from '../../i18n'
 
 interface BleedCheckProps {
   filePath: string
@@ -42,9 +43,9 @@ export default function BleedCheck({ filePath, findings, minBleedMm, onMinBleedC
     try {
       const outPath = filePath.replace(/\.pdf$/i, `_bleed${fixAmount}mm.pdf`)
       await invoke('add_bleed', { path: filePath, amountMm: fixAmount, outputPath: outPath })
-      setFixResult(`Bleed added — saved as ${outPath}`)
+      setFixResult(t('bleed.check.added', { path: outPath }))
     } catch (e) {
-      setFixResult(`Error: ${e}`)
+      setFixResult(t('bleed.check.error', { msg: String(e) }))
     } finally {
       setFixing(false)
     }
@@ -53,15 +54,15 @@ export default function BleedCheck({ filePath, findings, minBleedMm, onMinBleedC
   return (
     <div className="pdf-preflight-section">
       <div className="pdf-preflight-header">
-        <h4>Bleed Check</h4>
+        <h4>{t('bleed.check.title')}</h4>
         <label className="dpi-slider">
-          Min bleed: {minBleedMm}mm
+          {t('bleed.check.min_bleed', { n: minBleedMm })}
           <input type="range" min="1" max="10" step="0.5" value={minBleedMm}
             onChange={e => handleSliderChange(Number(e.target.value))} />
         </label>
       </div>
       {findings.length === 0 ? (
-        <p className="pdf-empty">No bleed data available.</p>
+        <p className="pdf-empty">{t('bleed.check.no_data')}</p>
       ) : (
         <div className="bleed-table">
           {findings.map((f, i) => (
@@ -74,7 +75,7 @@ export default function BleedCheck({ filePath, findings, minBleedMm, onMinBleedC
                   {' '}B:{formatMm(f.bleed_bottom_mm)} L:{formatMm(f.bleed_left_mm)}
                 </span>
               ) : (
-                <span className="pdf-finding-message">No BleedBox</span>
+                <span className="pdf-finding-message">{t('bleed.check.no_bleed_box')}</span>
               )}
             </div>
           ))}
@@ -83,12 +84,12 @@ export default function BleedCheck({ filePath, findings, minBleedMm, onMinBleedC
       {(hasErrors || findings.some(f => f.severity === 'warning')) && (
         <div className="bleed-fixup">
           <div className="bleed-fixup-row">
-            <label>Add bleed:</label>
+            <label>{t('bleed.check.add')}</label>
             <input type="number" min="1" max="20" step="0.5" value={fixAmount}
               onChange={e => setFixAmount(Number(e.target.value))} />
-            <span>mm</span>
+            <span>{t('bleed.check.unit')}</span>
             <button className="btn btn-secondary" onClick={handleAddBleed} disabled={fixing}>
-              {fixing ? 'Adding...' : 'Add Bleed & Save'}
+              {fixing ? t('bleed.check.adding') : t('bleed.check.add_save')}
             </button>
           </div>
           {fixResult && <p className="bleed-result">{fixResult}</p>}

@@ -7,6 +7,7 @@ import ColorConversionPanel from './preflight/ColorConversionPanel'
 import MakePdfXWizard from './preflight/MakePdfXWizard'
 import CertifiedVersionPanel from './preflight/CertifiedVersionPanel'
 import RedactionLayer from './RedactionLayer'
+import { makeKeyDownHandler, buildShortcuts, formatShortcut, type ShortcutHandlers } from './preflight/keyboardShortcuts'
 import { t } from '../i18n'
 import './PDFView.css'
 
@@ -105,10 +106,25 @@ function ThumbnailStrip({ filePath, pageCount, currentPage, onSelectPage }: {
   )
 }
 
+function rgbToHex(r: number, g: number, b: number): string {
+  return (
+    '#' +
+    r.toString(16).padStart(2, '0') +
+    g.toString(16).padStart(2, '0') +
+    b.toString(16).padStart(2, '0')
+  );
+}
+
 function PageViewer({ filePath, pageIndex }: { filePath: string; pageIndex: number }) {
   const [renderUrl, setRenderUrl] = useState<string | null>(null)
   const [zoom, setZoom] = useState(100)
   const [loading, setLoading] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [eyedropperActive, setEyedropperActive] = useState(false)
+  const [sampledColor, setSampledColor] = useState<{ r: number; g: number; b: number; hex: string } | null>(null)
+  const [showPlateView, setShowPlateView] = useState(false)
+  const imgRef = useRef<HTMLImageElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let cancelled = false
@@ -132,17 +148,141 @@ function PageViewer({ filePath, pageIndex }: { filePath: string; pageIndex: numb
     return () => { cancelled = true }
   }, [filePath, pageIndex, zoom])
 
+  // Fullscreen: enter / leave on the page-viewer container so the
+  // browser's ESC handler works for free.
+  const toggleFullscreen = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    if (!document.fullscreenElement) {
+      el.requestFullscreen?.().then(() => setIsFullscreen(true)).catch(() => {});
+    } else {
+      document.exitFullscreen?.().then(() => setIsFullscreen(false)).catch(() => {});
+    }
+  }, []);
+
+  useEffect(() => {
+    const handler = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener('fullscreenchange', handler);
+    return () => document.removeEventListener('fullscreenchange', handler);
+  }, []);
+
+  // Eyedropper: when active, the next click on the page reads
+  // the pixel at the click coordinates from a 1×1 canvas.
+  const handleImageClick = useCallback(
+    (e: React.MouseEvent<HTMLImageElement>) => {
+      if (!eyedropperActive || !imgRef.current) return;
+      const img = imgRef.current;
+      const rect = img.getBoundingClientRect();
+      const xPx = Math.floor(((e.clientX - rect.left) / rect.width) * img.naturalWidth);
+      const yPx = Math.floor(((e.clientY - rect.top) / rect.height) * img.naturalHeight);
+      const canvas = document.createElement('canvas');
+      canvas.width = 1;
+      canvas.height = 1;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      try {
+        ctx.drawImage(img, xPx, yPx, 1, 1, 0, 0, 1, 1);
+        const data = ctx.getImageData(0, 0, 1, 1).data;
+        const r = data[0];
+        const g = data[1];
+        const b = data[2];
+        setSampledColor({ r, g, b, hex: rgbToHex(r, g, b) });
+      } catch {
+        // Cross-origin images throw on getImageData; we silently fail
+        // and leave sampledColor unchanged.
+      }
+      setEyedropperActive(false);
+    },
+    [eyedropperActive]
+  );
+
   return (
-    <div className="page-viewer" role="region" aria-label={`Page ${pageIndex + 1}`}>
+    <div
+      ref={containerRef}
+      className={`page-viewer${isFullscreen ? ' page-viewer--fullscreen' : ''}`}
+      role="region"
+      aria-label={`Page ${pageIndex + 1}`}
+    >
       <div className="page-toolbar" role="toolbar" aria-label={t('pdf.tools')}>
         <button aria-label={t('pdf.zoom_out')} onClick={() => setZoom((z) => Math.max(25, z - 25))}>−</button>
         <span className="zoom-label" aria-live="polite">{zoom}%</span>
         <button aria-label={t('pdf.zoom_in')} onClick={() => setZoom((z) => Math.min(400, z + 25))}>+</button>
         <button aria-label={t('pdf.fit_width')} onClick={() => setZoom(100)}>{t('pdf.fit_width')}</button>
+        <button
+          aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+          className={isFullscreen ? 'btn-active' : ''}
+          onClick={toggleFullscreen}
+          title="Fullscreen (F)"
+        >
+          ⛶
+        </button>
+        <button
+          aria-label="Eyedropper"
+          className={eyedropperActive ? 'btn-active' : ''}
+          onClick={() => {
+            setEyedropperActive((v) => !v);
+            setSampledColor(null);
+          }}
+          title="Eyedropper — click the page to sample a color"
+        >
+          💧
+        </button>
+        <button
+          aria-label="Plate view"
+          className={showPlateView ? 'btn-active' : ''}
+          onClick={() => setShowPlateView((v) => !v)}
+          title="Plate view — separations preview"
+        >
+          ⬚
+        </button>
+        {eyedropperActive && (
+          <span className="eyedropper-hint" role="status">
+            Click the page to sample…
+          </span>
+        )}
+        {sampledColor && (
+          <span
+            className="eyedropper-swatch"
+            role="status"
+            style={{ backgroundColor: sampledColor.hex }}
+            title={`rgb(${sampledColor.r}, ${sampledColor.g}, ${sampledColor.b})`}
+          >
+            {sampledColor.hex}
+          </span>
+        )}
       </div>
       <div className="page-canvas" role="img" aria-label={`Page ${pageIndex + 1}`}>
         {loading && <div className="page-loading" role="status">{t('pdf.rendering')}</div>}
-        {renderUrl && <img src={convertFileSrc(renderUrl)} alt={`Page ${pageIndex + 1}`} style={{ maxWidth: `${zoom}%` }} />}
+        {renderUrl && (
+          <img
+            ref={imgRef}
+            src={convertFileSrc(renderUrl)}
+            alt={`Page ${pageIndex + 1}`}
+            style={{
+              maxWidth: `${zoom}%`,
+              cursor: eyedropperActive ? 'crosshair' : 'default',
+            }}
+            onClick={handleImageClick}
+            crossOrigin="anonymous"
+          />
+        )}
+        {showPlateView && renderUrl && (
+          <div className="plate-view-overlay" aria-label="Plate view (separations preview)">
+            <div className="plate-view-label">Plate View</div>
+            <div className="plate-view-channels">
+              {(['C', 'M', 'Y', 'K'] as const).map((c) => (
+                <div key={c} className={`plate-view-channel plate-view-channel--${c.toLowerCase()}`}>
+                  <span className="plate-view-channel-letter">{c}</span>
+                </div>
+              ))}
+            </div>
+            <p className="plate-view-help">
+              Conceptual separations preview. Real CMYK plate generation
+              requires a per-channel render through pdfium; this overlay
+              indicates which separations would be produced.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -160,6 +300,10 @@ export default function PDFView({ summary, jobs, onOpenFile, onSaveJob, onDelete
   const [showCertified, setShowCertified] = useState(false)
   const [showRedact, setShowRedact] = useState(false)
   const [redactNotice, setRedactNotice] = useState<string | null>(null)
+  const [showFind, setShowFind] = useState(false)
+  const [findQuery, setFindQuery] = useState('')
+  const [findResult, setFindResult] = useState<string | null>(null)
+  const [showHelp, setShowHelp] = useState(false)
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setCurrentPage(0); setShowViewer(false); setPreflightResult(null); setShowReport(false); setShowRedact(false); setRedactNotice(null) }, [summary?.file_path])
 
@@ -177,36 +321,72 @@ export default function PDFView({ summary, jobs, onOpenFile, onSaveJob, onDelete
     }
   }, [summary])
 
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (e.key === 'ArrowLeft' && showViewer) {
-      setCurrentPage(p => Math.max(0, p - 1))
-    } else if (e.key === 'ArrowRight' && showViewer) {
-      setCurrentPage(p => Math.min((summary?.page_count ?? 1) - 1, p + 1))
-    } else if (e.key === 'Home' && showViewer) {
-      e.preventDefault()
-      setCurrentPage(0)
-    } else if (e.key === 'End' && showViewer) {
-      e.preventDefault()
-      setCurrentPage((summary?.page_count ?? 1) - 1)
-    } else if (e.key === '+' || e.key === '=') {
-      // Zoom in handled by PageViewer's internal state, but we can trigger a re-render
-    } else if (e.key === '-') {
-      // Zoom out
-    } else if (e.key === 'o' && (e.ctrlKey || e.metaKey)) {
-      e.preventDefault()
-      onOpenFile()
-    } else if (e.key === 'r' && (e.ctrlKey || e.metaKey)) {
-      e.preventDefault()
-      runFullPreflight()
-    } else if (e.key === 'Escape') {
-      setShowReport(false)
+  const handleFind = useCallback(async () => {
+    if (!summary) return
+    setShowFind(true)
+    setFindResult(null)
+  }, [summary])
+
+  const submitFind = useCallback(async () => {
+    if (!summary || !findQuery.trim()) return
+    try {
+      const matches = await invoke<TextMatch[]>('search_text', { path: summary.file_path, query: findQuery, caseSensitive: false })
+      setFindResult(matches.length === 0
+        ? 'No matches found.'
+        : `${matches.length} match${matches.length === 1 ? '' : 'es'} on page ${matches[0].page_index + 1}.`)
+      if (matches.length > 0 && showViewer) {
+        setCurrentPage(matches[0].page_index)
+      }
+    } catch (e) {
+      setFindResult(`Search failed: ${e}`)
     }
-  }, [showViewer, summary?.page_count, onOpenFile, runFullPreflight])
+  }, [summary, findQuery, showViewer])
+
+  const handleKeyDown = useCallback(makeKeyDownHandler({
+    onFind: handleFind,
+    onSaveProfile: () => onSaveJob(),
+    onRunProfile: runFullPreflight,
+    onOpen: onOpenFile,
+    onRunPreflight: runFullPreflight,
+    onNextPage: () => showViewer && setCurrentPage(p => Math.min((summary?.page_count ?? 1) - 1, p + 1)),
+    onPrevPage: () => showViewer && setCurrentPage(p => Math.max(0, p - 1)),
+    onFirstPage: () => showViewer && setCurrentPage(0),
+    onLastPage: () => showViewer && setCurrentPage((summary?.page_count ?? 1) - 1),
+    onFullscreen: () => {
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => undefined)
+      } else {
+        document.documentElement.requestFullscreen().catch(() => undefined)
+      }
+    },
+    onHelp: () => setShowHelp(true),
+  } satisfies ShortcutHandlers), [handleFind, onSaveJob, runFullPreflight, onOpenFile, showViewer, summary?.page_count])
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handleKeyDown])
+
+  useEffect(() => {
+    if (!showFind) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowFind(false)
+        setFindResult(null)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [showFind])
+
+  useEffect(() => {
+    if (!showHelp) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' || e.key === '?') setShowHelp(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [showHelp])
 
   return (
     <div className="pdf-view" role="main" aria-label={t('pdf.tools')}>
@@ -377,6 +557,45 @@ export default function PDFView({ summary, jobs, onOpenFile, onSaveJob, onDelete
               </div>
             )}
             <PageViewer filePath={summary.file_path} pageIndex={currentPage} />
+          </div>
+        )}
+        {showFind && (
+          <div className="pdf-find-overlay" role="dialog" aria-label="Find text">
+            <div className="pdf-find-panel">
+              <label htmlFor="pdf-find-input" className="pdf-label">Find in document</label>
+              <input
+                id="pdf-find-input"
+                className="form-input"
+                autoFocus
+                value={findQuery}
+                onChange={(e) => setFindQuery(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') submitFind() }}
+                placeholder="Search text..."
+              />
+              {findResult && <p className="pdf-find-result">{findResult}</p>}
+              <div className="pdf-find-actions">
+                <button className="btn btn-secondary" onClick={() => { setShowFind(false); setFindResult(null) }}>Close</button>
+                <button className="btn btn-primary" onClick={submitFind}>Find</button>
+              </div>
+            </div>
+          </div>
+        )}
+        {showHelp && (
+          <div className="pdf-find-overlay" role="dialog" aria-label="Keyboard shortcuts">
+            <div className="pdf-find-panel pdf-help-panel">
+              <h4>Keyboard shortcuts</h4>
+              <ul>
+                {buildShortcuts().map((s, i) => (
+                  <li key={i}>
+                    <kbd>{formatShortcut(s)}</kbd>
+                    <span>{s.description}</span>
+                  </li>
+                ))}
+              </ul>
+              <div className="pdf-find-actions">
+                <button className="btn btn-primary" onClick={() => setShowHelp(false)}>Close</button>
+              </div>
+            </div>
           </div>
         )}
       </div>

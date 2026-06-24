@@ -2,11 +2,14 @@ import { useState, useEffect, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { Button, Badge, Card } from '../design-system'
 import type { ArtApproval } from '../types'
+import ArtworkPreview from './ArtworkPreview'
 import './ArtApprovalPanel.css'
 
 interface ArtApprovalPanelProps {
   orderId: number
   orderNumber: string
+  onOpenInPdfTools?: (path: string) => void
+  onOpenOrderContext?: () => void
 }
 
 const statusColors: Record<string, 'success' | 'warning' | 'danger' | 'info'> = {
@@ -21,7 +24,7 @@ const statusLabels: Record<string, string> = {
   changes_requested: 'Changes Requested',
 }
 
-export default function ArtApprovalPanel({ orderId, orderNumber }: ArtApprovalPanelProps) {
+export default function ArtApprovalPanel({ orderId, orderNumber, onOpenInPdfTools, onOpenOrderContext }: ArtApprovalPanelProps) {
   const [approvals, setApprovals] = useState<ArtApproval[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [showNewForm, setShowNewForm] = useState(false)
@@ -200,13 +203,22 @@ export default function ArtApprovalPanel({ orderId, orderNumber }: ArtApprovalPa
                   {statusLabels[approval.status] || approval.status}
                 </Badge>
                 <span className="version-date">{approval.submitted_at.split(' ')[0]}</span>
+                {onOpenOrderContext && (
+                  <button
+                    type="button"
+                    className="version-context-link"
+                    onClick={onOpenOrderContext}
+                  >
+                    Order context
+                  </button>
+                )}
               </div>
 
               {approval.file_path && (
-                <div className="version-file">
-                  <span className="file-icon">📄</span>
-                  <span className="file-path">{approval.file_path}</span>
-                </div>
+                <ArtworkPreview
+                  filePath={approval.file_path}
+                  onOpenInPdfTools={onOpenInPdfTools}
+                />
               )}
 
               {approval.staff_notes && (

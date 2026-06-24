@@ -2,6 +2,7 @@ import { useState, useEffect, memo } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { Button, Card, Badge } from '../design-system'
 import type { Invoice } from '../types'
+import { VirtualList } from './common/VirtualList'
 import './InvoiceList.css'
 
 interface InvoiceListProps {
@@ -17,6 +18,8 @@ const statusColors: Record<string, 'success' | 'warning' | 'danger' | 'info'> = 
   overdue: 'danger',
   voided: 'info',
 }
+
+const VIRTUAL_THRESHOLD = 200
 
 export default memo(function InvoiceList({ onCreateNew, onEditInvoice }: InvoiceListProps) {
   const [invoices, setInvoices] = useState<Invoice[]>([])
@@ -111,31 +114,63 @@ export default memo(function InvoiceList({ onCreateNew, onEditInvoice }: Invoice
             <div className="col-status">Status</div>
             <div className="col-actions">Actions</div>
           </div>
-          {invoices.map((invoice) => (
-            <div key={invoice.id} className="table-row" onClick={() => onEditInvoice(invoice.id)}>
-              <div className="col-number">
-                <span className="invoice-number">{invoice.invoice_number}</span>
+          {invoices.length > VIRTUAL_THRESHOLD ? (
+            <VirtualList
+              items={invoices}
+              itemHeight={56}
+              height={520}
+              keyExtractor={(i) => i.id}
+              renderItem={(invoice) => (
+                <div className="table-row" onClick={() => onEditInvoice(invoice.id)}>
+                  <div className="col-number">
+                    <span className="invoice-number">{invoice.invoice_number}</span>
+                  </div>
+                  <div className="col-date">{formatDate(invoice.issue_date)}</div>
+                  <div className="col-amount">{formatCurrency(invoice.total, invoice.currency)}</div>
+                  <div className="col-status">
+                    <Badge tone={statusColors[invoice.status] || 'info'}>
+                      {invoice.status.replace('-', ' ')}
+                    </Badge>
+                  </div>
+                  <div className="col-actions" onClick={(e) => e.stopPropagation()}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onEditInvoice(invoice.id)}
+                    >
+                      Edit
+                    </Button>
+                  </div>
+                </div>
+              )}
+            />
+          ) : (
+            invoices.map((invoice) => (
+              <div key={invoice.id} className="table-row" onClick={() => onEditInvoice(invoice.id)}>
+                <div className="col-number">
+                  <span className="invoice-number">{invoice.invoice_number}</span>
+                </div>
+                <div className="col-date">{formatDate(invoice.issue_date)}</div>
+                <div className="col-amount">{formatCurrency(invoice.total, invoice.currency)}</div>
+                <div className="col-status">
+                  <Badge
+                    tone={statusColors[invoice.status] || 'info'}
+                  >
+                    {invoice.status.replace('-', ' ')}
+                  </Badge>
+                </div>
+                <div className="col-actions" onClick={(e) => e.stopPropagation()}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onEditInvoice(invoice.id)}
+                  >
+                    Edit
+                  </Button>
+                </div>
               </div>
-              <div className="col-date">{formatDate(invoice.issue_date)}</div>
-              <div className="col-amount">{formatCurrency(invoice.total, invoice.currency)}</div>
-              <div className="col-status">
-                <Badge
-                  tone={statusColors[invoice.status] || 'info'}
-                >
-                  {invoice.status.replace('-', ' ')}
-                </Badge>
-              </div>
-              <div className="col-actions" onClick={(e) => e.stopPropagation()}>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => onEditInvoice(invoice.id)}
-                >
-                  Edit
-                </Button>
-              </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       )}
     </div>

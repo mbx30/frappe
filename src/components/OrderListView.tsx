@@ -1,11 +1,14 @@
 import { memo } from 'react'
 import { Card, Badge } from '../design-system'
 import type { Order } from '../types'
+import { VirtualList } from './common/VirtualList'
 import './OrderListView.css'
 
 interface OrderListViewProps {
   orders: Order[]
 }
+
+const VIRTUAL_THRESHOLD = 200
 
 const statusColors: Record<string, 'success' | 'warning' | 'danger' | 'info'> = {
   prepress: 'info',
@@ -61,12 +64,6 @@ const OrderRow = memo(function OrderRow({ order, isOverdue }: { order: Order; is
 })
 
 function OrderListView({ orders }: OrderListViewProps) {
-  // Issue #189: was module-level — froze at import time, so the app stayed
-  // open past midnight and all date calculations used yesterday's date.
-  // Moved into the component body so it recomputes on every render. The
-  // 1-minute useMemo keying (a real implementation would use a state timer
-  // here) is intentionally omitted to keep this fix minimal; the cost of
-  // `new Date().toISOString()` per render is negligible.
   const todayStr = new Date().toISOString().split('T')[0]
 
   if (orders.length === 0) {
@@ -82,6 +79,8 @@ function OrderListView({ orders }: OrderListViewProps) {
     )
   }
 
+  const useVirtual = orders.length > VIRTUAL_THRESHOLD
+
   return (
     <div className="order-list">
       <div className="list-header">
@@ -93,13 +92,26 @@ function OrderListView({ orders }: OrderListViewProps) {
         <div className="col-notes">Notes</div>
       </div>
 
-      {orders.map((order) => (
-        <OrderRow
-          key={order.id}
-          order={order}
-          isOverdue={order.due_date < todayStr}
+      {useVirtual ? (
+        <VirtualList
+          items={orders}
+          itemHeight={56}
+          height={520}
+          keyExtractor={(o) => o.id}
+          renderItem={(order) => (
+            <OrderRow order={order} isOverdue={order.due_date < todayStr} />
+          )}
+          className="virtual-order-list"
         />
-      ))}
+      ) : (
+        orders.map((order) => (
+          <OrderRow
+            key={order.id}
+            order={order}
+            isOverdue={order.due_date < todayStr}
+          />
+        ))
+      )}
     </div>
   )
 }

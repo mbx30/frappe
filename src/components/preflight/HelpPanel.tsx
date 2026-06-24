@@ -1,4 +1,5 @@
 import { memo } from 'react'
+import { t } from '../../i18n'
 
 interface HelpPanelProps {
   article?: string
@@ -7,9 +8,9 @@ interface HelpPanelProps {
 export default memo(function HelpPanel({ article }: HelpPanelProps) {
   return (
     <div className="help-panel">
-      <h3>Help</h3>
-      <p>Searchable help articles for PDF tooling. (Scaffold for issue #276)</p>
-      {article && <p>Article: {article}</p>}
+      <h3>{t('help.title')}</h3>
+      <p>{t('help.desc')}</p>
+      {article && <p>{t('help.article', { name: article })}</p>}
     </div>
   )
 })

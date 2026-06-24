@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import type { CertifiedVersion } from '../../types'
+import { t } from '../../i18n'
 
 interface CertifiedVersionPanelProps {
   jobId: number | null
@@ -49,51 +50,51 @@ export default function CertifiedVersionPanel({ jobId, filePath }: CertifiedVers
   return (
     <div className="certified-version-panel">
       <div className="pdf-preflight-header">
-        <h4>Certified PDF — Version Tracking</h4>
+        <h4>{t('certified.title')}</h4>
       </div>
 
       {!jobId ? (
-        <p className="pdf-empty">Save the PDF to history first to enable version tracking.</p>
+        <p className="pdf-empty">{t('certified.save_first')}</p>
       ) : (
         <>
           <div className="certified-form">
             <div className="conversion-field">
-              <label className="pdf-label">Author</label>
+              <label className="pdf-label">{t('certified.author')}</label>
               <input
                 type="text"
                 className="form-input"
                 value={author}
                 onChange={e => setAuthor(e.target.value)}
-                placeholder="Your name"
+                placeholder={t('certified.author_placeholder')}
               />
             </div>
             <div className="conversion-field">
-              <label className="pdf-label">Version Comment</label>
+              <label className="pdf-label">{t('certified.comment')}</label>
               <textarea
                 className="form-input"
                 value={comment}
                 onChange={e => setComment(e.target.value)}
-                placeholder="What changed in this version?"
+                placeholder={t('certified.comment_placeholder')}
                 rows={2}
               />
             </div>
             <button className="btn btn-primary" onClick={handleSaveVersion} disabled={saving || !author.trim()}>
-              {saving ? 'Saving...' : 'Save Certified Version'}
+              {saving ? t('certified.saving') : t('certified.save_version')}
             </button>
           </div>
 
           <div className="certified-versions">
-            <h5>Version History</h5>
-            {loading && <p className="pdf-empty">Loading...</p>}
+            <h5>{t('certified.history')}</h5>
+            {loading && <p className="pdf-empty">{t('certified.loading')}</p>}
             {!loading && versions.length === 0 && (
-              <p className="pdf-empty">No versions saved yet.</p>
+              <p className="pdf-empty">{t('certified.none')}</p>
             )}
             {versions.map((v, i) => (
               <div key={v.id} className={`certified-version-item ${i === 0 ? 'certified-version-item--latest' : ''}`}>
                 <div className="certified-version-header">
                   <span className="certified-version-badge">v{v.version_number}</span>
-                  {i === 0 && <span className="certified-version-current">current</span>}
-                  {v.is_signed ? <span className="certified-version-signed">signed</span> : null}
+                  {i === 0 && <span className="certified-version-current">{t('certified.current')}</span>}
+                  {v.is_signed ? <span className="certified-version-signed">{t('certified.signed')}</span> : null}
                 </div>
                 <div className="certified-version-info">
                   <span className="certified-version-author">{v.author}</span>

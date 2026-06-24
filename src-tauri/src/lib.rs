@@ -3,11 +3,17 @@ mod cloud_backup;
 mod cloud_import;
 mod commands;
 mod db;
+mod email;
+mod ftp;
 mod import;
 mod keychain;
 mod logging;
+pub mod metrics;
 mod models;
+mod ai_check;
+mod observability;
 pub mod pdf;
+
 
 use crate::pdf::engine::PdfEngine;
 use db::Database;
@@ -52,7 +58,46 @@ pub fn run() {
                 }
             }
 
+            // Issue #269 — auto-start any active hot folders BEFORE we
+            // move the database into managed state, so the watcher setup
+            // can read the folder list without an extra borrow.
+            {
+                let ah = app.handle().clone();
+                if let Ok(folders) = database.list_hot_folders() {
+                    for folder in folders {
+                        if !folder.is_active {
+                            continue;
+                        }
+                        let cfg = crate::pdf::watcher::HotFolderConfig {
+                            watch_path: folder.watch_path.clone(),
+                            action_list_id: folder.action_list_id,
+                            output_path: folder.output_path.clone(),
+                            file_pattern: folder.file_pattern.clone(),
+                            max_concurrency: None,
+                            max_queue_depth: None,
+                            max_write_retries: None,
+                            stability_poll_ms: None,
+                        };
+                        if let Err(e) =
+                            crate::pdf::watcher::start_hot_folder_watcher(cfg, Some(ah.clone()))
+                        {
+                            tracing::warn!(
+                                "hot folder '{}' failed to start: {}",
+                                folder.name,
+                                e
+                            );
+                        } else {
+                            tracing::info!("hot folder '{}' watcher started", folder.name);
+                        }
+                    }
+                }
+            }
+
             app_handle.manage(database);
+
+            // Issue #256 — record cold-start time once the runtime is ready.
+            metrics::record_cold_start();
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -160,6 +205,7 @@ pub fn run() {
             commands::reorder_pages,
             commands::insert_blank_page,
             commands::list_layers,
+            commands::set_layer_visibility,
             // Phase 3.3
             commands::decode_content_stream,
             commands::encode_content_stream,
@@ -194,6 +240,20 @@ pub fn run() {
             commands::list_action_list_steps,
             commands::delete_action_list_step,
             commands::reorder_action_list_steps,
+            commands::start_action_recording,
+            commands::record_action_step,
+            commands::stop_action_recording,
+            commands::cancel_action_recording,
+            commands::is_action_recording,
+            commands::replay_action_list,
+            commands::create_debug_session,
+            commands::list_debug_sessions,
+            commands::get_debug_session,
+            commands::delete_debug_session,
+            commands::step_forward_debug,
+            commands::run_from_here_debug,
+            commands::render_debug_thumbnail,
+            commands::export_debug_report_pdf,
             // Phase 4.3
             commands::create_batch_job,
             commands::list_batch_jobs,
@@ -217,13 +277,16 @@ pub fn run() {
             commands::detect_barcodes,
             // Phase 5.3
             commands::get_analytics_summary,
+            commands::get_analytics_dashboard,
             // Phase 5.5
             commands::ai_visual_check,
             // Phase 6.1
             commands::save_email_settings,
             commands::get_email_settings,
+            commands::send_email,
             commands::save_ftp_settings,
             commands::get_ftp_settings,
+            commands::ftp_upload,
             commands::create_webhook,
             commands::list_webhooks,
             commands::delete_webhook,
@@ -245,6 +308,17 @@ pub fn run() {
             commands::export_plaintext_backup,
             // #88 — Observability
             commands::reveal_logs,
+            commands::crash_report,
+            // Issue #256 — metrics snapshot for the PerfOverlay.
+            commands::get_metrics_snapshot,
+            // Issue #241 / #275 — Preferences + PDF settings
+            commands::get_preference,
+            commands::set_preference,
+            commands::get_all_preferences,
+            // Issue #234 — Alt text editor
+            commands::get_alt_text,
+            commands::list_alt_text,
+            commands::set_alt_text,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

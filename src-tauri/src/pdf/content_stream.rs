@@ -17,6 +17,26 @@ pub enum ContentToken {
     Unknown(String),
 }
 
+impl ContentToken {
+    /// Render this token back to its source-level representation. For
+    /// most tokens this is just the inner string; for marked-content
+    /// begin it adds the `/MC <</...>> BDC` style; for image-data
+    /// markers it emits the corresponding `BI` / `EI` so the rebuilt
+    /// stream remains a valid PDF content stream.
+    pub fn render(&self) -> String {
+        match self {
+            ContentToken::Operator(s) => s.clone(),
+            ContentToken::Operand(s) => s.clone(),
+            ContentToken::BeginMarkedContent { tag } => format!("/{} BMC", tag),
+            ContentToken::EndMarkedContent => "EMC".to_string(),
+            ContentToken::BeginImageData => "BI".to_string(),
+            ContentToken::EndImageData => "EI".to_string(),
+            ContentToken::Comment(s) => format!("% {s}"),
+            ContentToken::Unknown(s) => s.clone(),
+        }
+    }
+}
+
 pub fn decode_stream(stream: &Stream) -> Result<Vec<u8>, String> {
     let filters = stream.dict.get(b"Filter");
     match filters {

@@ -1,4 +1,5 @@
 import { memo } from 'react'
+import { t } from '../../i18n'
 
 interface BarcodeCheckProps {
   jobId?: number
@@ -7,9 +8,9 @@ interface BarcodeCheckProps {
 export default memo(function BarcodeCheck({ jobId }: BarcodeCheckProps) {
   return (
     <div className="barcode-check">
-      <h3>Barcode Check</h3>
-      <p>Detect and validate barcodes with quiet-zone and size checks. (Scaffold for issue #270)</p>
-      {jobId && <p>Job: {jobId}</p>}
+      <h3>{t('barcode.check.title')}</h3>
+      <p>{t('barcode.check.desc')}</p>
+      {jobId && <p>{t('barcode.check.job', { id: jobId })}</p>}
     </div>
   )
 })

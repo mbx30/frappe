@@ -866,3 +866,97 @@
   font-size: 13px;
   color: var(--text-primary, #333);
 }
+
+.pdf-find-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  z-index: 9999;
+  padding-top: 80px;
+}
+
+.pdf-find-panel {
+  background: var(--surface-card, #fff);
+  border-radius: 8px;
+  padding: 16px 20px;
+  min-width: 360px;
+  max-width: 480px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+.pdf-find-panel h4 {
+  margin: 0 0 12px;
+  font-size: 16px;
+}
+
+.pdf-find-panel ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+}
+
+.pdf-find-panel li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.pdf-find-panel kbd {
+  background: var(--surface-hover, #f0f0f0);
+  border: 1px solid var(--border-default, #ccc);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  min-width: 60px;
+  text-align: center;
+}
+
+.pdf-find-result {
+  font-size: 12px;
+  color: var(--text-secondary, #555);
+  margin: 8px 0 0;
+}
+
+.pdf-find-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.pdf-help-panel {
+  min-width: 420px;
+}
+
+.pdf-settings-desc {
+  margin: 0 0 12px;
+  color: var(--text-secondary, #555);
+  font-size: 13px;
+}
+
+.pdf-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.pdf-settings-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.pdf-settings-message {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--text-secondary, #555);
+}

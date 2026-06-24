@@ -1,5 +1,6 @@
 import type { Workbook } from '../types'
 import { Button } from '../design-system'
+import { RoundedButton } from '../design-system/components/RoundedButton'
 
 interface WorkbookListProps {
   workbooks: Workbook[]
@@ -14,9 +15,9 @@ export default function WorkbookList({ workbooks, activeId, onSelect, onCreate, 
     <div className="sidebar">
       <div className="sidebar-header">
         <h3>Frappe</h3>
-        <Button variant="primary" size="sm" onClick={onCreate}>
+        <RoundedButton variant="primary" size="sm" onClick={onCreate}>
           + New Workbook
-        </Button>
+        </RoundedButton>
       </div>
       <div className="sidebar-list">
         {workbooks.length === 0 && (

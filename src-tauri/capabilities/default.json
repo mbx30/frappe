@@ -1,14 +1,24 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "enables the default permissions",
+  "description": "Minimal capability set: only the permissions actually invoked by the app. See issue #294 / #296.",
   "windows": [
     "main"
   ],
   "permissions": [
     "core:default",
+    "core:event:allow-emit",
+    "core:event:allow-listen",
+    "core:window:allow-close",
+    "core:window:allow-minimize",
+    "core:window:allow-maximize",
+    "core:window:allow-set-title",
+    "core:webview:allow-create-webview-window",
+    "core:path:default",
+    "core:app:default",
     "dialog:default",
     "dialog:allow-open",
-    "dialog:allow-save"
+    "dialog:allow-save",
+    "log:default"
   ]
 }

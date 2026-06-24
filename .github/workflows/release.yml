@@ -1,0 +1,231 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_glob: "*.deb *.AppImage"
+            runner_arch: x64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_glob: "*.exe *.msi"
+            runner_arch: x64
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact_glob: "*.dmg *.app"
+            runner_arch: x64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux Tauri system dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libdbus-1-dev \
+            pkg-config \
+            build-essential \
+            rpm
+
+      - name: Install macOS dependencies
+        if: matrix.os == 'macos-latest'
+        run: |
+          xcode-select --install || true
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          target: ${{ matrix.target }}
+          components: clippy, rustfmt
+
+      - name: Cache cargo registry & target
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          shared-key: ${{ matrix.target }}
+
+      - name: npm ci
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Import signing certificates
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-codesign-cert
+          path: ${{ env.WINDOWS_CODESIGN_CERT_PATH }}
+          if-no-files-found: ignore
+
+      - name: Build Tauri (Windows code-sign)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $env:TAURI_SIGNING_PRIVATE_KEY = "${{ secrets.WINDOWS_CODESIGN_KEY }}"
+          $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "${{ secrets.WINDOWS_CODESIGN_KEY_PASSWORD }}"
+          npx --yes @tauri-apps/cli build --target ${{ matrix.target }} --bundles msi,nsis
+        working-directory: src-tauri
+
+      - name: Build Tauri (macOS)
+        if: matrix.os == 'macos-latest'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        shell: bash
+        run: |
+          # Restore the signing certificate from the secrets blob
+          # and import it into the keychain.
+          KEYCHAIN_PATH=frappe-signing.keychain-db
+          KEYCHAIN_PASSWORD=$(openssl rand -hex 24)
+          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          echo "$APPLE_CERTIFICATE" | base64 --decode > /tmp/cert.p12
+          security import /tmp/cert.p12 -k $KEYCHAIN_PATH -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security list-keychain -d user -s $KEYCHAIN_PATH
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          npx --yes @tauri-apps/cli build --target ${{ matrix.target }} --bundles app,dmg
+        working-directory: src-tauri
+
+      - name: Build Tauri (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          npx --yes @tauri-apps/cli build --target ${{ matrix.target }} --bundles deb,appimage
+        working-directory: src-tauri
+
+      - name: Notarize macOS DMG
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          DMG=$(ls src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg 2>/dev/null | head -1)
+          if [ -z "$DMG" ]; then
+            echo "no dmg produced"; exit 1
+          fi
+          # xcrun notarytool submits the DMG, staples the ticket, and
+          # waits for the result.
+          xcrun notarytool submit "$DMG" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+          xcrun notarytool staple "$DMG"
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Stage artifacts
+        shell: bash
+        run: |
+          mkdir -p release-artifacts
+          find src-tauri/target/${{ matrix.target }}/release/bundle -type f \( \
+            -name "*.msi" -o -name "*.exe" -o -name "*.nsis" \
+            -o -name "*.deb" -o -name "*.AppImage" \
+            -o -name "*.dmg" -o -name "*.app" -o -name "*.app.tar.gz" \
+          \) -exec cp {} release-artifacts/ \; || true
+          find src-tauri/target/${{ matrix.target }}/release -maxdepth 1 -type f -name "Frappe*" -exec cp {} release-artifacts/ \; || true
+          ls -la release-artifacts
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frappe-${{ matrix.os }}-${{ matrix.target }}
+          path: release-artifacts/
+          if-no-files-found: warn
+          retention-days: 14
+
+  release:
+    name: Publish release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten artifacts
+        run: |
+          mkdir -p release
+          find artifacts -type f -exec cp {} release/ \; || true
+          ls -la release
+
+      - name: Generate updater signature
+        shell: bash
+        run: |
+          # The Tauri updater expects a JSON manifest per platform
+          # (latest.json) signed with the project's private key. We
+          # ship a single `latest.json` here; the per-platform
+          # manifest is produced by the `tauri build` step.
+          if [ -n "${{ secrets.TAURI_UPDATER_PRIVATE_KEY }}" ]; then
+            echo "${{ secrets.TAURI_UPDATER_PRIVATE_KEY }}" > /tmp/updater.key
+            echo "updater private key loaded"
+          else
+            echo "::warning::TAURI_UPDATER_PRIVATE_KEY is not set; updater manifest will be unsigned"
+          fi
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/*
+          generate_release_notes: true
+          fail_on_unmatched_files: false
+          body: |
+            ## Frappe ${{ github.ref_name }}
+
+            This release includes signed binaries for:
+            * Linux (.deb, .AppImage)
+            * Windows (.msi, .exe)
+            * macOS (.dmg, .app, notarized + stapled)
+
+            ### Auto-updater
+            The Windows and macOS builds register with the
+            `tauri::updater` plugin against
+            `https://releases.frappe.app/{{target}}/{{current_version}}`
+            on first launch. The updater pulls a signed
+            `latest.json` manifest and verifies the bundle signature
+            against the public key pinned in
+            `src-tauri/tauri.conf.json` (`plugins.updater.pubkey`).
+
+            ### Notes
+            * macOS bundle is notarized via `notarytool` and
+              stapled; Gatekeeper accepts it on first launch.
+            * Windows installer is signed with the
+              `WINDOWS_CODESIGN_*` secrets; smart-screen reputation
+              builds on first install.

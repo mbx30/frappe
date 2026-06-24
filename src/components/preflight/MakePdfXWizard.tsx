@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import type { CombinedPreflightResult, SpotColorFinding } from '../../types'
+import { t } from '../../i18n'
 
 type WizardStep = 'preflight' | 'review' | 'apply' | 'done'
 
@@ -11,9 +12,9 @@ interface MakePdfXWizardProps {
 }
 
 const PROFILE_OPTIONS = [
-  { id: 'x4', label: 'PDF/X-4 (Recommended)', desc: 'Permits live transparency and ICC-based color. Best for modern workflows.' },
-  { id: 'x1a', label: 'PDF/X-1a (Legacy)', desc: 'Flattens transparency and converts to CMYK. Required by some older RIPs.' },
-  { id: 'general', label: 'General Print', desc: 'RGB and TAC>300% as warnings. No OutputIntent required. Best for small shops.' },
+  { id: 'x4', labelKey: 'wizard.profile.x4', descKey: 'wizard.profile.x4.desc' },
+  { id: 'x1a', labelKey: 'wizard.profile.x1a', descKey: 'wizard.profile.x1a.desc' },
+  { id: 'general', labelKey: 'wizard.profile.general', descKey: 'wizard.profile.general.desc' },
 ]
 
 const ICC_PROFILES = [
@@ -125,10 +126,10 @@ export default function MakePdfXWizard({ filePath, preflightResult, onRerunPrefl
     return (
       <div className="pdfx-wizard">
         <div className="pdf-preflight-header">
-          <h4>Make PDF/X Wizard</h4>
+          <h4>{t('wizard.title')}</h4>
         </div>
-        <p className="pdf-empty">Run a preflight check first to see what needs fixing.</p>
-        <button className="btn btn-primary" onClick={handleRunPreflight}>Run Preflight</button>
+        <p className="pdf-empty">{t('wizard.run_preflight_first')}</p>
+        <button className="btn btn-primary" onClick={handleRunPreflight}>{t('wizard.run_preflight')}</button>
       </div>
     )
   }
@@ -138,43 +139,43 @@ export default function MakePdfXWizard({ filePath, preflightResult, onRerunPrefl
       {step === 'preflight' && (
         <>
           <div className="pdfx-wizard-header">
-            <h4>Step 1: Choose Target Profile</h4>
+            <h4>{t('wizard.step.profile')}</h4>
           </div>
           <div className="pdfx-profiles">
             {PROFILE_OPTIONS.map(p => (
               <label key={p.id} className={`pdfx-profile-option ${profile === p.id ? 'pdfx-profile-option--selected' : ''}`}>
                 <input type="radio" name="profile" value={p.id} checked={profile === p.id} onChange={() => setProfile(p.id)} />
                 <div className="pdfx-profile-content">
-                  <span className="pdfx-profile-label">{p.label}</span>
-                  <span className="pdfx-profile-desc">{p.desc}</span>
+                  <span className="pdfx-profile-label">{t(p.labelKey)}</span>
+                  <span className="pdfx-profile-desc">{t(p.descKey)}</span>
                 </div>
               </label>
             ))}
           </div>
 
           <div className="pdfx-summary">
-            <p>Preflight found <strong>{totalErrors} error(s)</strong>.</p>
+            <p>{t('wizard.errors_found', { n: totalErrors })}</p>
             <ul>
-              {hasBleedIssues && <li>⚠ Bleed issues detected — will auto-fix</li>}
-              {hasNoOutputIntent && <li>⚠ No OutputIntent — will add for PDF/X</li>}
-              {hasRgbContent && <li>⚠ RGB content — will convert to CMYK</li>}
-              {!hasBleedIssues && !hasNoOutputIntent && !hasRgbContent && <li>✅ No auto-fixable issues found</li>}
+              {hasBleedIssues && <li>{t('wizard.bleed_warning')}</li>}
+              {hasNoOutputIntent && <li>{t('wizard.no_intent')}</li>}
+              {hasRgbContent && <li>{t('wizard.rgb_warning')}</li>}
+              {!hasBleedIssues && !hasNoOutputIntent && !hasRgbContent && <li>{t('wizard.no_issues')}</li>}
             </ul>
           </div>
 
           <div className="pdfx-fixups">
-            <h5>Auto-fix options:</h5>
+            <h5>{t('wizard.fixups')}</h5>
             <label className="pdfx-fixup-row">
               <input type="checkbox" checked={fixBleed} onChange={e => setFixBleed(e.target.checked)} disabled={!hasBleedIssues} />
-              Add bleed (3mm)
+              {t('wizard.fix.bleed')}
             </label>
             <label className="pdfx-fixup-row">
               <input type="checkbox" checked={fixOutputIntent} onChange={e => setFixOutputIntent(e.target.checked)} disabled={!hasNoOutputIntent} />
-              {profile === 'x4' ? 'Embed PDF/X-4 OutputIntent' : 'Embed PDF/X-1a OutputIntent'}
+              {t('wizard.fix.intent', { profile: profile === 'x4' ? 'PDF/X-4' : 'PDF/X-1a' })}
             </label>
             {fixOutputIntent && hasNoOutputIntent && (
               <div className="pdfx-icc-selection">
-                <label htmlFor="icc-profile">Select ICC Profile:</label>
+                <label htmlFor="icc-profile">{t('wizard.icc')}</label>
                 <select
                   id="icc-profile"
                   value={iccProfile}
@@ -189,18 +190,18 @@ export default function MakePdfXWizard({ filePath, preflightResult, onRerunPrefl
             )}
             <label className="pdfx-fixup-row">
               <input type="checkbox" checked={fixColors} onChange={e => setFixColors(e.target.checked)} disabled={!hasRgbContent} />
-              Convert RGB→CMYK
+              {t('wizard.fix.rgb')}
             </label>
           </div>
 
           <div className="pdfx-wizard-actions">
-            <button className="btn btn-secondary" onClick={handleFetchSpotColors}>Spot Color Inventory</button>
-            <button className="btn btn-primary" onClick={() => setStep('review')}>Review & Apply</button>
+            <button className="btn btn-secondary" onClick={handleFetchSpotColors}>{t('wizard.spot_inventory')}</button>
+            <button className="btn btn-primary" onClick={() => setStep('review')}>{t('wizard.review_apply')}</button>
           </div>
 
           {spotColors.length > 0 && (
             <div className="spot-inventory">
-              <h5>Spot Colors</h5>
+              <h5>{t('wizard.spots')}</h5>
               {spotColors.map((s, i) => (
                 <div key={i} className={`pdf-finding pdf-finding--${s.severity}`}>
                   <span className="pdf-finding-name">{s.name}</span>
@@ -217,22 +218,22 @@ export default function MakePdfXWizard({ filePath, preflightResult, onRerunPrefl
       {step === 'review' && (
         <>
           <div className="pdfx-wizard-header">
-            <h4>Step 2: Review Changes</h4>
+            <h4>{t('wizard.step.review')}</h4>
           </div>
           <div className="pdfx-review">
-            <p><strong>Target:</strong> {PROFILE_OPTIONS.find(p => p.id === profile)?.label}</p>
+            <p><strong>{t('wizard.target')}:</strong> {PROFILE_OPTIONS.find(p => p.id === profile) ? t(PROFILE_OPTIONS.find(p => p.id === profile)!.labelKey) : ''}</p>
             <ul>
-              {fixBleed && hasBleedIssues && <li>Add 3mm bleed</li>}
-              {fixOutputIntent && hasNoOutputIntent && <li>Add OutputIntent ({profile === 'x4' ? 'PDF/X-4' : 'PDF/X-1a'}) with {ICC_PROFILES.find(p => p.value === iccProfile)?.label}</li>}
-              {fixColors && hasRgbContent && <li>Convert RGB objects to CMYK</li>}
-              {!fixBleed && !fixOutputIntent && !fixColors && <li>No fixups selected — running preflight only</li>}
+              {fixBleed && hasBleedIssues && <li>{t('wizard.review.bleed')}</li>}
+              {fixOutputIntent && hasNoOutputIntent && <li>{t('wizard.review.intent', { profile: profile === 'x4' ? 'PDF/X-4' : 'PDF/X-1a', icc: ICC_PROFILES.find(p => p.value === iccProfile)?.label ?? '' })}</li>}
+              {fixColors && hasRgbContent && <li>{t('wizard.review.rgb')}</li>}
+              {!fixBleed && !fixOutputIntent && !fixColors && <li>{t('wizard.review.none')}</li>}
             </ul>
-            <p className="pdfx-review-note">A new suffixed file will be created. The original will not be modified.</p>
+            <p className="pdfx-review-note">{t('wizard.review.note')}</p>
           </div>
           <div className="pdfx-wizard-actions">
-            <button className="btn btn-secondary" onClick={() => setStep('preflight')}>Back</button>
+            <button className="btn btn-secondary" onClick={() => setStep('preflight')}>{t('wizard.back')}</button>
             <button className="btn btn-primary" onClick={handleApply} disabled={applying || (fixOutputIntent && hasNoOutputIntent && !iccProfile)}>
-              {applying ? 'Applying...' : 'Generate PDF/X'}
+              {applying ? t('wizard.applying') : t('wizard.generate')}
             </button>
           </div>
           {error && <div className="pdf-finding pdf-finding--error">{error}</div>}
@@ -241,12 +242,12 @@ export default function MakePdfXWizard({ filePath, preflightResult, onRerunPrefl
 
       {step === 'done' && (
         <div className="pdfx-done">
-          <h4>✓ PDF/X Generated</h4>
-          <p>The PDF has been processed and saved as:</p>
+          <h4>{t('wizard.done')}</h4>
+          <p>{t('wizard.done.desc')}</p>
           <code className="pdfx-output-path">{outputPath}</code>
           <div className="pdfx-wizard-actions">
             <button className="btn btn-primary" onClick={() => { setStep('preflight'); setOutputPath(null); onRerunPreflight() }}>
-              Run Preflight on Output
+              {t('wizard.rerun_output')}
             </button>
           </div>
         </div>

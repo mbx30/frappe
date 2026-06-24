@@ -24,10 +24,10 @@ function countBySeverity(items: { severity: string }[]): { errors: number; warni
 type SectionState = Record<string, boolean>
 
 const PROFILES = [
-  { id: 'full', label: 'Full Check' },
-  { id: 'x4', label: 'PDF/X-4' },
-  { id: 'x1a', label: 'PDF/X-1a' },
-  { id: 'x3', label: 'PDF/X-3' },
+  { id: 'full', labelKey: 'preflight.report.profile.full' },
+  { id: 'x4', labelKey: 'preflight.report.profile.x4' },
+  { id: 'x1a', labelKey: 'preflight.report.profile.x1a' },
+  { id: 'x3', labelKey: 'preflight.report.profile.x3' },
 ]
 
 export default function PreflightReport({ filePath, result, jobId, onSaved }: PreflightReportProps) {
@@ -76,10 +76,10 @@ export default function PreflightReport({ filePath, result, jobId, onSaved }: Pr
       for (const f of result.transparency) findings.push({ check_name: 'transparency', severity: f.severity, page_num: typeof f.page === 'number' ? f.page : null, object_ref: f.ty, message: f.message, fix_hint: '' })
       for (const f of result.hidden_content) findings.push({ check_name: 'hidden_content', severity: f.severity, page_num: typeof f.page === 'number' ? f.page : null, object_ref: f.ty, message: f.description, fix_hint: '' })
       await invoke('save_preflight_run', { jobId, profile, findings })
-      setSaveMsg('Report saved!')
+      setSaveMsg(t('pdf.report_saved'))
       onSaved()
     } catch (e) {
-      setSaveMsg(`Save failed: ${e}`)
+      setSaveMsg(t('pdf.save_failed', { msg: String(e) }))
     } finally {
       setSaving(false)
     }
@@ -91,34 +91,34 @@ export default function PreflightReport({ filePath, result, jobId, onSaved }: Pr
     try {
       const fullResult = await invoke<typeof result>('check_pdfx', { path: filePath, profile: profile === 'full' ? 'x4' : profile })
       setPdfxFindings(fullResult.pdfx)
-      setProfileMsg('Profile check complete. Results updated above.')
+      setProfileMsg(t('preflight.report.profile_check_complete'))
     } catch (e) {
       console.error('Profile check failed:', e)
-      setProfileMsg(`Profile check failed: ${e}`)
+      setProfileMsg(t('preflight.report.profile_check_failed', { msg: String(e) }))
     } finally {
       setRunning(false)
     }
   }
 
   return (
-    <div className="pdf-preflight" role="region" aria-label="Preflight report">
+    <div className="pdf-preflight" role="region" aria-label={t('preflight.report.title')}>
       <div className="pdf-preflight-banner" role="status" aria-live="polite">
         {totalErrors > 0 || totalWarnings > 0 ? (
           <span className="pdf-preflight-status pdf-preflight-status--fail">
-            {t('pdf.preflight_fail', { errors: totalErrors, s: totalErrors !== 1 ? 's' : '', warnings: totalWarnings, ws: totalWarnings !== 1 ? 's' : '' })}
+            {t('preflight.report.fail', { errors: totalErrors, s: totalErrors !== 1 ? 's' : '', warnings: totalWarnings, ws: totalWarnings !== 1 ? 's' : '' })}
           </span>
         ) : (
-          <span className="pdf-preflight-status pdf-preflight-status--pass">{t('pdf.preflight_pass')}</span>
+          <span className="pdf-preflight-status pdf-preflight-status--pass">{t('preflight.report.pass')}</span>
         )}
         <div className="pdf-preflight-controls">
-          <select value={profile} onChange={e => setProfile(e.target.value)} className="form-select" aria-label="Preflight profile">
-            {PROFILES.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+          <select value={profile} onChange={e => setProfile(e.target.value)} className="form-select" aria-label={t('preflight.report.profile.label')}>
+            {PROFILES.map(p => <option key={p.id} value={p.id}>{t(p.labelKey)}</option>)}
           </select>
           <button className="btn btn-secondary" onClick={handleRunProfile} disabled={running}>
-            {running ? t('pdf.running_preflight') : t('pdf.run_check')}
+            {running ? t('pdf.running_preflight') : t('preflight.report.run_check')}
           </button>
-          <button className="btn btn-secondary" onClick={handleSave} disabled={saving || !jobId} aria-label={t('pdf.save_report')}>
-            {saving ? t('pdf.saving') : t('pdf.save_report')}
+          <button className="btn btn-secondary" onClick={handleSave} disabled={saving || !jobId} aria-label={t('preflight.report.save_report')}>
+            {saving ? t('preflight.report.saving') : t('preflight.report.save_report')}
           </button>
         </div>
         {saveMsg && <span className="pdf-preflight-save-msg" role="alert">{saveMsg}</span>}
@@ -128,7 +128,7 @@ export default function PreflightReport({ filePath, result, jobId, onSaved }: Pr
       {/* Font Checks */}
       <div className="pdf-preflight-section" role="region" aria-label="Font checks">
         <div className="pdf-preflight-header" onClick={() => toggle('fonts')} role="button" tabIndex={0} aria-expanded={sections.fonts} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') toggle('fonts') }}>
-          <h4>Font Checks ({fc.errors}E, {fc.warnings}W, {fc.ok}OK)</h4>
+          <h4>{t('preflight.report.fonts', { e: fc.errors, w: fc.warnings, ok: fc.ok })}</h4>
           <span aria-hidden="true">{sections.fonts ? '▼' : '▶'}</span>
         </div>
         {sections.fonts && result.fonts.map((f, i) => (
@@ -145,7 +145,7 @@ export default function PreflightReport({ filePath, result, jobId, onSaved }: Pr
       {/* Page Box Checks */}
       <div className="pdf-preflight-section" role="region" aria-label="Page box checks">
         <div className="pdf-preflight-header" onClick={() => toggle('boxes')} role="button" tabIndex={0} aria-expanded={sections.boxes} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') toggle('boxes') }}>
-          <h4>Page Box Checks ({bc.errors}E, {bc.warnings}W, {bc.ok}OK)</h4>
+          <h4>{t('preflight.report.boxes', { e: bc.errors, w: bc.warnings, ok: bc.ok })}</h4>
           <span aria-hidden="true">{sections.boxes ? '▼' : '▶'}</span>
         </div>
         {sections.boxes && result.page_boxes.map((f, i) => (
@@ -160,7 +160,7 @@ export default function PreflightReport({ filePath, result, jobId, onSaved }: Pr
       {/* Image Resolution */}
       <div className="pdf-preflight-section">
         <div className="pdf-preflight-header" onClick={() => toggle('images')} style={{ cursor: 'pointer' }}>
-          <h4>Image Resolution ({ic.errors}E, {ic.warnings}W, {ic.ok}OK)</h4>
+          <h4>{t('preflight.report.images', { e: ic.errors, w: ic.warnings, ok: ic.ok })}</h4>
           <span>{sections.images ? '▼' : '▶'}</span>
         </div>
         {sections.images && result.images.map((f, i) => (
@@ -190,11 +190,11 @@ export default function PreflightReport({ filePath, result, jobId, onSaved }: Pr
       {/* Output Intents */}
       <div className="pdf-preflight-section">
         <div className="pdf-preflight-header" onClick={() => toggle('intents')} style={{ cursor: 'pointer' }}>
-          <h4>Output Intents ({result.output_intents.length} found)</h4>
+          <h4>{t('preflight.report.intents', { n: result.output_intents.length })}</h4>
           <span>{sections.intents ? '▼' : '▶'}</span>
         </div>
         {sections.intents && result.output_intents.length === 0 && (
-          <p className="pdf-empty">No output intents found (not PDF/X compliant)</p>
+          <p className="pdf-empty">{t('preflight.report.intents.empty')}</p>
         )}
         {sections.intents && result.output_intents.map((o, i) => (
           <div key={i} className="pdf-finding pdf-finding--ok">
@@ -210,11 +210,11 @@ export default function PreflightReport({ filePath, result, jobId, onSaved }: Pr
       {/* Security */}
       <div className="pdf-preflight-section">
         <div className="pdf-preflight-header" onClick={() => toggle('security')} style={{ cursor: 'pointer' }}>
-          <h4>Security Checks ({sc.errors}E, {sc.warnings}W, {sc.ok}OK)</h4>
+          <h4>{t('preflight.report.security', { e: sc.errors, w: sc.warnings, ok: sc.ok })}</h4>
           <span>{sections.security ? '▼' : '▶'}</span>
         </div>
         {sections.security && result.security.length === 0 && (
-          <p className="pdf-empty">No security issues found.</p>
+          <p className="pdf-empty">{t('preflight.report.security.empty')}</p>
         )}
         {sections.security && result.security.map((f, i) => (
           <div key={i} className={`pdf-finding pdf-finding--${f.severity}`}>
@@ -228,11 +228,11 @@ export default function PreflightReport({ filePath, result, jobId, onSaved }: Pr
       {/* Color Spaces */}
       <div className="pdf-preflight-section">
         <div className="pdf-preflight-header" onClick={() => toggle('color_spaces')} style={{ cursor: 'pointer' }}>
-          <h4>Color Spaces ({cc.errors}E, {cc.warnings}W, {cc.ok}OK)</h4>
+          <h4>{t('preflight.report.color_spaces', { e: cc.errors, w: cc.warnings, ok: cc.ok })}</h4>
           <span>{sections.color_spaces ? '▼' : '▶'}</span>
         </div>
         {sections.color_spaces && result.color_spaces.length === 0 && (
-          <p className="pdf-empty">No color space information available.</p>
+          <p className="pdf-empty">{t('preflight.report.color_spaces.empty')}</p>
         )}
         {sections.color_spaces && result.color_spaces.map((f, i) => (
           <div key={i} className={`pdf-finding pdf-finding--${f.severity}`}>
@@ -249,11 +249,11 @@ export default function PreflightReport({ filePath, result, jobId, onSaved }: Pr
       {/* Overprint */}
       <div className="pdf-preflight-section">
         <div className="pdf-preflight-header" onClick={() => toggle('overprint')} style={{ cursor: 'pointer' }}>
-          <h4>Overprint ({oc.errors}E, {oc.warnings}W, {oc.ok}OK)</h4>
+          <h4>{t('preflight.report.overprint', { e: oc.errors, w: oc.warnings, ok: oc.ok })}</h4>
           <span>{sections.overprint ? '▼' : '▶'}</span>
         </div>
         {sections.overprint && result.overprint.length === 0 && (
-          <p className="pdf-empty">No overprint settings found.</p>
+          <p className="pdf-empty">{t('preflight.report.overprint.empty')}</p>
         )}
         {sections.overprint && result.overprint.map((f, i) => (
           <div key={i} className={`pdf-finding pdf-finding--${f.severity}`}>
@@ -268,11 +268,11 @@ export default function PreflightReport({ filePath, result, jobId, onSaved }: Pr
       {/* Transparency */}
       <div className="pdf-preflight-section">
         <div className="pdf-preflight-header" onClick={() => toggle('transparency')} style={{ cursor: 'pointer' }}>
-          <h4>Transparency ({tc.errors}E, {tc.warnings}W, {tc.ok}OK)</h4>
+          <h4>{t('preflight.report.transparency', { e: tc.errors, w: tc.warnings, ok: tc.ok })}</h4>
           <span>{sections.transparency ? '▼' : '▶'}</span>
         </div>
         {sections.transparency && result.transparency.length === 0 && (
-          <p className="pdf-empty">No live transparency detected.</p>
+          <p className="pdf-empty">{t('preflight.report.transparency.empty')}</p>
         )}
         {sections.transparency && result.transparency.map((f, i) => (
           <div key={i} className={`pdf-finding pdf-finding--${f.severity}`}>
@@ -288,11 +288,11 @@ export default function PreflightReport({ filePath, result, jobId, onSaved }: Pr
       {/* Hidden Content */}
       <div className="pdf-preflight-section">
         <div className="pdf-preflight-header" onClick={() => toggle('hidden_content')} style={{ cursor: 'pointer' }}>
-          <h4>Hidden Content ({hc.errors}E, {hc.warnings}W, {hc.ok}OK)</h4>
+          <h4>{t('preflight.report.hidden_content', { e: hc.errors, w: hc.warnings, ok: hc.ok })}</h4>
           <span>{sections.hidden_content ? '▼' : '▶'}</span>
         </div>
         {sections.hidden_content && result.hidden_content.length === 0 && (
-          <p className="pdf-empty">No hidden content detected.</p>
+          <p className="pdf-empty">{t('preflight.report.hidden_content.empty')}</p>
         )}
         {sections.hidden_content && result.hidden_content.map((f, i) => (
           <div key={i} className={`pdf-finding pdf-finding--${f.severity}`}>
@@ -307,11 +307,11 @@ export default function PreflightReport({ filePath, result, jobId, onSaved }: Pr
       {/* PDF/X Compliance */}
       <div className="pdf-preflight-section">
         <div className="pdf-preflight-header" onClick={() => toggle('pdfx')} style={{ cursor: 'pointer' }}>
-          <h4>PDF/X Compliance ({xc.errors}E, {xc.warnings}W, {xc.ok}OK)</h4>
+          <h4>{t('preflight.report.pdfx', { e: xc.errors, w: xc.warnings, ok: xc.ok })}</h4>
           <span>{sections.pdfx ? '▼' : '▶'}</span>
         </div>
         {sections.pdfx && result.pdfx.length === 0 && (
-          <p className="pdf-empty">No PDF/X metadata checks available.</p>
+          <p className="pdf-empty">{t('preflight.report.pdfx.empty')}</p>
         )}
         {sections.pdfx && result.pdfx.map((f, i) => (
           <div key={i} className={`pdf-finding pdf-finding--${f.severity}`}>

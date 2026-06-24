@@ -12,6 +12,7 @@ interface OrderDetailProps {
   orderId?: number
   onSave: () => void
   onCancel: () => void
+  onOpenPdf?: (filePath: string) => void
 }
 
 const isUniqueOrderNumberError = (e: unknown): boolean => {
@@ -26,7 +27,7 @@ const statusTransitions: Record<string, string[]> = {
   completed: [],
 }
 
-export default function OrderDetail({ orderId, onSave, onCancel }: OrderDetailProps) {
+export default function OrderDetail({ orderId, onSave, onCancel, onOpenPdf }: OrderDetailProps) {
   const [orderData, setOrderData] = useState<OrderData | null>(null)
   const [isLoading, setIsLoading] = useState(!!orderId)
   const [isSaving, setIsSaving] = useState(false)
@@ -451,7 +452,14 @@ export default function OrderDetail({ orderId, onSave, onCancel }: OrderDetailPr
           {/* Art Approvals */}
           {order.id !== 0 && (
             <Card>
-              <ArtApprovalPanel orderId={order.id} orderNumber={order.order_number} />
+              <ArtApprovalPanel
+                orderId={order.id}
+                orderNumber={order.order_number}
+                onOpenInPdfTools={onOpenPdf}
+                onOpenOrderContext={() => {
+                  window.scrollTo({ top: 0, behavior: 'smooth' })
+                }}
+              />
             </Card>
           )}
 
