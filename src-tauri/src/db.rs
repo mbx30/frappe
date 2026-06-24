@@ -823,6 +823,29 @@ impl Database {
                 is_decorative INTEGER NOT NULL DEFAULT 0,
                 updated_at TEXT NOT NULL DEFAULT (datetime('now')),
                 PRIMARY KEY (file_path, object_id)
+            );
+            -- PDF annotations (#230): highlights, sticky notes, underline, strikethrough.
+            -- Non-destructive: stored as metadata, not burned into the PDF bytes.
+            CREATE TABLE IF NOT EXISTS pdf_annotations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                file_path TEXT NOT NULL,
+                page INTEGER NOT NULL,
+                annotation_type TEXT NOT NULL,
+                x REAL NOT NULL,
+                y REAL NOT NULL,
+                width REAL NOT NULL,
+                height REAL NOT NULL,
+                color TEXT NOT NULL DEFAULT '#FFD700',
+                content TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_annotations_file_page ON pdf_annotations(file_path, page);
+            CREATE TABLE IF NOT EXISTS pdf_annotation_replies (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                annotation_id INTEGER NOT NULL REFERENCES pdf_annotations(id) ON DELETE CASCADE,
+                content TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
             );"
         )?;
         // Seed built-in preflight profiles
@@ -4496,6 +4519,197 @@ impl Database {
             params![file_path, object_id, alt_text, is_decorative as i32],
         )?;
         Ok(())
+    }
+
+    // ── PDF Annotations (#230) ──────────────────────────────────────────
+
+    pub fn add_annotation(
+        &self,
+        file_path: &str,
+        page: i64,
+        annotation_type: &str,
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+        color: &str,
+        content: &str,
+    ) -> Result<PdfAnnotation> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        conn.execute(
+            "INSERT INTO pdf_annotations (file_path, page, annotation_type, x, y, width, height, color, content) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            params![file_path, page, annotation_type, x, y, width, height, color, content],
+        )?;
+        let id = conn.last_insert_rowid();
+        conn.query_row(
+            "SELECT id, file_path, page, annotation_type, x, y, width, height, color, content, created_at, updated_at FROM pdf_annotations WHERE id = ?1",
+            params![id],
+            |row| Ok(PdfAnnotation {
+                id: row.get(0)?,
+                file_path: row.get(1)?,
+                page: row.get(2)?,
+                annotation_type: row.get(3)?,
+                x: row.get(4)?,
+                y: row.get(5)?,
+                width: row.get(6)?,
+                height: row.get(7)?,
+                color: row.get(8)?,
+                content: row.get(9)?,
+                created_at: row.get(10)?,
+                updated_at: row.get(11)?,
+            }),
+        )
+    }
+
+    pub fn list_annotations(&self, file_path: &str) -> Result<Vec<PdfAnnotation>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let mut stmt = conn.prepare(
+            "SELECT id, file_path, page, annotation_type, x, y, width, height, color, content, created_at, updated_at FROM pdf_annotations WHERE file_path = ?1 ORDER BY page, created_at",
+        )?;
+        let rows = stmt.query_map(params![file_path], |row| {
+            Ok(PdfAnnotation {
+                id: row.get(0)?,
+                file_path: row.get(1)?,
+                page: row.get(2)?,
+                annotation_type: row.get(3)?,
+                x: row.get(4)?,
+                y: row.get(5)?,
+                width: row.get(6)?,
+                height: row.get(7)?,
+                color: row.get(8)?,
+                content: row.get(9)?,
+                created_at: row.get(10)?,
+                updated_at: row.get(11)?,
+            })
+        })?;
+        rows.collect()
+    }
+
+    pub fn update_annotation(
+        &self,
+        id: i64,
+        color: Option<&str>,
+        content: Option<&str>,
+    ) -> Result<PdfAnnotation> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        if let Some(c) = color {
+            conn.execute(
+                "UPDATE pdf_annotations SET color = ?1, updated_at = datetime('now') WHERE id = ?2",
+                params![c, id],
+            )?;
+        }
+        if let Some(t) = content {
+            conn.execute(
+                "UPDATE pdf_annotations SET content = ?1, updated_at = datetime('now') WHERE id = ?2",
+                params![t, id],
+            )?;
+        }
+        conn.query_row(
+            "SELECT id, file_path, page, annotation_type, x, y, width, height, color, content, created_at, updated_at FROM pdf_annotations WHERE id = ?1",
+            params![id],
+            |row| Ok(PdfAnnotation {
+                id: row.get(0)?,
+                file_path: row.get(1)?,
+                page: row.get(2)?,
+                annotation_type: row.get(3)?,
+                x: row.get(4)?,
+                y: row.get(5)?,
+                width: row.get(6)?,
+                height: row.get(7)?,
+                color: row.get(8)?,
+                content: row.get(9)?,
+                created_at: row.get(10)?,
+                updated_at: row.get(11)?,
+            }),
+        )
+    }
+
+    pub fn delete_annotation(&self, id: i64) -> Result<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        conn.execute("DELETE FROM pdf_annotations WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    pub fn annotation_page_counts(
+        &self,
+        file_path: &str,
+    ) -> Result<std::collections::HashMap<i64, i64>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let mut stmt = conn.prepare(
+            "SELECT page, COUNT(*) FROM pdf_annotations WHERE file_path = ?1 GROUP BY page",
+        )?;
+        let rows = stmt.query_map(params![file_path], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
+        })?;
+        let mut map = std::collections::HashMap::new();
+        for row in rows {
+            let (page, count) = row?;
+            map.insert(page, count);
+        }
+        Ok(map)
+    }
+
+    pub fn add_annotation_reply(
+        &self,
+        annotation_id: i64,
+        content: &str,
+    ) -> Result<PdfAnnotationReply> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        conn.execute(
+            "INSERT INTO pdf_annotation_replies (annotation_id, content) VALUES (?1, ?2)",
+            params![annotation_id, content],
+        )?;
+        let id = conn.last_insert_rowid();
+        conn.query_row(
+            "SELECT id, annotation_id, content, created_at FROM pdf_annotation_replies WHERE id = ?1",
+            params![id],
+            |row| Ok(PdfAnnotationReply {
+                id: row.get(0)?,
+                annotation_id: row.get(1)?,
+                content: row.get(2)?,
+                created_at: row.get(3)?,
+            }),
+        )
+    }
+
+    pub fn list_annotation_replies(
+        &self,
+        annotation_id: i64,
+    ) -> Result<Vec<PdfAnnotationReply>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let mut stmt = conn.prepare(
+            "SELECT id, annotation_id, content, created_at FROM pdf_annotation_replies WHERE annotation_id = ?1 ORDER BY created_at",
+        )?;
+        let rows = stmt.query_map(params![annotation_id], |row| {
+            Ok(PdfAnnotationReply {
+                id: row.get(0)?,
+                annotation_id: row.get(1)?,
+                content: row.get(2)?,
+                created_at: row.get(3)?,
+            })
+        })?;
+        rows.collect()
     }
 
     // ── Schema versioning (#90) ──────────────────────────────────────────

@@ -1,0 +1,248 @@
+.annot-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 10px;
+  background: var(--surface-2, #f5f5f5);
+  border-radius: 8px;
+  margin-bottom: 6px;
+}
+
+.annot-tool-btn {
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--border-default, #ccc);
+  border-radius: 6px;
+  background: var(--surface-1, #fff);
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 80ms;
+}
+
+.annot-tool-btn:hover {
+  background: var(--surface-hover, #eee);
+}
+
+.annot-tool-btn--active {
+  background: var(--brand-subtle, #ede8ff);
+  border-color: var(--brand, #863bff);
+  color: var(--brand, #863bff);
+}
+
+.annot-color-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.annot-color-swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: border-color 80ms;
+}
+
+.annot-color-swatch--active {
+  border-color: var(--text-primary, #111);
+}
+
+.annot-count {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-secondary, #666);
+}
+
+/* The overlay fills the image-wrap parent (position:relative).
+   It is transparent unless a drawing tool is active. */
+.annot-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.annot-overlay--drawing {
+  pointer-events: auto;
+  cursor: crosshair;
+}
+
+/* Base annotation box */
+.annot-box {
+  position: absolute;
+  box-sizing: border-box;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.annot-box--highlight {
+  background: color-mix(in srgb, var(--annot-color, #FFD700) 40%, transparent);
+}
+
+.annot-box--underline {
+  background: transparent;
+  border-bottom: 2px solid var(--annot-color, #FFD700);
+}
+
+.annot-box--strikethrough {
+  background: transparent;
+  /* Use a pseudo-element for the center line */
+  position: absolute;
+}
+
+.annot-box--strikethrough::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 2px;
+  background: var(--annot-color, #FFD700);
+  transform: translateY(-50%);
+}
+
+.annot-box--note {
+  background: color-mix(in srgb, var(--annot-color, #FFD700) 20%, transparent);
+  border: 1px dashed var(--annot-color, #FFD700);
+}
+
+.annot-note-pin {
+  position: absolute;
+  top: -10px;
+  left: -4px;
+  font-size: 14px;
+  pointer-events: none;
+}
+
+.annot-box--draft {
+  background: rgba(134, 59, 255, 0.15);
+  border: 1px dashed var(--brand, #863bff);
+  pointer-events: none;
+  cursor: crosshair;
+}
+
+/* Dialogs */
+.annot-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+}
+
+.annot-dialog {
+  background: var(--surface-1, #fff);
+  border-radius: 10px;
+  padding: 20px;
+  max-width: 360px;
+  width: 90%;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.annot-dialog--wide {
+  max-width: 480px;
+}
+
+.annot-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.annot-dialog-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.annot-close-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  color: var(--text-secondary, #666);
+  padding: 2px 6px;
+}
+
+.annot-dialog-textarea {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--border-default, #ccc);
+  border-radius: 6px;
+  font-size: 13px;
+  resize: vertical;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.annot-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.annot-dialog-actions--left {
+  justify-content: flex-start;
+}
+
+.annot-dialog-note-text {
+  font-size: 13px;
+  color: var(--text-primary, #111);
+  background: var(--surface-2, #f5f5f5);
+  padding: 8px 10px;
+  border-radius: 6px;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.annot-replies {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid var(--border-default, #eee);
+  padding-top: 8px;
+}
+
+.annot-reply {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  color: var(--text-primary, #111);
+}
+
+.annot-reply-date {
+  font-size: 11px;
+  color: var(--text-secondary, #999);
+}
+
+.annot-reply-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid var(--border-default, #eee);
+  padding-top: 8px;
+}
+
+/* Danger button variant */
+.btn-danger {
+  background: var(--danger, #c0392b);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.btn-danger:hover {
+  opacity: 0.88;
+}

@@ -655,6 +655,36 @@ pub struct AiCheckResult {
     pub cached: bool,
 }
 
+// ── PDF Annotations (#230) ──────────────────────────────────────────────
+
+/// A single annotation on a PDF page. `annotation_type` is one of
+/// `highlight`, `underline`, `strikethrough`, or `note`.
+/// Coordinates use PDF points with a top-left origin (same as `RedactionRect`).
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PdfAnnotation {
+    pub id: i64,
+    pub file_path: String,
+    pub page: i64,
+    pub annotation_type: String,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub color: String,
+    pub content: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// A reply thread entry attached to a `PdfAnnotation`.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PdfAnnotationReply {
+    pub id: i64,
+    pub annotation_id: i64,
+    pub content: String,
+    pub created_at: String,
+}
+
 // ── Alt text (#234) ─────────────────────────────────────────────────────
 
 /// Per-image alt-text entry. Returned by the `get_alt_text` and
