@@ -69,7 +69,14 @@
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   cursor: grab;
-  transition: all 0.2s;
+  /* Issue #287 — animate only composited properties. The
+     `all` shorthand triggers paint for any property change, which
+     forces a relayout on drag-over and during priority-badge
+     updates. Limiting the transition to `transform` and `opacity`
+     keeps the dragged card on the GPU. */
+  transition: transform 0.18s ease-out, opacity 0.18s ease-out;
+  transform: translate3d(0, 0, 0);
+  will-change: transform, opacity;
 }
 
 .order-card:hover {
@@ -77,8 +84,12 @@
 }
 
 .order-card.dragging {
+  /* Drop the will-change so the browser releases the GPU layer
+     once the drag ends; otherwise the layer would persist for
+     the lifetime of the page. */
   opacity: 0.5;
   cursor: grabbing;
+  transform: translate3d(0, 0, 0) scale(0.98);
 }
 
 .card-header {

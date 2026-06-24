@@ -1,3 +1,4 @@
+mod ai_check;
 mod cache;
 mod cloud_backup;
 mod cloud_import;
@@ -5,13 +6,12 @@ pub mod commands;
 mod db;
 mod email;
 mod ftp;
+mod observability;
 mod import;
 mod keychain;
 mod logging;
 pub mod metrics;
 mod models;
-mod ai_check;
-mod observability;
 pub mod pdf;
 pub mod security;
 
