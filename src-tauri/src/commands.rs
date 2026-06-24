@@ -2553,13 +2553,67 @@ pub fn verify_redaction_chain(db: State<'_, Database>, path: String) -> Result<b
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Phase 5.2 — Barcode detection (#48)
+// Phase 5.2 — Barcode detection (#270)
 // ═══════════════════════════════════════════════════════════════════════════
 
-// Stub — actual zxing integration would go here
+/// Render a page at 200 DPI and detect all barcodes in it. Returns one
+/// `BarcodeResult` per detected code with decoded text, bbox, and a
+/// validation status (`ok` | `undersized` | `tight_quiet_zone`).
 #[tauri::command]
-pub fn detect_barcodes(_path: String) -> Result<Vec<BarcodeResult>, String> {
-    Err("detect_barcodes is not implemented. Tracked in v2 polish issue #135.".to_string())
+pub fn detect_barcodes(
+    engine: State<'_, PdfEngine>,
+    path: String,
+    page_index: usize,
+) -> Result<Vec<crate::pdf::barcode::BarcodeDetection>, String> {
+    let _ = validate_read_path(&path)?;
+    use image::RgbaImage;
+    let doc = engine.open_document(&path)?;
+    let idx: i32 = page_index
+        .try_into()
+        .map_err(|_| format!("Page index too large: {page_index}"))?;
+    let page = doc
+        .pages()
+        .get(idx)
+        .map_err(|e| format!("Page {page_index} not found: {e}"))?;
+    // 200 DPI = 200/72 ≈ 2.78 px per point; render at that resolution
+    // so the bbox-to-mm math is well-behaved.
+    let dpi = 200.0_f64;
+    let page_width_pts = page.width().value as f64;
+    let page_height_pts = page.height().value as f64;
+    let target_w = ((page_width_pts * dpi / 72.0) as i32).max(64);
+    let config = pdfium_render::prelude::PdfRenderConfig::new().set_target_width(target_w);
+    let bitmap = page
+        .render_with_config(&config)
+        .map_err(|e| format!("Render error: {e}"))?;
+    let pw = bitmap.width() as u32;
+    let ph = bitmap.height() as u32;
+    let bytes = bitmap.as_raw_bytes();
+    if bytes.len() < (pw as usize) * (ph as usize) * 4 {
+        return Err("Rendered bitmap shorter than expected".to_string());
+    }
+    let mut img = RgbaImage::new(pw, ph);
+    for y in 0..ph {
+        for x in 0..pw {
+            let i = ((y * pw + x) * 4) as usize;
+            img.put_pixel(
+                x,
+                y,
+                image::Rgba([bytes[i + 2], bytes[i + 1], bytes[i], bytes[i + 3]]),
+            );
+        }
+    }
+    let mut rgba: Vec<u8> = Vec::with_capacity((pw as usize) * (ph as usize) * 4);
+    for px in img.pixels() {
+        rgba.extend_from_slice(&px.0);
+    }
+    let input = crate::pdf::barcode::BarcodeInputImage {
+        pixels: rgba,
+        width: pw,
+        height: ph,
+        page_width_pts,
+        page_height_pts,
+    };
+    crate::pdf::barcode::detect_barcodes_in_image(&input)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2850,4 +2904,13 @@ pub fn reveal_logs(app_handle: tauri::AppHandle) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     crate::logging::reveal_logs(&app_dir);
     Ok(())
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Issue #256 — Metrics snapshot for the PerfOverlay.
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[tauri::command]
+pub fn get_metrics_snapshot() -> crate::metrics::MetricsSnapshot {
+    crate::metrics::snapshot()
 }

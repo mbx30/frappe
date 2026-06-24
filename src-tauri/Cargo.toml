@@ -29,14 +29,31 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 # and Linux (glibc 2.17+ for dynamic, or any Linux via musl static build).
 [profile.release]
 opt-level = 3
-lto = true
+lto = "thin"
 codegen-units = 1
 panic = "abort"   # smaller binary + no unwinding overhead (Tauri v2 standard)
-strip = true
+strip = "symbols"
+# Per-crate overrides (issue #288): the inlined LTO/1cu settings are the
+# correct default for the release artifact, but dev-only crates that
+# take a long time to build (lopdf, image, reqwest, pdfium-render)
+# compile faster when opt-level is dropped in release. We keep the
+# hot path (app_lib + lopdf) at -O3.
+[profile.release.package."*"]
+opt-level = 3
+[profile.release.package."lopdf"]
+opt-level = 3
+[profile.release.package."image"]
+opt-level = 3
 
 # Faster debug builds without sacrificing much runtime speed during dev.
 [profile.dev]
 opt-level = 1
+
+# Bench profile for the regression-suite benchmarks in `benches/`.
+[profile.bench]
+opt-level = 3
+lto = "thin"
+debug = true
 
 [build-dependencies]
 tauri-build = { version = "2.6.2", features = [] }
@@ -85,3 +102,59 @@ lru = "0.12"
 # operation stores the SHA-256 of the resulting PDF and a link to the previous
 # operation's hash, giving a tamper-evident compliance trail.
 sha2 = "0.10"
+
+# ── Issue #301 / #269 — Hot-folder watcher ────────────────────────────────
+# `notify` v8 is the latest stable; `macos_fsevent` is enabled by default
+# on macOS. `notify-debouncer-full` collapses write→close→re-written
+# into a single event so a 30 MB PDF drop doesn't fire 6 spurious events.
+notify = { version = "8", default-features = false, features = ["macos_fsevent"] }
+notify-debouncer-full = "0.5"
+
+# ── Issue #270 — Barcode detection ────────────────────────────────────────
+# `rxing` is a Rust port of the ZXing barcode library. We enable the
+# `image` and `image_formats` features for the high-level
+# `helpers::detect_in_image` API, plus `multi_barcode_readers` for
+# pages with more than one code, and `encoding_rs` for the CharacterSet
+# decoder.
+rxing = { version = "0.9", default-features = false, features = [
+    "image",
+    "image_formats",
+    "decoders",
+    "encoding_rs",
+    "full_barcode_format_support",
+    "multi_barcode_readers",
+] }
+
+# ── Issue #274 — Email/FTP/MIS integrations ───────────────────────────────
+# `lettre` is the canonical SMTP client for Rust. `rustls-tls` matches the
+# `reqwest` config so we don't pull openssl-sys. `suppaftp` is a maintained
+# fork of the unmaintained `ftp` crate with explicit TLS support via `rustls`.
+lettre = { version = "0.11", default-features = false, features = [
+    "rustls-tls", "smtp-transport", "builder", "hostname"
+] }
+suppaftp = { version = "6", default-features = false, features = ["rustls"] }
+
+# ── Issue #258 — World-class compression ──────────────────────────────────
+# `zopfli` produces 3-8% smaller deflate output than zlib at `best`. It is
+# slow (minutes for a 30 MB PDF) so we expose it as an opt-in flag in
+# `CompressionOptions`.
+zopfli = { version = "0.8", default-features = false, features = ["std", "zlib"] }
+# `ttf-parser` is the font subsetter used for #258 font-subsetting.
+ttf-parser = "0.25"
+
+# ── Issue #256 — Performance metrics ──────────────────────────────────────
+# `metrics` provides the counter/histogram facade; we use it from the hot
+# Tauri command paths.
+metrics = "0.24"
+
+# ── Issue #281 — Viewer: eyedropper + plate view ──────────────────────────
+# `palette` extracts the dominant color from a 1×1 image readback (used
+# for the eyedropper tool). `palette` is tiny and has no deps.
+palette = "0.7"
+
+# ── Issue #256 — Metrics helpers ──────────────────────────────────────────
+# `once_cell::sync::Lazy` for the cold-start timer; `libc` is needed for
+# the macOS `task_info(MACH_TASK_BASIC_INFO)` call to read RSS without
+# pulling in `mach2`.
+once_cell = "1"
+libc = "0.2"

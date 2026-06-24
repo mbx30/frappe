@@ -1,4 +1,5 @@
 pub mod approval_sheet;
+pub mod barcode;
 pub mod bleed;
 pub mod boxes;
 pub mod color;

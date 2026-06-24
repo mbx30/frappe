@@ -6,6 +6,7 @@ mod db;
 mod import;
 mod keychain;
 mod logging;
+pub mod metrics;
 mod models;
 pub mod pdf;
 
@@ -53,6 +54,10 @@ pub fn run() {
             }
 
             app_handle.manage(database);
+
+            // Issue #256 — record cold-start time once the runtime is ready.
+            metrics::record_cold_start();
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -245,6 +250,8 @@ pub fn run() {
             commands::export_plaintext_backup,
             // #88 — Observability
             commands::reveal_logs,
+            // Issue #256 — metrics snapshot for the PerfOverlay.
+            commands::get_metrics_snapshot,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
