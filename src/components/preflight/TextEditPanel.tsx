@@ -66,15 +66,11 @@ export default function TextEditPanel({ filePath, pageCount }: TextEditPanelProp
     }
   }, [filePath, query, replace, matches, currentIndex])
 
-  const resetSearch = useCallback(() => {
+  useEffect(() => {
     setMatches([])
     setCurrentIndex(0)
     setReplacementPath(null)
-  }, [])
-
-  useEffect(() => {
-    resetSearch()
-  }, [filePath, query, resetSearch])
+  }, [filePath, query])
 
   if (!filePath) {
     return (

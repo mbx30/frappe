@@ -31,7 +31,7 @@ export default function LayerPanel({ filePath, onLayerChanged }: LayerPanelProps
 
   useEffect(() => {
     refresh()
-  }, [filePath])
+  }, [refresh])
 
   const toggle = useCallback(
     async (layer: LayerInfo) => {

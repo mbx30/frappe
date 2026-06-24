@@ -72,14 +72,8 @@ export default function AnalyticsDashboard({ clientId, refreshKey = 0 }: Analyti
   }, [])
 
   useEffect(() => {
-    let isMounted = true
-    refresh().then(() => {
-      if (!isMounted) return
-    })
-    return () => {
-      isMounted = false
-    }
-  }, [refreshKey])
+    refresh()
+  }, [refresh, refreshKey])
 
   if (loading && !data) {
     return (

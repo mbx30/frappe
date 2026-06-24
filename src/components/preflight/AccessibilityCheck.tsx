@@ -153,7 +153,7 @@ export default function AccessibilityCheck({ filePath }: AccessibilityCheckProps
 
   useEffect(() => {
     runChecks()
-  }, [filePath])
+  }, [runChecks])
 
   useEffect(() => {
     return () => {

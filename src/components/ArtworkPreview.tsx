@@ -30,28 +30,6 @@ export default function ArtworkPreview({ filePath, onOpenInPdfTools, showOpenBut
   const [expanded, setExpanded] = useState(false)
   const [fullThumb, setFullThumb] = useState<string | null>(null)
 
-  const fetchPdfInfo = useCallback(async () => {
-    if (format !== 'pdf') return
-    try {
-      const info = await invoke<PdfInfo>('open_pdf', { path: filePath, save: false }).catch(async () => {
-        // open_pdf returns a PdfSummary; in case the call shape differs
-        // across commits, fall back to using get_pdf_catalog which is
-        // always present.
-        const cat = await invoke<Record<string, string>>('get_pdf_catalog', { path: filePath })
-        return { page_count: Number(cat.PageCount ?? 0) }
-      })
-      setPdfPageCount(info.page_count)
-      const thumb = await invoke<string>('render_page_thumbnail', {
-        path: filePath,
-        pageIndex: 0,
-        widthPx: 320,
-      })
-      setPdfThumb(thumb)
-    } catch (e) {
-      setError(String(e))
-    }
-  }, [filePath, format])
-
   useEffect(() => {
     setError(null)
     setPdfThumb(null)
@@ -60,8 +38,35 @@ export default function ArtworkPreview({ filePath, onOpenInPdfTools, showOpenBut
   }, [filePath])
 
   useEffect(() => {
+    if (format !== 'pdf') return
+
+    let isMounted = true
+    const fetchPdfInfo = async () => {
+      try {
+        const info = await invoke<PdfInfo>('open_pdf', { path: filePath, save: false }).catch(async () => {
+          // open_pdf returns a PdfSummary; in case the call shape differs
+          // across commits, fall back to using get_pdf_catalog which is
+          // always present.
+          const cat = await invoke<Record<string, string>>('get_pdf_catalog', { path: filePath })
+          return { page_count: Number(cat.PageCount ?? 0) }
+        })
+        if (isMounted) setPdfPageCount(info.page_count)
+        const thumb = await invoke<string>('render_page_thumbnail', {
+          path: filePath,
+          pageIndex: 0,
+          widthPx: 320,
+        })
+        if (isMounted) setPdfThumb(thumb)
+      } catch (e) {
+        if (isMounted) setError(String(e))
+      }
+    }
+
     fetchPdfInfo()
-  }, [fetchPdfInfo])
+    return () => {
+      isMounted = false
+    }
+  }, [filePath, format])
 
   const handleExpand = async () => {
     if (format === 'pdf' && !fullThumb) {
