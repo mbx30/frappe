@@ -873,11 +873,11 @@ fn overlay_ocr_text(
     // Track page index in the results
     for page_result in results {
         let page_index = page_result.page_index;
-        let page_id = doc
+        let page_id = *doc
             .get_pages()
             .iter()
             .nth(page_index)
-            .map(|(id, _)| *id)
+            .map(|(id, _)| id)
             .ok_or_else(|| format!("Page {} not found in PDF", page_index))?;
 
         // Get the page object
