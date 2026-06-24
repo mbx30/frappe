@@ -8,6 +8,7 @@ import MakePdfXWizard from './preflight/MakePdfXWizard'
 import CertifiedVersionPanel from './preflight/CertifiedVersionPanel'
 import OCRPanel from './preflight/OCRPanel'
 import RedactionLayer from './RedactionLayer'
+import { useAnnotations, AnnotationToolbar, AnnotationOverlay } from './AnnotationLayer'
 import { makeKeyDownHandler, buildShortcuts, formatShortcut, type ShortcutHandlers } from './preflight/keyboardShortcuts'
 import { t } from '../i18n'
 import './PDFView.css'
@@ -124,6 +125,10 @@ function PageViewer({ filePath, pageIndex }: { filePath: string; pageIndex: numb
   const [eyedropperActive, setEyedropperActive] = useState(false)
   const [sampledColor, setSampledColor] = useState<{ r: number; g: number; b: number; hex: string } | null>(null)
   const [showPlateView, setShowPlateView] = useState(false)
+  const [showAnnotations, setShowAnnotations] = useState(false)
+  const [pageWidthPts, setPageWidthPts] = useState(0)
+  const [pageHeightPts, setPageHeightPts] = useState(0)
+  const annotState = useAnnotations(filePath, pageIndex, pageWidthPts, pageHeightPts)
   const imgRef = useRef<HTMLImageElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -166,6 +171,24 @@ function PageViewer({ filePath, pageIndex }: { filePath: string; pageIndex: numb
     document.addEventListener('fullscreenchange', handler);
     return () => document.removeEventListener('fullscreenchange', handler);
   }, []);
+
+  // Track page dimensions in PDF points so the annotation overlay can
+  // convert between fraction-of-image and PDF user-space coordinates.
+  const handleAnnotationImageLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
+    if (!showAnnotations) return
+    const img = e.currentTarget
+    const dpi = Math.round(72 * zoom / 100)
+    setPageWidthPts((img.naturalWidth * 72) / dpi)
+    setPageHeightPts((img.naturalHeight * 72) / dpi)
+  }, [showAnnotations, zoom])
+
+  // Re-compute dimensions when zoom or annotation mode changes.
+  useEffect(() => {
+    if (!showAnnotations || !imgRef.current || imgRef.current.naturalWidth === 0) return
+    const dpi = Math.round(72 * zoom / 100)
+    setPageWidthPts((imgRef.current.naturalWidth * 72) / dpi)
+    setPageHeightPts((imgRef.current.naturalHeight * 72) / dpi)
+  }, [showAnnotations, zoom])
 
   // Eyedropper: when active, the next click on the page reads
   // the pixel at the click coordinates from a 1×1 canvas.
@@ -236,6 +259,14 @@ function PageViewer({ filePath, pageIndex }: { filePath: string; pageIndex: numb
         >
           ⬚
         </button>
+        <button
+          aria-label={showAnnotations ? 'Hide annotations' : 'Show annotations'}
+          className={showAnnotations ? 'btn-active' : ''}
+          onClick={() => setShowAnnotations((v) => !v)}
+          title="Annotations"
+        >
+          🖊
+        </button>
         {eyedropperActive && (
           <span className="eyedropper-hint" role="status">
             Click the page to sample…
@@ -252,20 +283,26 @@ function PageViewer({ filePath, pageIndex }: { filePath: string; pageIndex: numb
           </span>
         )}
       </div>
+      {showAnnotations && <AnnotationToolbar state={annotState} />}
       <div className="page-canvas" role="img" aria-label={`Page ${pageIndex + 1}`}>
         {loading && <div className="page-loading" role="status">{t('pdf.rendering')}</div>}
         {renderUrl && (
-          <img
-            ref={imgRef}
-            src={convertFileSrc(renderUrl)}
-            alt={`Page ${pageIndex + 1}`}
-            style={{
-              maxWidth: `${zoom}%`,
-              cursor: eyedropperActive ? 'crosshair' : 'default',
-            }}
-            onClick={handleImageClick}
-            crossOrigin="anonymous"
-          />
+          <div style={{ position: 'relative', display: 'inline-block', maxWidth: `${zoom}%` }}>
+            <img
+              ref={imgRef}
+              src={convertFileSrc(renderUrl)}
+              alt={`Page ${pageIndex + 1}`}
+              style={{
+                display: 'block',
+                width: '100%',
+                cursor: eyedropperActive ? 'crosshair' : 'default',
+              }}
+              onClick={handleImageClick}
+              onLoad={handleAnnotationImageLoad}
+              crossOrigin="anonymous"
+            />
+            {showAnnotations && pageWidthPts > 0 && <AnnotationOverlay state={annotState} />}
+          </div>
         )}
         {showPlateView && renderUrl && (
           <div className="plate-view-overlay" aria-label="Plate view (separations preview)">

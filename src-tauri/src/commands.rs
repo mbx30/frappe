@@ -4241,6 +4241,89 @@ pub fn set_alt_text(
         .map_err(|e| e.to_string())
 }
 
+// ── PDF Annotations (#230) ──────────────────────────────────────────────
+
+/// Add a new annotation to a PDF page. Returns the created annotation row.
+#[tauri::command]
+pub fn pdf_annotation_add(
+    db: State<'_, Database>,
+    file_path: String,
+    page: i64,
+    annotation_type: String,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    color: String,
+    content: String,
+) -> Result<crate::models::PdfAnnotation, String> {
+    if !crate::pdf::annotations::is_valid_rect(width, height) {
+        return Err(“annotation must have positive width and height”.into());
+    }
+    db.add_annotation(&file_path, page, &annotation_type, x, y, width, height, &color, &content)
+        .map_err(|e| e.to_string())
+}
+
+/// List all annotations for a PDF file, ordered by page then creation time.
+#[tauri::command]
+pub fn pdf_annotations_list(
+    db: State<'_, Database>,
+    file_path: String,
+) -> Result<Vec<crate::models::PdfAnnotation>, String> {
+    db.list_annotations(&file_path).map_err(|e| e.to_string())
+}
+
+/// Update color and/or content of an existing annotation.
+#[tauri::command]
+pub fn pdf_annotation_update(
+    db: State<'_, Database>,
+    id: i64,
+    color: Option<String>,
+    content: Option<String>,
+) -> Result<crate::models::PdfAnnotation, String> {
+    db.update_annotation(id, color.as_deref(), content.as_deref())
+        .map_err(|e| e.to_string())
+}
+
+/// Delete an annotation (and its replies via CASCADE).
+#[tauri::command]
+pub fn pdf_annotation_delete(
+    db: State<'_, Database>,
+    id: i64,
+) -> Result<(), String> {
+    db.delete_annotation(id).map_err(|e| e.to_string())
+}
+
+/// Return a map of `page_index → annotation_count` for the given file.
+#[tauri::command]
+pub fn pdf_annotation_page_counts(
+    db: State<'_, Database>,
+    file_path: String,
+) -> Result<std::collections::HashMap<i64, i64>, String> {
+    db.annotation_page_counts(&file_path).map_err(|e| e.to_string())
+}
+
+/// Add a reply to an existing annotation.
+#[tauri::command]
+pub fn pdf_annotation_reply_add(
+    db: State<'_, Database>,
+    annotation_id: i64,
+    content: String,
+) -> Result<crate::models::PdfAnnotationReply, String> {
+    db.add_annotation_reply(annotation_id, &content)
+        .map_err(|e| e.to_string())
+}
+
+/// List all replies for an annotation, ordered by creation time.
+#[tauri::command]
+pub fn pdf_annotation_replies_list(
+    db: State<'_, Database>,
+    annotation_id: i64,
+) -> Result<Vec<crate::models::PdfAnnotationReply>, String> {
+    db.list_annotation_replies(annotation_id)
+        .map_err(|e| e.to_string())
+}
+
 // Issue #291 â€” Command batching (#291)
 
 /// A single batched command. The `name` field is the Tauri command name
