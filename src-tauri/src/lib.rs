@@ -1,7 +1,7 @@
 mod cache;
 mod cloud_backup;
 mod cloud_import;
-mod commands;
+pub mod commands;
 mod db;
 mod email;
 mod ftp;
