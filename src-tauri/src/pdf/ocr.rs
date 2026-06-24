@@ -218,7 +218,9 @@ pub fn run_ocr(pdf_path: &PathBuf, options: OcrOptions) -> Result<OcrResult, Str
     // Route to the appropriate backend
     let results = match options.backend {
         OcrBackend::Tesseract => run_tesseract_ocr(pdf_path, &pages_to_process, &options)?,
-        OcrBackend::GoogleCloudVision => run_google_vision_ocr(pdf_path, &pages_to_process, &options)?,
+        OcrBackend::GoogleCloudVision => {
+            tauri::async_runtime::block_on(run_google_vision_ocr(pdf_path, &pages_to_process, &options))?
+        }
     };
 
     // If overlay_text is requested, overlay results onto output PDF
