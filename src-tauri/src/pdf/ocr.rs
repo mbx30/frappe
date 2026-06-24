@@ -873,17 +873,20 @@ fn overlay_ocr_text(
     // Track page index in the results
     for page_result in results {
         let page_index = page_result.page_index;
-        let page_id = doc
-            .get_pages()
-            .iter()
-            .enumerate()
-            .find(|(idx, _)| *idx == page_index)
-            .map(|(_, (id, _))| id)
-            .ok_or_else(|| format!("Page {} not found in PDF", page_index))?;
+
+        // Find the page_id for this index
+        let mut page_id = None;
+        for (idx, (id, _)) in doc.get_pages().iter().enumerate() {
+            if idx == page_index {
+                page_id = Some(*id);
+                break;
+            }
+        }
+        let page_id = page_id.ok_or_else(|| format!("Page {} not found in PDF", page_index))?;
 
         // Get the page object
         let page = doc
-            .get_object_mut(*page_id)
+            .get_object_mut(page_id)
             .map_err(|e| format!("Failed to get page {}: {}", page_index, e))?
             .as_dict_mut()
             .map_err(|_| format!("Page {} is not a dictionary", page_index))?;
