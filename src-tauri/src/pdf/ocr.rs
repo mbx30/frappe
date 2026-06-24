@@ -315,8 +315,8 @@ fn render_pdf_page_to_image(pdf_path: &PathBuf, page_index: usize) -> Result<Pat
     // Get the specific page
     let page = document
         .pages()
-        .get(page_index as u32)
-        .ok_or_else(|| format!("Page {} not found", page_index))?;
+        .get(page_index as i32)
+        .or_else(|_| Err(format!("Page {} not found", page_index)))?;
 
     // Render at 300 DPI for OCR (standard for text recognition)
     let dpi = 300.0;
@@ -769,8 +769,8 @@ fn parse_google_vision_response(
 
 static RATE_LIMIT_COUNTER: std::sync::atomic::AtomicUsize =
     std::sync::atomic::AtomicUsize::new(0);
-static RATE_LIMIT_WINDOW_START: std::sync::Mutex<std::time::Instant> =
-    std::sync::Mutex::new(std::time::Instant::now());
+static RATE_LIMIT_WINDOW_START: std::sync::LazyLock<std::sync::Mutex<std::time::Instant>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(std::time::Instant::now()));
 
 const RATE_LIMIT_PER_MINUTE: usize = 1800;
 
@@ -870,12 +870,11 @@ fn overlay_ocr_text(
     let mut doc = Document::load(input_path)
         .map_err(|e| format!("Failed to load PDF: {}", e))?;
 
-    let pages = doc.get_pages();
-
     // Track page index in the results
     for page_result in results {
         let page_index = page_result.page_index;
-        let page_id = pages
+        let page_id = doc
+            .get_pages()
             .iter()
             .nth(page_index)
             .map(|(id, _)| *id)
@@ -1010,7 +1009,7 @@ fn escape_pdf_string(text: &str) -> String {
 fn append_content_stream(page: &mut lopdf::Dictionary, new_content: &str) -> Result<(), String> {
     // Get existing content stream
     match page.get(b"Contents") {
-        Ok(lopdf::Object::Reference(content_ref)) => {
+        Ok(lopdf::Object::Reference(_content_ref)) => {
             // Content is an indirect reference; update it
             // For now, we'll append to the stream by re-fetching it
             // This is a simplified approach; real implementation would load, modify, save
