@@ -277,6 +277,7 @@ pub fn run() {
             commands::detect_barcodes,
             // Phase 5.3
             commands::get_analytics_summary,
+            commands::get_analytics_dashboard,
             // Phase 5.5
             commands::ai_visual_check,
             // Phase 6.1
@@ -314,6 +315,10 @@ pub fn run() {
             commands::get_preference,
             commands::set_preference,
             commands::get_all_preferences,
+            // Issue #234 — Alt text editor
+            commands::get_alt_text,
+            commands::list_alt_text,
+            commands::set_alt_text,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

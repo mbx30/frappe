@@ -181,6 +181,24 @@ pub struct AnalyticsSummary {
     pub jobs_by_day: Vec<(String, i64)>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ClientPassRate {
+    pub client_name: String,
+    pub runs: i64,
+    pub errors: i64,
+    pub warnings: i64,
+    /// Fraction in [0.0, 1.0]; 0.0 when there are no runs.
+    pub pass_rate: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AnalyticsDashboard {
+    pub summary: AnalyticsSummary,
+    pub client_pass_rates: Vec<ClientPassRate>,
+    pub average_turnaround_hours: f64,
+    pub common_error_categories: Vec<(String, i64)>,
+}
+
 // ── Approval sheet & export (Phase 5.4) ──────────────────────────────────
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -635,4 +653,17 @@ pub struct AiCheckResult {
     pub confidence: f32,
     pub raw_response: String,
     pub cached: bool,
+}
+
+// ── Alt text (#234) ─────────────────────────────────────────────────────
+
+/// Per-image alt-text entry. Returned by the `get_alt_text` and
+/// `list_alt_text` Tauri commands. When `is_decorative` is true the
+/// image should be marked as an artifact in the PDF and `alt_text` is
+/// ignored by assistive technology.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AltTextEntry {
+    pub object_id: i64,
+    pub alt_text: String,
+    pub is_decorative: bool,
 }
