@@ -280,6 +280,40 @@ export interface PdfSummary {
   is_encrypted: boolean
 }
 
+// ── Redaction (#231) ──────────────────────────────────────────────────────
+// Coordinate contract: x/y/width/height are PDF points with a TOP-LEFT origin
+// (y grows downward from the top of the page). The backend reads the page
+// MediaBox and flips to PDF user space. `page` is the 0-based page index.
+export interface RedactionRect {
+  page: number
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface RedactionResult {
+  output_path: string
+  pages_modified: number
+  redactions_applied: number
+  content_hash: string
+}
+
+export interface RedactionAuditEntry {
+  id: number
+  source_path: string
+  output_path: string
+  operator_name: string
+  redaction_count: number
+  pages_modified: number
+  regions_json: string
+  content_hash: string
+  previous_hash: string | null
+  notes: string
+  created_at: string
+  chain_valid: boolean
+}
+
 export interface FontFinding {
   font_name: string
   font_type: string

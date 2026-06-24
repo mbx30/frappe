@@ -6,6 +6,7 @@ import PdfInspector from './preflight/PdfInspector'
 import ColorConversionPanel from './preflight/ColorConversionPanel'
 import MakePdfXWizard from './preflight/MakePdfXWizard'
 import CertifiedVersionPanel from './preflight/CertifiedVersionPanel'
+import RedactionLayer from './RedactionLayer'
 import { t } from '../i18n'
 import './PDFView.css'
 
@@ -157,8 +158,10 @@ export default function PDFView({ summary, jobs, onOpenFile, onSaveJob, onDelete
   const [showConversion, setShowConversion] = useState(false)
   const [showWizard, setShowWizard] = useState(false)
   const [showCertified, setShowCertified] = useState(false)
+  const [showRedact, setShowRedact] = useState(false)
+  const [redactNotice, setRedactNotice] = useState<string | null>(null)
   // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { setCurrentPage(0); setShowViewer(false); setPreflightResult(null); setShowReport(false) }, [summary?.file_path])
+  useEffect(() => { setCurrentPage(0); setShowViewer(false); setPreflightResult(null); setShowReport(false); setShowRedact(false); setRedactNotice(null) }, [summary?.file_path])
 
   const runFullPreflight = useCallback(async () => {
     if (!summary) return
@@ -329,6 +332,17 @@ export default function PDFView({ summary, jobs, onOpenFile, onSaveJob, onDelete
               <CertifiedVersionPanel jobId={summary.id ?? null} filePath={summary.file_path} />
             )}
           </div>
+        ) : showRedact ? (
+          <RedactionLayer
+            filePath={summary.file_path}
+            pageCount={summary.page_count}
+            initialPage={currentPage}
+            onClose={() => setShowRedact(false)}
+            onExported={(outputPath) => {
+              setShowRedact(false)
+              setRedactNotice(`Redacted PDF saved to ${outputPath}`)
+            }}
+          />
         ) : (
           <div className="pdf-viewer-section">
             <div className="pdf-viewer-header">
@@ -336,6 +350,9 @@ export default function PDFView({ summary, jobs, onOpenFile, onSaveJob, onDelete
               <span className="pdf-viewer-title">{summary.file_name}</span>
               <button className="btn btn-secondary" onClick={runFullPreflight} disabled={runningPreflight} style={{ marginRight: 8 }}>
                 {runningPreflight ? '...' : t('pdf.preflight')}
+              </button>
+              <button className="btn btn-secondary" onClick={() => setShowRedact(true)} style={{ marginRight: 8 }} aria-label="Redact">
+                Redact
               </button>
               <nav className="pdf-nav" aria-label={t('pdf.recent')}>
                 <button
@@ -353,6 +370,12 @@ export default function PDFView({ summary, jobs, onOpenFile, onSaveJob, onDelete
                 >▶</button>
               </nav>
             </div>
+            {redactNotice && (
+              <div className="pdf-error-banner" style={{ background: '#e7f6ec', color: '#1e7e34' }} role="status">
+                <span>{redactNotice}</span>
+                <button onClick={() => setRedactNotice(null)} aria-label={t('common.remove')}>✕</button>
+              </div>
+            )}
             <PageViewer filePath={summary.file_path} pageIndex={currentPage} />
           </div>
         )}
