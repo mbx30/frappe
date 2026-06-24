@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { invoke, convertFileSrc } from '@tauri-apps/api/core'
 
 interface ArtworkPreviewProps {
