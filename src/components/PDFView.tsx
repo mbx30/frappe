@@ -6,6 +6,7 @@ import PdfInspector from './preflight/PdfInspector'
 import ColorConversionPanel from './preflight/ColorConversionPanel'
 import MakePdfXWizard from './preflight/MakePdfXWizard'
 import CertifiedVersionPanel from './preflight/CertifiedVersionPanel'
+import OCRPanel from './preflight/OCRPanel'
 import RedactionLayer from './RedactionLayer'
 import { makeKeyDownHandler, buildShortcuts, formatShortcut, type ShortcutHandlers } from './preflight/keyboardShortcuts'
 import { t } from '../i18n'
@@ -298,6 +299,7 @@ export default function PDFView({ summary, jobs, onOpenFile, onSaveJob, onDelete
   const [showConversion, setShowConversion] = useState(false)
   const [showWizard, setShowWizard] = useState(false)
   const [showCertified, setShowCertified] = useState(false)
+  const [showOCR, setShowOCR] = useState(false)
   const [showRedact, setShowRedact] = useState(false)
   const [redactNotice, setRedactNotice] = useState<string | null>(null)
   const [showFind, setShowFind] = useState(false)
@@ -494,6 +496,9 @@ export default function PDFView({ summary, jobs, onOpenFile, onSaveJob, onDelete
               <button className="btn btn-secondary" onClick={() => setShowCertified(!showCertified)}>
                 {showCertified ? 'Hide Versions' : 'Certified PDF'}
               </button>
+              <button className="btn btn-secondary" onClick={() => setShowOCR(!showOCR)}>
+                {showOCR ? 'Hide OCR' : 'Optical Character Recognition'}
+              </button>
             </div>
             {showInspector && (
               <PdfInspector filePath={summary.file_path} />
@@ -510,6 +515,9 @@ export default function PDFView({ summary, jobs, onOpenFile, onSaveJob, onDelete
             )}
             {showCertified && (
               <CertifiedVersionPanel jobId={summary.id ?? null} filePath={summary.file_path} />
+            )}
+            {showOCR && (
+              <OCRPanel filePath={summary.file_path} pageCount={summary.page_count} />
             )}
           </div>
         ) : showRedact ? (

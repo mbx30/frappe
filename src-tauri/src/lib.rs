@@ -14,6 +14,7 @@ mod logging;
 pub mod metrics;
 mod models;
 pub mod pdf;
+pub mod security;
 
 
 use crate::pdf::engine::PdfEngine;

@@ -961,47 +961,176 @@
   color: var(--text-secondary, #555);
 }
 
-.preferences-panel {
+/* ── OCR Panel (Issue #229) ──────────────────────────────────────── */
+
+.ocr-panel {
+  padding: 16px;
+  background: var(--surface-card, #fff);
+  border-radius: 8px;
+}
+
+.ocr-type-info {
+  margin: 16px 0;
+  padding: 12px;
+  background: var(--surface-hover, #f5f5f5);
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.ocr-type-info p {
+  margin: 4px 0;
+}
+
+.ocr-options {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
+  margin: 16px 0;
 }
 
-.preferences-desc {
-  margin: 0 0 12px;
-  color: var(--text-secondary, #555);
-  font-size: 13px;
-}
-
-.preferences-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.preferences-field {
+.ocr-field {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin-bottom: 8px;
 }
 
-.preferences-field--row {
-  flex-direction: row;
-  align-items: center;
-  gap: 12px;
+.ocr-field label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary, #333);
 }
 
-.preferences-actions {
+.ocr-field input[type="text"],
+.ocr-field input[type="password"],
+.ocr-field select {
+  padding: 8px 12px;
+  border: 1px solid var(--border-default, #ccc);
+  border-radius: 4px;
+  font-size: 13px;
+  background: var(--surface-card, #fff);
+  color: var(--text-primary, #333);
+}
+
+.ocr-field input[type="text"]:disabled,
+.ocr-field input[type="password"]:disabled,
+.ocr-field select:disabled {
+  background: var(--surface-hover, #f5f5f5);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.pdf-checkbox {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-  margin-top: 8px;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
 }
 
-.preferences-message {
-  margin: 0;
+.pdf-checkbox input[type="checkbox"] {
+  cursor: pointer;
+}
+
+.ocr-api-key-section {
+  padding: 12px;
+  background: var(--surface-hover, #f5f5f5);
+  border-radius: 6px;
+  border-left: 3px solid var(--primary-color, #007bff);
+}
+
+.ocr-api-key-section h5 {
+  margin: 0 0 12px;
+  font-size: 14px;
+}
+
+.ocr-cost-estimate {
+  margin: 12px 0 0;
+  padding: 12px;
+  background: var(--surface-card, #fff);
+  border-radius: 4px;
   font-size: 12px;
-  color: var(--text-secondary, #555);
+  line-height: 1.5;
+}
+
+.ocr-cost-estimate p {
+  margin: 4px 0;
+}
+
+.cost-detail {
+  color: var(--text-secondary, #666);
+  font-style: italic;
+}
+
+.ocr-progress {
+  height: 4px;
+  background: var(--border-default, #ddd);
+  border-radius: 2px;
+  overflow: hidden;
+  margin: 12px 0;
+}
+
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary-color, #007bff), var(--success-color, #28a745));
+  transition: width 0.3s ease;
+}
+
+.ocr-results {
+  margin: 16px 0 0;
+  padding: 16px;
+  background: var(--surface-hover, #f5f5f5);
+  border-radius: 6px;
+  border: 1px solid var(--border-default, #ddd);
+}
+
+.ocr-result-summary {
+  margin: 12px 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.ocr-result-summary p {
+  margin: 4px 0;
+}
+
+.ocr-pages-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin: 12px 0 0;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.ocr-page-result {
+  padding: 10px;
+  background: var(--surface-card, #fff);
+  border: 1px solid var(--border-default, #ddd);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.confidence-badge {
+  display: inline-block;
+  background: var(--success-color, #28a745);
+  color: white;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.page-text {
+  margin: 6px 0 0;
+  color: var(--text-secondary, #666);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
