@@ -1188,7 +1188,7 @@ mod tests {
         let real_obj = lopdf::Object::Real(3.14);
         assert!((extract_number(&real_obj).unwrap() - 3.14).abs() < 0.001);
 
-        let string_obj = lopdf::Object::String(b"not a number".to_vec(), false);
+        let string_obj = lopdf::Object::String(b"not a number".to_vec(), lopdf::StringFormat::Literal);
         assert!(extract_number(&string_obj).is_err());
     }
 
