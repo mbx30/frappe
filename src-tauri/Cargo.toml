@@ -103,6 +103,13 @@ lru = "0.12"
 # operation's hash, giving a tamper-evident compliance trail.
 sha2 = "0.10"
 
+# ── Issue #229 — OCR (Tesseract backend) ──────────────────────────────────
+# `tempfile` provides temporary file/directory creation for storing rendered
+# PDF pages as images before OCR processing. Automatically cleaned up on drop.
+tempfile = "3"
+# `which` locates executables in PATH (check if tesseract is installed).
+which = "6"
+
 # ── Issue #301 / #269 — Hot-folder watcher ────────────────────────────────
 # `notify` v8 is the latest stable; `macos_fsevent` is enabled by default
 # on macOS. `notify-debouncer-full` collapses write→close→re-written

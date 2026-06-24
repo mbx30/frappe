@@ -43,7 +43,9 @@ Implement OCR to convert scanned PDFs and images into searchable and editable te
 - ✅ API key handling prepared for keychain storage (Phase 2)
 - ⚠️ Todo: Rate limiting for Cloud Vision API (Phase 2)
 
-## Phase 2: Backend Integration (Local Tesseract)
+## Phase 2: Backend Integration (Local Tesseract) 🚀 IN PROGRESS
+
+### What's Been Implemented
 
 ### Tesseract Implementation
 

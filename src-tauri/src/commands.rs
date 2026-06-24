@@ -3734,11 +3734,11 @@ pub fn detect_pdf_type(path: String) -> Result<crate::pdf::ocr::PdfType, String>
 /// - Selecting specific pages to OCR
 /// - Overlaying extracted text as a hidden searchable layer
 /// - Backend selection (local Tesseract or cloud Vision API)
-/// - Language hints
+/// - Language hints (default: English “eng”)
 /// - Confidence score reporting
 ///
-/// **Phase 1 (scaffolding):** Backend implementations are stubs. This command
-/// will error until Tesseract or Google Cloud Vision integration is complete.
+/// **Phase 2:** Tesseract backend is fully implemented.
+/// **Phase 3:** Google Cloud Vision backend pending.
 #[tauri::command]
 pub async fn run_ocr(
     path: String,
@@ -3751,12 +3751,40 @@ pub async fn run_ocr(
         security::validate_write_path(out)?;
     }
 
-    // Run OCR (currently returns “not implemented” stub)
+    // Run OCR on background thread (rendering + subprocess invocation is blocking)
     tauri::async_runtime::spawn_blocking(move || {
         crate::pdf::ocr::run_ocr(&pdf_path, options)
     })
     .await
     .map_err(|e| format!(“spawn_blocking join error: {e}”))?
+}
+
+/// Check if Tesseract OCR engine is available on this system.
+///
+/// Useful for:
+/// - Determining if local OCR is available (vs requiring cloud Vision API)
+/// - Prompting user to install tesseract if missing
+/// - Graceful fallback in settings UI
+///
+/// Returns Ok(true) if tesseract binary is found on PATH.
+#[tauri::command]
+pub fn is_tesseract_available() -> Result<bool, String> {
+    match crate::pdf::ocr::check_tesseract_available() {
+        Ok(()) => Ok(true),
+        Err(_) => Ok(false),
+    }
+}
+
+/// Get the total page count of a PDF.
+///
+/// Useful for:
+/// - Showing page count in OCR UI
+/// - Validating page indices in OcrOptions
+/// - Determining default page range for selective OCR
+#[tauri::command]
+pub fn get_pdf_page_count(path: String) -> Result<usize, String> {
+    let pdf_path = security::validate_read_path(&path)?;
+    crate::pdf::ocr::get_page_count(&pdf_path)
 }
 
 // Issue #278 â€” Crash reporting + opt-in telemetry
