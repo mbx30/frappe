@@ -61,24 +61,22 @@ export function VirtualList<T>({
     width: containerWidth || 800,
   }
 
-  const rowComponent = ({ index, style: rowStyle }: { index: number; style: CSSProperties }) => {
-    const item = items[index]
-    return (
-      <div key={keyExtractor(item, index)} style={rowStyle}>
-        {renderItem(item, index)}
-      </div>
-    )
-  }
-
   return (
     <div ref={containerRef} className={className}>
       <List
         rowCount={items.length}
         rowHeight={itemHeight}
-        rowComponent={rowComponent as any}
+        rowComponent={({ index, style: rowStyle }) => {
+          const item = items[index]
+          return (
+            <div key={keyExtractor(item, index)} style={rowStyle}>
+              {renderItem(item, index)}
+            </div>
+          )
+        }}
         overscanCount={overscanCount}
         style={listStyle}
-        rowProps={{} as any}
+        rowProps={{}}
       />
     </div>
   )

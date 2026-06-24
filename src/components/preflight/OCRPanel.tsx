@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import type { PdfType, OcrResult, OcrBackend, CostEstimate } from '../../types'
 import { t } from '../../i18n'
@@ -33,6 +33,16 @@ export default function OCRPanel({ filePath, pageCount }: OCRPanelProps) {
   const [result, setResult] = useState<OcrResult | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  // Define estimateCost before effects that use it
+  const estimateCost = useCallback(async () => {
+    try {
+      const estimate = await invoke<CostEstimate>('estimate_google_vision_cost', { path: filePath })
+      setCostEstimate(estimate)
+    } catch (e) {
+      console.error('Failed to estimate cost:', e)
+    }
+  }, [filePath])
+
   // Detect PDF type on load
   useEffect(() => {
     const detectType = async () => {
@@ -54,16 +64,7 @@ export default function OCRPanel({ filePath, pageCount }: OCRPanelProps) {
     if (backend === 'GoogleCloudVision') {
       estimateCost()
     }
-  }, [backend, filePath])
-
-  const estimateCost = async () => {
-    try {
-      const estimate = await invoke<CostEstimate>('estimate_google_vision_cost', { path: filePath })
-      setCostEstimate(estimate)
-    } catch (e) {
-      console.error('Failed to estimate cost:', e)
-    }
-  }
+  }, [backend, filePath, estimateCost])
 
   const testConnection = async () => {
     setTestingConnection(true)
