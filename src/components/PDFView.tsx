@@ -106,10 +106,25 @@ function ThumbnailStrip({ filePath, pageCount, currentPage, onSelectPage }: {
   )
 }
 
+function rgbToHex(r: number, g: number, b: number): string {
+  return (
+    '#' +
+    r.toString(16).padStart(2, '0') +
+    g.toString(16).padStart(2, '0') +
+    b.toString(16).padStart(2, '0')
+  );
+}
+
 function PageViewer({ filePath, pageIndex }: { filePath: string; pageIndex: number }) {
   const [renderUrl, setRenderUrl] = useState<string | null>(null)
   const [zoom, setZoom] = useState(100)
   const [loading, setLoading] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [eyedropperActive, setEyedropperActive] = useState(false)
+  const [sampledColor, setSampledColor] = useState<{ r: number; g: number; b: number; hex: string } | null>(null)
+  const [showPlateView, setShowPlateView] = useState(false)
+  const imgRef = useRef<HTMLImageElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let cancelled = false
@@ -133,17 +148,141 @@ function PageViewer({ filePath, pageIndex }: { filePath: string; pageIndex: numb
     return () => { cancelled = true }
   }, [filePath, pageIndex, zoom])
 
+  // Fullscreen: enter / leave on the page-viewer container so the
+  // browser's ESC handler works for free.
+  const toggleFullscreen = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    if (!document.fullscreenElement) {
+      el.requestFullscreen?.().then(() => setIsFullscreen(true)).catch(() => {});
+    } else {
+      document.exitFullscreen?.().then(() => setIsFullscreen(false)).catch(() => {});
+    }
+  }, []);
+
+  useEffect(() => {
+    const handler = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener('fullscreenchange', handler);
+    return () => document.removeEventListener('fullscreenchange', handler);
+  }, []);
+
+  // Eyedropper: when active, the next click on the page reads
+  // the pixel at the click coordinates from a 1×1 canvas.
+  const handleImageClick = useCallback(
+    (e: React.MouseEvent<HTMLImageElement>) => {
+      if (!eyedropperActive || !imgRef.current) return;
+      const img = imgRef.current;
+      const rect = img.getBoundingClientRect();
+      const xPx = Math.floor(((e.clientX - rect.left) / rect.width) * img.naturalWidth);
+      const yPx = Math.floor(((e.clientY - rect.top) / rect.height) * img.naturalHeight);
+      const canvas = document.createElement('canvas');
+      canvas.width = 1;
+      canvas.height = 1;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      try {
+        ctx.drawImage(img, xPx, yPx, 1, 1, 0, 0, 1, 1);
+        const data = ctx.getImageData(0, 0, 1, 1).data;
+        const r = data[0];
+        const g = data[1];
+        const b = data[2];
+        setSampledColor({ r, g, b, hex: rgbToHex(r, g, b) });
+      } catch {
+        // Cross-origin images throw on getImageData; we silently fail
+        // and leave sampledColor unchanged.
+      }
+      setEyedropperActive(false);
+    },
+    [eyedropperActive]
+  );
+
   return (
-    <div className="page-viewer" role="region" aria-label={`Page ${pageIndex + 1}`}>
+    <div
+      ref={containerRef}
+      className={`page-viewer${isFullscreen ? ' page-viewer--fullscreen' : ''}`}
+      role="region"
+      aria-label={`Page ${pageIndex + 1}`}
+    >
       <div className="page-toolbar" role="toolbar" aria-label={t('pdf.tools')}>
         <button aria-label={t('pdf.zoom_out')} onClick={() => setZoom((z) => Math.max(25, z - 25))}>−</button>
         <span className="zoom-label" aria-live="polite">{zoom}%</span>
         <button aria-label={t('pdf.zoom_in')} onClick={() => setZoom((z) => Math.min(400, z + 25))}>+</button>
         <button aria-label={t('pdf.fit_width')} onClick={() => setZoom(100)}>{t('pdf.fit_width')}</button>
+        <button
+          aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+          className={isFullscreen ? 'btn-active' : ''}
+          onClick={toggleFullscreen}
+          title="Fullscreen (F)"
+        >
+          ⛶
+        </button>
+        <button
+          aria-label="Eyedropper"
+          className={eyedropperActive ? 'btn-active' : ''}
+          onClick={() => {
+            setEyedropperActive((v) => !v);
+            setSampledColor(null);
+          }}
+          title="Eyedropper — click the page to sample a color"
+        >
+          💧
+        </button>
+        <button
+          aria-label="Plate view"
+          className={showPlateView ? 'btn-active' : ''}
+          onClick={() => setShowPlateView((v) => !v)}
+          title="Plate view — separations preview"
+        >
+          ⬚
+        </button>
+        {eyedropperActive && (
+          <span className="eyedropper-hint" role="status">
+            Click the page to sample…
+          </span>
+        )}
+        {sampledColor && (
+          <span
+            className="eyedropper-swatch"
+            role="status"
+            style={{ backgroundColor: sampledColor.hex }}
+            title={`rgb(${sampledColor.r}, ${sampledColor.g}, ${sampledColor.b})`}
+          >
+            {sampledColor.hex}
+          </span>
+        )}
       </div>
       <div className="page-canvas" role="img" aria-label={`Page ${pageIndex + 1}`}>
         {loading && <div className="page-loading" role="status">{t('pdf.rendering')}</div>}
-        {renderUrl && <img src={convertFileSrc(renderUrl)} alt={`Page ${pageIndex + 1}`} style={{ maxWidth: `${zoom}%` }} />}
+        {renderUrl && (
+          <img
+            ref={imgRef}
+            src={convertFileSrc(renderUrl)}
+            alt={`Page ${pageIndex + 1}`}
+            style={{
+              maxWidth: `${zoom}%`,
+              cursor: eyedropperActive ? 'crosshair' : 'default',
+            }}
+            onClick={handleImageClick}
+            crossOrigin="anonymous"
+          />
+        )}
+        {showPlateView && renderUrl && (
+          <div className="plate-view-overlay" aria-label="Plate view (separations preview)">
+            <div className="plate-view-label">Plate View</div>
+            <div className="plate-view-channels">
+              {(['C', 'M', 'Y', 'K'] as const).map((c) => (
+                <div key={c} className={`plate-view-channel plate-view-channel--${c.toLowerCase()}`}>
+                  <span className="plate-view-channel-letter">{c}</span>
+                </div>
+              ))}
+            </div>
+            <p className="plate-view-help">
+              Conceptual separations preview. Real CMYK plate generation
+              requires a per-channel render through pdfium; this overlay
+              indicates which separations would be produced.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   )

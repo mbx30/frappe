@@ -4347,4 +4347,6 @@ async fn dispatch_batched_command(
     }
 }
 
-// Issue #292 â€” Tauri Channel API for live updates
+// ============================================================================
+// Issue #292: Tauri Channel API for live updates
+// ============================================================================
