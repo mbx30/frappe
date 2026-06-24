@@ -15,19 +15,19 @@ fn make_pdf_with_trim_box(trim: [f64; 4], out_path: &Path) {
             (
                 b"MediaBox".to_vec(),
                 Object::Array(vec![
-                    Object::Real(0.0),
-                    Object::Real(0.0),
-                    Object::Real(trim[2]),
-                    Object::Real(trim[3]),
+                    Object::Real(0.0 as f32),
+                    Object::Real(0.0 as f32),
+                    Object::Real(trim[2] as f32),
+                    Object::Real(trim[3] as f32),
                 ]),
             ),
             (
                 b"TrimBox".to_vec(),
                 Object::Array(vec![
-                    Object::Real(trim[0]),
-                    Object::Real(trim[1]),
-                    Object::Real(trim[2]),
-                    Object::Real(trim[3]),
+                    Object::Real(trim[0] as f32),
+                    Object::Real(trim[1] as f32),
+                    Object::Real(trim[2] as f32),
+                    Object::Real(trim[3] as f32),
                 ]),
             ),
             (

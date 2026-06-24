@@ -1,0 +1,64 @@
+name: Binary Size Audit
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  bloat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install cargo-bloat
+        run: cargo install cargo-bloat --locked
+
+      - name: Build release binary
+        working-directory: src-tauri
+        run: cargo build --release --bin app
+
+      - name: Top 10 contributors
+        # cargo-bloat reports the per-crate cost of the release binary.
+        # We post the top-10 as a workflow artifact; the perf workflow
+        # picks them up and comments on the PR.
+        working-directory: src-tauri
+        run: |
+          set -e
+          cargo bloat --release --bin app -n 10 --crates > bloat-top10.txt
+          cat bloat-top10.txt
+
+      - name: Upload bloat report
+        uses: actions/upload-artifact@v4
+        with:
+          name: bloat-report-${{ github.sha }}
+          path: src-tauri/bloat-top10.txt
+          retention-days: 30
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const txt = fs.readFileSync('src-tauri/bloat-top10.txt', 'utf8');
+            const body = '## Binary size audit\n\n```\n' + txt + '\n```\n';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });

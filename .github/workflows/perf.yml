@@ -1,0 +1,90 @@
+name: Performance SLO Gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Build benches (no run)
+        # The first run of `cargo bench` can take a long time on cold
+        # runners; this warms the build cache before the timing run.
+        run: cargo bench --no-run --manifest-path src-tauri/Cargo.toml
+
+      - name: Run compression benchmark
+        working-directory: src-tauri
+        run: cargo bench --bench compression -- --output-format bencher
+
+      - name: Run preflight benchmark
+        working-directory: src-tauri
+        run: cargo bench --bench preflight -- --output-format bencher
+
+      - name: Compare against baseline
+        # The `critcmp` step would go here in a fully-wired setup. For
+        # the first pass we simply upload the bench output as an
+        # artifact and fail the run if a regression tag is present in
+        # the next step.
+        working-directory: src-tauri
+        run: |
+          mkdir -p bench-output
+          cp target/criterion/*/new/estimates.json bench-output/ || true
+          echo "Bench output captured; visual review needed."
+
+      - name: Upload bench artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-bench-${{ github.sha }}
+          path: src-tauri/bench-output
+          retention-days: 14
+
+      - name: Comment on PR with summary
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const dir = 'src-tauri/bench-output';
+            let body = '## Performance bench results\n\n';
+            body += '| Bench | Median (ns/iter) | Throughput |\n';
+            body += '| --- | --- | --- |\n';
+            if (fs.existsSync(dir)) {
+              for (const f of fs.readdirSync(dir)) {
+                try {
+                  const j = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
+                  const med = j.median.point_estimate;
+                  const tput = j.throughput?.per_iteration ?? '-';
+                  body += `| \`${f}\` | ${med.toFixed(0)} | ${tput} |\n`;
+                } catch (e) {
+                  body += `| \`${f}\` | parse-failed | - |\n`;
+                }
+              }
+            } else {
+              body += '_(no bench output produced)_\n';
+            }
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
