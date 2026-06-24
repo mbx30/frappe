@@ -13,6 +13,7 @@ mod models;
 mod ai_check;
 mod observability;
 pub mod pdf;
+pub mod security;
 
 
 use crate::pdf::engine::PdfEngine;

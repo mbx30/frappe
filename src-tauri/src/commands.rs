@@ -20,94 +20,7 @@ use crate::pdf::pdfx::PdfXFinding;
 use crate::pdf::redact::{RedactionRect, RedactionResult};
 use crate::pdf::security::SecurityFinding;
 use crate::pdf::transforms::{ConversionResult, IccProfileInfo};
-
-fn validate_read_path(path: &str) -> Result<PathBuf, String> {
-    if path.contains('\0') {
-        return Err("Path contains null bytes".to_string());
-    }
-    let p = PathBuf::from(path);
-    if !p.exists() {
-        return Err(format!("File not found: {}", path));
-    }
-    p.canonicalize().map_err(|e| format!("Invalid path: {}", e))
-}
-
-/// Validate a path used as an `output_path` in a Tauri command. The path
-/// must:
-///   1. Contain no NUL bytes.
-///   2. Canonicalize to a non-empty absolute path whose parent directory
-///      already exists. (We don't require the file itself to exist; we're
-///      about to write it.)
-///   3. Not be inside a system / read-only location that we know we should
-///      never write user data to.
-///   4. Not contain a parent-traversal (`..`) component after canonicalization
-///      relative to its original form.
-fn validate_write_path(path: &str) -> Result<PathBuf, String> {
-    if path.contains('\0') {
-        return Err("Output path contains null bytes".to_string());
-    }
-    if path.is_empty() {
-        return Err("Output path is empty".to_string());
-    }
-    let p = PathBuf::from(path);
-    let parent = p
-        .parent()
-        .ok_or_else(|| "Output path has no parent directory".to_string())?;
-    if !parent.exists() {
-        return Err(format!(
-            "Output parent directory does not exist: {}",
-            parent.display()
-        ));
-    }
-    // Reject system locations on Windows and Unix.
-    #[cfg(windows)]
-    {
-        let s = parent.to_string_lossy().to_lowercase();
-        for blocked in [
-            "c:\\windows",
-            "c:\\program files",
-            "c:\\program files (x86)",
-            "c:\\programdata",
-        ] {
-            if s.starts_with(blocked) {
-                return Err(format!(
-                    "Output path is inside a system location: {}",
-                    parent.display()
-                ));
-            }
-        }
-    }
-    #[cfg(unix)]
-    {
-        let s = parent.to_string_lossy();
-        for blocked in [
-            "/etc", "/usr", "/bin", "/sbin", "/var", "/boot", "/sys", "/proc", "/root",
-        ] {
-            if s == blocked || s.starts_with(&format!("{}/", blocked)) {
-                return Err(format!(
-                    "Output path is inside a system location: {}",
-                    parent.display()
-                ));
-            }
-        }
-    }
-    // Reject explicit traversal in the original path string.
-    for component in p.components() {
-        if matches!(component, std::path::Component::ParentDir) {
-            return Err("Output path contains '..'".to_string());
-        }
-    }
-    // Canonicalize the PARENT directory (which must exist) and re-join the
-    // filename. We cannot canonicalize the full path because the output file
-    // doesn't exist yet â€” std::fs::canonicalize requires the path to exist.
-    let canonical_parent = parent
-        .canonicalize()
-        .map_err(|e| format!("Cannot canonicalize output directory: {}", e))?;
-    let file_name = p
-        .file_name()
-        .ok_or_else(|| "Output path has no filename component".to_string())?;
-    Ok(canonical_parent.join(file_name))
-}
+use crate::security;
 
 /// Convert a 0-based page index (frontend convention, matches pdfium-render)
 /// to the 1-based key used by `lopdf::Document::get_pages()`.
@@ -185,8 +98,7 @@ pub fn import_csv_file(
     workbook_id: i64,
     file_path: String,
 ) -> Result<SheetData, String> {
-    let _ = validate_read_path(&file_path)?;
-    let path = PathBuf::from(&file_path);
+    let path = security::validate_read_path(&file_path)?;
     let (sheet_name, headers, rows) = crate::import::import_csv_data(&path)?;
 
     let sheet = db
@@ -216,8 +128,7 @@ pub fn import_excel_file(
     workbook_id: i64,
     file_path: String,
 ) -> Result<SheetData, String> {
-    let _ = validate_read_path(&file_path)?;
-    let path = PathBuf::from(&file_path);
+    let path = security::validate_read_path(&file_path)?;
     let (sheet_name, headers, rows) = crate::import::import_excel(&path)?;
 
     let sheet = db
@@ -303,8 +214,7 @@ pub async fn import_notion_database(
 
 #[tauri::command]
 pub fn preview_import(path: String) -> Result<crate::models::ImportResult, String> {
-    let _ = validate_read_path(&path)?;
-    let p = PathBuf::from(&path);
+    let p = security::validate_read_path(&path)?;
     match p.extension().and_then(|e| e.to_str()) {
         Some("csv") => crate::import::import_csv(&p),
         Some("xlsx") | Some("xls") => {
@@ -958,8 +868,7 @@ fn get_info_string(lopdf_doc: &lopdf::Document, key: &[u8]) -> String {
 
 #[tauri::command]
 pub fn open_pdf(engine: State<'_, PdfEngine>, path: String) -> Result<PdfSummary, String> {
-    let _ = validate_read_path(&path)?;
-    let path_buf = PathBuf::from(&path);
+    let path_buf = security::validate_read_path(&path)?;
     let file_name = path_buf
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
@@ -1023,7 +932,7 @@ pub fn create_certified_version(
     author: String,
     comment: String,
 ) -> Result<i64, String> {
-    let _ = validate_read_path(&file_path)?;
+    let file_path = security::validate_read_path(&file_path)?;
     let metadata = std::fs::metadata(&file_path).map_err(|e| format!("File not found: {}", e))?;
     db.save_certified_version(job_id, &file_path, metadata.len(), &author, &comment)
         .map_err(|e| e.to_string())
@@ -1045,7 +954,7 @@ pub fn render_page_thumbnail(
     page_index: usize,
     width_px: Option<u32>,
 ) -> Result<String, String> {
-    let _ = validate_read_path(&path)?;
+    let path = security::validate_read_path(&path)?;
     use image::RgbaImage;
     let doc = engine.open_document(&path)?;
     let idx: i32 = page_index
@@ -1096,7 +1005,7 @@ pub fn render_page(
     page_index: usize,
     dpi: Option<f32>,
 ) -> Result<String, String> {
-    let _ = validate_read_path(&path)?;
+    let path = security::validate_read_path(&path)?;
     use image::RgbaImage;
     use pdfium_render::prelude::PdfRenderConfig;
     let doc = engine.open_document(&path)?;
@@ -1158,7 +1067,7 @@ pub fn render_page_with_overprint(
     page_index: usize,
     dpi: Option<f32>,
 ) -> Result<String, String> {
-    let _ = validate_read_path(&path)?;
+    let path = security::validate_read_path(&path)?;
     use image::RgbaImage;
     use pdfium_render::prelude::PdfRenderConfig;
     let doc = engine.open_document(&path)?;
@@ -1213,8 +1122,8 @@ pub fn get_page_dimensions(
     path: String,
     page_index: usize,
 ) -> Result<PageDimensions, String> {
-    let _ = validate_read_path(&path)?;
-    let doc = engine.open_document(&path)?;
+    let _path = security::validate_read_path(&path)?;
+    let doc = engine.open_document(&_path)?;
     let idx: i32 = page_index
         .try_into()
         .map_err(|_| format!("Page index too large: {page_index}"))?;
@@ -1234,8 +1143,8 @@ pub fn get_page_dimensions(
 
 #[tauri::command]
 pub fn extract_pages(path: String, indices: Vec<usize>, output_path: String) -> Result<(), String> {
-    let _ = validate_read_path(&path)?;
-    let _ = validate_write_path(&output_path)?;
+    let path = security::validate_read_path(&path)?;
+    let output_path = security::validate_write_path(&output_path)?;
     let mut doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     let pages = doc.get_pages();
     let all_page_numbers: Vec<u32> = pages.keys().copied().collect();
@@ -1257,8 +1166,8 @@ pub fn extract_pages(path: String, indices: Vec<usize>, output_path: String) -> 
 
 #[tauri::command]
 pub fn delete_pages(path: String, indices: Vec<usize>, output_path: String) -> Result<(), String> {
-    let _ = validate_read_path(&path)?;
-    let _ = validate_write_path(&output_path)?;
+    let path = security::validate_read_path(&path)?;
+    let output_path = security::validate_write_path(&output_path)?;
     let mut doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     let pages = doc.get_pages();
     let all_page_numbers: Vec<u32> = pages.keys().copied().collect();
@@ -1280,8 +1189,8 @@ pub fn rotate_page(
     degrees: i64,
     output_path: String,
 ) -> Result<(), String> {
-    let _ = validate_read_path(&path)?;
-    let _ = validate_write_path(&output_path)?;
+    let path = security::validate_read_path(&path)?;
+    let output_path = security::validate_write_path(&output_path)?;
     let mut doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     let pages = doc.get_pages();
     let obj_id = match pages.get(&lopdf_page_id(page_index)) {
@@ -1298,29 +1207,29 @@ pub fn rotate_page(
 
 #[tauri::command]
 pub fn check_fonts(path: String) -> Result<Vec<FontFinding>, String> {
-    let _ = validate_read_path(&path)?;
-    let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
+    let _path = security::validate_read_path(&path)?;
+    let doc = lopdf::Document::load(&_path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     Ok(crate::pdf::fonts::collect_fonts(&doc))
 }
 
 #[tauri::command]
 pub fn check_page_boxes(path: String) -> Result<Vec<PageBoxFinding>, String> {
-    let _ = validate_read_path(&path)?;
-    let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
+    let _path = security::validate_read_path(&path)?;
+    let doc = lopdf::Document::load(&_path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     Ok(crate::pdf::boxes::check_page_boxes(&doc))
 }
 
 #[tauri::command]
 pub fn check_image_resolution(path: String) -> Result<Vec<ImageResolutionFinding>, String> {
-    let _ = validate_read_path(&path)?;
-    let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
+    let _path = security::validate_read_path(&path)?;
+    let doc = lopdf::Document::load(&_path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     Ok(crate::pdf::images::check_image_resolution(&doc))
 }
 
 #[tauri::command]
 pub fn check_bleed(path: String, min_bleed_mm: Option<f64>) -> Result<Vec<BleedFinding>, String> {
-    let _ = validate_read_path(&path)?;
-    let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
+    let _path = security::validate_read_path(&path)?;
+    let doc = lopdf::Document::load(&_path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     let min = min_bleed_mm.unwrap_or(3.0);
     Ok(crate::pdf::bleed::check_bleed(&doc, min))
 }
@@ -1331,8 +1240,8 @@ pub fn add_bleed(
     amount_mm: f64,
     output_path: String,
 ) -> Result<(), String> {
-    let _ = validate_read_path(&path)?;
-    let _ = validate_write_path(&output_path)?;
+    let path = security::validate_read_path(&path)?;
+    let output_path = security::validate_write_path(&output_path)?;
     if amount_mm < 0.0 {
         return Err("amount_mm must be non-negative".to_string());
     }
@@ -1451,15 +1360,15 @@ pub fn add_bleed(
 
 #[tauri::command]
 pub fn check_output_intents(path: String) -> Result<Vec<OutputIntent>, String> {
-    let _ = validate_read_path(&path)?;
-    let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
+    let _path = security::validate_read_path(&path)?;
+    let doc = lopdf::Document::load(&_path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     Ok(crate::pdf::metadata::get_output_intents(&doc))
 }
 
 #[tauri::command]
 pub fn check_security(path: String) -> Result<Vec<SecurityFinding>, String> {
-    let _ = validate_read_path(&path)?;
-    let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
+    let _path = security::validate_read_path(&path)?;
+    let doc = lopdf::Document::load(&_path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     Ok(crate::pdf::security::check_security(&doc))
 }
 
@@ -1480,8 +1389,8 @@ pub struct CombinedPreflightResult {
 
 #[tauri::command]
 pub fn check_full_preflight(path: String) -> Result<CombinedPreflightResult, String> {
-    let _ = validate_read_path(&path)?;
-    let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
+    let _path = security::validate_read_path(&path)?;
+    let doc = lopdf::Document::load(&_path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     let mut pdfx = crate::pdf::pdfx::check_metadata(&doc);
     pdfx.extend(crate::pdf::pdfx::check_version_compatibility(&path, "x4"));
     let color_spaces = crate::pdf::color::check_color_spaces(&doc, "any");
@@ -1505,8 +1414,8 @@ pub fn check_full_preflight(path: String) -> Result<CombinedPreflightResult, Str
 
 #[tauri::command]
 pub fn check_pdfx(path: String, profile: String) -> Result<CombinedPreflightResult, String> {
-    let _ = validate_read_path(&path)?;
-    let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
+    let _path = security::validate_read_path(&path)?;
+    let doc = lopdf::Document::load(&_path).map_err(|e| format!("Failed to open PDF: {}", e))?;
 
     let target = profile.as_str();
     let fonts = crate::pdf::fonts::collect_fonts(&doc);
@@ -1560,43 +1469,43 @@ pub fn check_color_spaces(
     path: String,
     target_profile: String,
 ) -> Result<Vec<ColorSpaceFinding>, String> {
-    let _ = validate_read_path(&path)?;
-    let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
+    let _path = security::validate_read_path(&path)?;
+    let doc = lopdf::Document::load(&_path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     Ok(crate::pdf::color::check_color_spaces(&doc, &target_profile))
 }
 
 #[tauri::command]
 pub fn check_overprint(path: String) -> Result<Vec<OverprintFinding>, String> {
-    let _ = validate_read_path(&path)?;
-    let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
+    let _path = security::validate_read_path(&path)?;
+    let doc = lopdf::Document::load(&_path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     Ok(crate::pdf::overprint::check_overprint(&doc))
 }
 
 #[tauri::command]
 pub fn check_transparency(path: String) -> Result<Vec<TransparencyFinding>, String> {
-    let _ = validate_read_path(&path)?;
-    let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
+    let _path = security::validate_read_path(&path)?;
+    let doc = lopdf::Document::load(&_path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     Ok(crate::pdf::overprint::check_transparency(&doc))
 }
 
 #[tauri::command]
 pub fn check_hidden_content(path: String) -> Result<Vec<HiddenContentFinding>, String> {
-    let _ = validate_read_path(&path)?;
-    let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
+    let _path = security::validate_read_path(&path)?;
+    let doc = lopdf::Document::load(&_path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     Ok(crate::pdf::overprint::check_hidden_content(&doc))
 }
 
 #[tauri::command]
 pub fn check_spot_colors(path: String) -> Result<Vec<SpotColorFinding>, String> {
-    let _ = validate_read_path(&path)?;
-    let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
+    let _path = security::validate_read_path(&path)?;
+    let doc = lopdf::Document::load(&_path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     Ok(crate::pdf::color::check_spot_colors(&doc))
 }
 
 #[tauri::command]
 pub fn check_ink_coverage(path: String) -> Result<Vec<InkCoverageFinding>, String> {
-    let _ = validate_read_path(&path)?;
-    let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
+    let _path = security::validate_read_path(&path)?;
+    let doc = lopdf::Document::load(&_path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     Ok(crate::pdf::color::check_ink_coverage(&doc))
 }
 
@@ -1615,8 +1524,8 @@ pub async fn convert_rgb_to_cmyk(
     dst_profile: Option<String>,
     rendering_intent: Option<String>,
 ) -> Result<ConversionResult, String> {
-    let _ = validate_read_path(&path)?;
-    let _ = validate_write_path(&output_path)?;
+    let path = security::validate_read_path(&path)?;
+    let output_path = security::validate_write_path(&output_path)?;
     tauri::async_runtime::spawn_blocking(move || -> Result<ConversionResult, String> {
         let mut doc =
             lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
@@ -1638,9 +1547,9 @@ pub fn add_output_intent(
     condition_id: String,
     condition: String,
 ) -> Result<(), String> {
-    let _ = validate_read_path(&path)?;
-    let _ = validate_write_path(&output_path)?;
-    let _ = validate_read_path(&icc_profile)?;
+    let path = security::validate_read_path(&path)?;
+    let output_path = security::validate_write_path(&output_path)?;
+    let icc_profile = security::validate_read_path(&icc_profile)?;
     let mut doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     let icc_data =
         std::fs::read(&icc_profile).map_err(|e| format!("Failed to read ICC profile: {}", e))?;
@@ -1652,8 +1561,8 @@ pub fn add_output_intent(
 
 #[tauri::command]
 pub fn get_pdf_catalog(path: String) -> Result<serde_json::Value, String> {
-    let _ = validate_read_path(&path)?;
-    let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
+    let _path = security::validate_read_path(&path)?;
+    let doc = lopdf::Document::load(&_path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     let root_ref = doc
         .trailer
         .get(b"Root")
@@ -1764,8 +1673,8 @@ pub fn reorder_pages(
     output_path: String,
 ) -> Result<(), String> {
     use lopdf::Object;
-    let _ = validate_read_path(&path)?;
-    let _ = validate_write_path(&output_path)?;
+    let path = security::validate_read_path(&path)?;
+    let output_path = security::validate_write_path(&output_path)?;
     let mut doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {e}"))?;
     let pages = doc.get_pages();
     let all_page_numbers: Vec<u32> = pages.keys().copied().collect();
@@ -1822,8 +1731,8 @@ pub fn insert_blank_page(
     output_path: String,
 ) -> Result<(), String> {
     use lopdf::Object;
-    let _ = validate_read_path(&path)?;
-    let _ = validate_write_path(&output_path)?;
+    let path = security::validate_read_path(&path)?;
+    let output_path = security::validate_write_path(&output_path)?;
     let mut doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {e}"))?;
     let width_pts = width_mm / 0.3528;
     let height_pts = height_mm / 0.3528;
@@ -1885,8 +1794,8 @@ pub fn insert_blank_page(
 
 #[tauri::command]
 pub fn list_layers(path: String) -> Result<Vec<LayerInfo>, String> {
-    let _ = validate_read_path(&path)?;
-    let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {e}"))?;
+    let _path = security::validate_read_path(&path)?;
+    let doc = lopdf::Document::load(&_path).map_err(|e| format!("Failed to open PDF: {e}"))?;
     let mut layers = Vec::new();
     for (obj_id, obj) in &doc.objects {
         if let lopdf::Object::Dictionary(dict) = obj {
@@ -1926,8 +1835,8 @@ pub fn set_layer_visibility(
     visible: bool,
     output_path: String,
 ) -> Result<(), String> {
-    let _ = validate_read_path(&path)?;
-    let _ = validate_write_path(&output_path)?;
+    let path = security::validate_read_path(&path)?;
+    let output_path = security::validate_write_path(&output_path)?;
     use lopdf::Object;
     let mut doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {e}"))?;
     let key = (object_id, 0u16);
@@ -1954,8 +1863,8 @@ pub fn set_layer_visibility(
 #[tauri::command]
 pub fn decode_content_stream(path: String, page_index: usize) -> Result<String, String> {
     use crate::pdf::content_stream;
-    let _ = validate_read_path(&path)?;
-    let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {e}"))?;
+    let _path = security::validate_read_path(&path)?;
+    let doc = lopdf::Document::load(&_path).map_err(|e| format!("Failed to open PDF: {e}"))?;
     let pages = doc.get_pages();
     let obj_id = pages
         .get(&lopdf_page_id(page_index))
@@ -2027,8 +1936,8 @@ pub fn encode_content_stream(
     output_path: String,
 ) -> Result<(), String> {
     use crate::pdf::content_stream;
-    let _ = validate_read_path(&path)?;
-    let _ = validate_write_path(&output_path)?;
+    let path = security::validate_read_path(&path)?;
+    let output_path = security::validate_write_path(&output_path)?;
     let mut doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {e}"))?;
     let pages = doc.get_pages();
     let obj_id = pages
@@ -2156,8 +2065,8 @@ pub fn search_text(
     path: String,
     query: String,
 ) -> Result<Vec<TextMatch>, String> {
-    let _ = validate_read_path(&path)?;
-    let doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {e}"))?;
+    let _path = security::validate_read_path(&path)?;
+    let doc = lopdf::Document::load(&_path).map_err(|e| format!("Failed to open PDF: {e}"))?;
     let page_count = doc.get_pages().len();
     let mut results = Vec::new();
 
@@ -2282,8 +2191,8 @@ pub async fn replace_text(
     if find.is_empty() {
         return Err("`find` string must not be empty".to_string());
     }
-    let _ = validate_read_path(&path)?;
-    let _ = validate_write_path(&output_path)?;
+    let path = security::validate_read_path(&path)?;
+    let output_path = security::validate_write_path(&output_path)?;
     tauri::async_runtime::spawn_blocking(move || -> Result<ReplaceResult, String> {
         let mut doc =
             lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {e}"))?;
@@ -2745,9 +2654,9 @@ pub fn replace_image(
     new_image_path: String,
     output_path: String,
 ) -> Result<(), String> {
-    let _ = validate_read_path(&path)?;
-    let _ = validate_read_path(&new_image_path)?;
-    let _ = validate_write_path(&output_path)?;
+    let path = security::validate_read_path(&path)?;
+    let new_image_path = security::validate_read_path(&new_image_path)?;
+    let output_path = security::validate_write_path(&output_path)?;
 
     use lopdf::Object;
     use std::io::Cursor;
@@ -2891,8 +2800,8 @@ pub fn optimize_image(
     settings: OptimizeSettings,
     output_path: String,
 ) -> Result<(), String> {
-    let _ = validate_read_path(&path)?;
-    let _ = validate_write_path(&output_path)?;
+    let path = security::validate_read_path(&path)?;
+    let output_path = security::validate_write_path(&output_path)?;
 
     use lopdf::Object;
 
@@ -3175,7 +3084,7 @@ pub async fn run_profile(
     let profile = db
         .get_preflight_profile(profile_id)
         .map_err(|e| e.to_string())?;
-    let _ = validate_read_path(&path)?;
+    let path = security::validate_read_path(&path)?;
     tauri::async_runtime::spawn_blocking(move || -> Result<crate::pdf::registry::RunProfileResult, String> {
         let doc =
             lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
@@ -3428,8 +3337,8 @@ pub fn replay_action_list(
     steps: Vec<crate::pdf::action_list::ActionStep>,
     working_dir: String,
 ) -> Result<crate::pdf::action_list::ReplayResult, String> {
-    let _ = validate_read_path(&input_pdf)?;
-    let _ = validate_write_path(&working_dir)?;
+    let input_pdf = security::validate_read_path(&input_pdf)?;
+    let working_dir = security::validate_write_path(&working_dir)?;
     crate::pdf::action_list::replay(
         std::path::Path::new(&input_pdf),
         &steps,
@@ -3446,7 +3355,7 @@ pub fn create_debug_session(
     pdf_path: String,
     steps: Vec<crate::pdf::action_list::ActionStep>,
 ) -> Result<crate::pdf::action_list_debugger::DebugSession, String> {
-    let _ = validate_read_path(&pdf_path)?;
+    let pdf_path = security::validate_read_path(&pdf_path)?;
     crate::pdf::action_list_debugger::create_debug_session(&db, &name, &pdf_path, &steps)
 }
 
@@ -3476,7 +3385,7 @@ pub fn step_forward_debug(
     id: i64,
     working_dir: String,
 ) -> Result<crate::pdf::action_list_debugger::DebugSession, String> {
-    let _ = validate_write_path(&working_dir)?;
+    let working_dir = security::validate_write_path(&working_dir)?;
     crate::pdf::action_list_debugger::step_forward(
         &db,
         id,
@@ -3491,7 +3400,7 @@ pub fn run_from_here_debug(
     from_index: i64,
     working_dir: String,
 ) -> Result<crate::pdf::action_list_debugger::DebugSession, String> {
-    let _ = validate_write_path(&working_dir)?;
+    let working_dir = security::validate_write_path(&working_dir)?;
     crate::pdf::action_list_debugger::run_from_here(
         &db,
         id,
@@ -3507,8 +3416,8 @@ pub fn render_debug_thumbnail(
     out_path: String,
     width_px: u32,
 ) -> Result<(), String> {
-    let _ = validate_read_path(&pdf_path)?;
-    let _ = validate_write_path(&out_path)?;
+    let pdf_path = security::validate_read_path(&pdf_path)?;
+    let out_path = security::validate_write_path(&out_path)?;
     crate::pdf::action_list_debugger::render_first_page_thumbnail(
         Some(&engine),
         std::path::Path::new(&pdf_path),
@@ -3523,7 +3432,7 @@ pub fn export_debug_report_pdf(
     id: i64,
     output_path: String,
 ) -> Result<(), String> {
-    let _ = validate_write_path(&output_path)?;
+    let output_path = security::validate_write_path(&output_path)?;
     let session = crate::pdf::action_list_debugger::get_debug_session(&db, id)?;
     crate::pdf::action_list_debugger::export_debug_report(
         &session,
@@ -3613,10 +3522,14 @@ pub async fn compress_pdf(
     output_path: Option<String>,
     options: Option<crate::pdf::compress::CompressionOptions>,
 ) -> Result<crate::pdf::compress::CompressionResult, String> {
-    let _ = validate_read_path(&path)?;
-    if let Some(ref out) = output_path {
-        let _ = validate_write_path(out)?;
-    }
+    let path = security::validate_read_path(&path)?;
+    // Validate optional output path before moving into spawn_blocking
+    let output_path = if let Some(out) = output_path {
+        let validated = security::validate_write_path(&out)?;
+        Some(validated)
+    } else {
+        None
+    };
     let opts = options.unwrap_or_default();
     tauri::async_runtime::spawn_blocking(move || {
         crate::pdf::compress::compress_pdf(&path, output_path.as_deref(), &opts)
@@ -3647,8 +3560,8 @@ pub fn redact_pdf(
     operator_name: Option<String>,
     notes: Option<String>,
 ) -> Result<RedactionResult, String> {
-    let _ = validate_read_path(&path)?;
-    let _ = validate_write_path(&output_path)?;
+    let path = security::validate_read_path(&path)?;
+    let output_path = security::validate_write_path(&output_path)?;
 
     // In-memory pipeline: read the source, redact, hash, then write. No
     // intermediate plaintext temp file is created.
@@ -3704,7 +3617,7 @@ pub fn detect_barcodes(
     path: String,
     page_index: usize,
 ) -> Result<Vec<crate::pdf::barcode::BarcodeDetection>, String> {
-    let _ = validate_read_path(&path)?;
+    let path = security::validate_read_path(&path)?;
     use image::RgbaImage;
     let doc = engine.open_document(&path)?;
     let idx: i32 = page_index
@@ -3801,6 +3714,125 @@ pub async fn ai_visual_check(
     crate::ai_check::ai_visual_check(&path, &prompt).await
 }
 
+// Issue #229 â€” Optical Character Recognition (OCR)
+
+/// Detect whether a PDF is text-based or scanned (image-based).
+///
+/// Returns classification:
+/// - TextBased: PDF contains embedded text and fonts (already searchable)
+/// - Scanned: PDF is primarily image-based (requires OCR)
+/// - Mixed: Some pages are text-based, some are scanned
+#[tauri::command]
+pub fn detect_pdf_type(path: String) -> Result<crate::pdf::ocr::PdfType, String> {
+    let pdf_path = security::validate_read_path(&path)?;
+    crate::pdf::ocr::detect_pdf_type(&pdf_path)
+}
+
+/// Run OCR on a PDF using the specified backend (Tesseract or Google Cloud Vision).
+///
+/// Supports:
+/// - Selecting specific pages to OCR
+/// - Overlaying extracted text as a hidden searchable layer
+/// - Backend selection (local Tesseract or cloud Vision API)
+/// - Language hints (default: English “eng”)
+/// - Confidence score reporting
+///
+/// **Phase 2:** Tesseract backend is fully implemented.
+/// **Phase 3:** Google Cloud Vision backend pending.
+#[tauri::command]
+pub async fn run_ocr(
+    path: String,
+    options: crate::pdf::ocr::OcrOptions,
+) -> Result<crate::pdf::ocr::OcrResult, String> {
+    let pdf_path = security::validate_read_path(&path)?;
+
+    // Validate output path if provided
+    if let Some(ref out) = options.output_path {
+        security::validate_write_path(out)?;
+    }
+
+    // Run OCR on background thread (rendering + subprocess invocation is blocking)
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::pdf::ocr::run_ocr(&pdf_path, options)
+    })
+    .await
+    .map_err(|e| format!(“spawn_blocking join error: {e}”))?
+}
+
+/// Check if Tesseract OCR engine is available on this system.
+///
+/// Useful for:
+/// - Determining if local OCR is available (vs requiring cloud Vision API)
+/// - Prompting user to install tesseract if missing
+/// - Graceful fallback in settings UI
+///
+/// Returns Ok(true) if tesseract binary is found on PATH.
+#[tauri::command]
+pub fn is_tesseract_available() -> Result<bool, String> {
+    match crate::pdf::ocr::check_tesseract_available() {
+        Ok(()) => Ok(true),
+        Err(_) => Ok(false),
+    }
+}
+
+/// Get the total page count of a PDF.
+///
+/// Useful for:
+/// - Showing page count in OCR UI
+/// - Validating page indices in OcrOptions
+/// - Determining default page range for selective OCR
+#[tauri::command]
+pub fn get_pdf_page_count(path: String) -> Result<usize, String> {
+    let pdf_path = security::validate_read_path(&path)?;
+    crate::pdf::ocr::get_page_count(&pdf_path)
+}
+
+
+/// Set Google Cloud Vision API key for cloud-based OCR.
+///
+/// Stores the API key in system keychain (preferred) or settings database.
+/// The key is validated for non-empty content but not tested against the API here.
+///
+/// **Security:** API key is stored in system keychain when available, or encrypted in DB.
+/// Do not log or expose the key in error messages.
+#[tauri::command]
+pub fn set_google_vision_api_key(api_key: String) -> Result<(), String> {
+    crate::pdf::ocr::set_google_vision_api_key(&api_key)
+}
+
+/// Test the Google Cloud Vision API connection with the current API key.
+///
+/// Sends a minimal test request (1x1 pixel image) to verify:
+/// - API key is valid
+/// - Network connectivity is working
+/// - API quotas are not exceeded
+///
+/// Returns Ok(true) if the connection is successful.
+/// Returns Err with descriptive error if the connection fails.
+#[tauri::command]
+pub async fn test_google_vision_connection() -> Result<bool, String> {
+    crate::pdf::ocr::test_google_vision_connection().await
+}
+
+/// Estimate the cost of running OCR on a PDF via Google Cloud Vision API.
+///
+/// Pricing (as of 2024):
+/// - $0.0015 per page (DOCUMENT_TEXT_DETECTION feature)
+/// - Minimum 100 pages charged per request
+///
+/// Example: 50-page PDF costs ~$0.15 (100-page minimum billed)
+/// Example: 500-page PDF costs ~$0.75
+///
+/// Returns a CostEstimate struct with:
+/// - page_count: Actual pages in PDF
+/// - billable_pages: Pages that will be charged (minimum 100)
+/// - cost_usd: Estimated cost in USD
+#[tauri::command]
+pub fn estimate_google_vision_cost(path: String) -> Result<crate::pdf::ocr::CostEstimate, String> {
+    let pdf_path = security::validate_read_path(&path)?;
+    let page_count = crate::pdf::ocr::get_page_count(&pdf_path)?;
+    Ok(crate::pdf::ocr::estimate_google_vision_cost(page_count))
+}
 // Issue #278 â€” Crash reporting + opt-in telemetry
 
 #[tauri::command]
@@ -4118,7 +4150,7 @@ pub fn export_plaintext_backup(
     db: State<'_, Database>,
     output_path: String,
 ) -> Result<u64, String> {
-    let _ = validate_write_path(&output_path)?;
+    let output_path = security::validate_write_path(&output_path)?;
     let path = std::path::PathBuf::from(&output_path);
     db.export_plaintext_backup(&path).map_err(|e| e.to_string())
 }
@@ -4416,8 +4448,8 @@ pub async fn render_page_b64(
     page_index: usize,
     dpi: Option<f32>,
 ) -> Result<String, String> {
-    let _ = validate_read_path(&path)?;
-    let doc = engine.open_document(&path)?;
+    let _path = security::validate_read_path(&path)?;
+    let doc = engine.open_document(&_path)?;
     let idx: i32 = page_index
         .try_into()
         .map_err(|_| format!("Page index too large: {page_index}"))?;
