@@ -7,6 +7,7 @@ import ColorConversionPanel from './preflight/ColorConversionPanel'
 import MakePdfXWizard from './preflight/MakePdfXWizard'
 import CertifiedVersionPanel from './preflight/CertifiedVersionPanel'
 import RedactionLayer from './RedactionLayer'
+import { makeKeyDownHandler, buildShortcuts, formatShortcut, type ShortcutHandlers } from './preflight/keyboardShortcuts'
 import { t } from '../i18n'
 import './PDFView.css'
 
