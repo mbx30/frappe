@@ -163,4 +163,19 @@ export const en: Record<string, string> = {
   'inspector.pages': 'Pages',
   'inspector.pdf_version': 'PDF Version',
   'inspector.catalog': 'Document Catalog',
+
+  // ── PdfSettings (#275) ──────────────────────────────────────────
+  'pdfsettings.title': 'PDF Settings',
+  'pdfsettings.desc': 'Default values used by the preflight profiles. Persisted to the database and reloaded on app start.',
+  'pdfsettings.bleed.label': 'Default bleed tolerance',
+  'pdfsettings.bleed.hint': 'mm — applied by Make PDF/X wizard and bleed check',
+  'pdfsettings.dpi.label': 'Default image DPI threshold',
+  'pdfsettings.dpi.hint': 'px/inch — images below this are flagged',
+  'pdfsettings.icc.label': 'Default ICC profile',
+  'pdfsettings.pdfx.label': 'Default PDF/X standard',
+
+  // ── Common ─────────────────────────────────────────────────────
+  'common.reset': 'Reset',
+  'common.save': 'Save',
+  'common.saving': 'Saving…',
 }

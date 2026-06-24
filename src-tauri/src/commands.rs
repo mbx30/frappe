@@ -4340,6 +4340,11 @@ pub enum AppEvent {
     Heartbeat { ts: u64 },
 }
 
+// `Channel<T>` in Tauri v2 requires `T: IpcResponse` which is
+// auto-impl'd for any `Serialize` type. The explicit `impl` here
+// documents the bound so the compiler error message is clear.
+impl tauri::ipc::IpcResponse for AppEvent {}
+
 /// Subscribe to a stream of `AppEvent` values. The Tauri v2 `Channel`
 /// type is a one-way typed pipe that survives reloads and is fully
 /// cancellable on drop. Events are emitted from a background task;
