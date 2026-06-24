@@ -321,6 +321,14 @@ pub fn run() {
             commands::get_alt_text,
             commands::list_alt_text,
             commands::set_alt_text,
+            // Issue #230 — PDF annotations
+            commands::pdf_annotation_add,
+            commands::pdf_annotations_list,
+            commands::pdf_annotation_update,
+            commands::pdf_annotation_delete,
+            commands::pdf_annotation_page_counts,
+            commands::pdf_annotation_reply_add,
+            commands::pdf_annotation_replies_list,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

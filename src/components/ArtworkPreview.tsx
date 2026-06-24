@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { invoke, convertFileSrc } from '@tauri-apps/api/core'
 
 interface ArtworkPreviewProps {
@@ -23,37 +23,15 @@ interface PdfInfo {
 }
 
 export default function ArtworkPreview({ filePath, onOpenInPdfTools, showOpenButton = true, height = 240 }: ArtworkPreviewProps) {
-  const [format, setFormat] = useState<FormatKind>('unsupported')
+  const format = useMemo(() => classify(filePath), [filePath])
   const [error, setError] = useState<string | null>(null)
   const [pdfPageCount, setPdfPageCount] = useState<number | null>(null)
   const [pdfThumb, setPdfThumb] = useState<string | null>(null)
   const [expanded, setExpanded] = useState(false)
   const [fullThumb, setFullThumb] = useState<string | null>(null)
 
-  const fetchPdfInfo = useCallback(async () => {
-    if (format !== 'pdf') return
-    try {
-      const info = await invoke<PdfInfo>('open_pdf', { path: filePath, save: false }).catch(async () => {
-        // open_pdf returns a PdfSummary; in case the call shape differs
-        // across commits, fall back to using get_pdf_catalog which is
-        // always present.
-        const cat = await invoke<Record<string, string>>('get_pdf_catalog', { path: filePath })
-        return { page_count: Number(cat.PageCount ?? 0) }
-      })
-      setPdfPageCount(info.page_count)
-      const thumb = await invoke<string>('render_page_thumbnail', {
-        path: filePath,
-        pageIndex: 0,
-        widthPx: 320,
-      })
-      setPdfThumb(thumb)
-    } catch (e) {
-      setError(String(e))
-    }
-  }, [filePath, format])
-
   useEffect(() => {
-    setFormat(classify(filePath))
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setError(null)
     setPdfThumb(null)
     setPdfPageCount(null)
@@ -61,8 +39,35 @@ export default function ArtworkPreview({ filePath, onOpenInPdfTools, showOpenBut
   }, [filePath])
 
   useEffect(() => {
+    if (format !== 'pdf') return
+
+    let isMounted = true
+    const fetchPdfInfo = async () => {
+      try {
+        const info = await invoke<PdfInfo>('open_pdf', { path: filePath, save: false }).catch(async () => {
+          // open_pdf returns a PdfSummary; in case the call shape differs
+          // across commits, fall back to using get_pdf_catalog which is
+          // always present.
+          const cat = await invoke<Record<string, string>>('get_pdf_catalog', { path: filePath })
+          return { page_count: Number(cat.PageCount ?? 0) }
+        })
+        if (isMounted) setPdfPageCount(info.page_count)
+        const thumb = await invoke<string>('render_page_thumbnail', {
+          path: filePath,
+          pageIndex: 0,
+          widthPx: 320,
+        })
+        if (isMounted) setPdfThumb(thumb)
+      } catch (e) {
+        if (isMounted) setError(String(e))
+      }
+    }
+
     fetchPdfInfo()
-  }, [fetchPdfInfo])
+    return () => {
+      isMounted = false
+    }
+  }, [filePath, format])
 
   const handleExpand = async () => {
     if (format === 'pdf' && !fullThumb) {

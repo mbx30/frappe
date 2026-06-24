@@ -120,7 +120,7 @@ pub fn detect_pdf_type(pdf_path: &PathBuf) -> Result<PdfType, String> {
     let mut scanned_pages = Vec::new();
 
     // Check each page for text content
-    for (page_index, (page_id, _)) in doc.get_pages().iter().enumerate() {
+    for (page_index, (_, page_id)) in doc.get_pages().iter().enumerate() {
         let has_text = has_page_text(&doc, *page_id)?;
 
         if has_text {
@@ -152,9 +152,9 @@ pub fn detect_pdf_type(pdf_path: &PathBuf) -> Result<PdfType, String> {
 /// If found, the page likely has embedded text.
 fn has_page_text(doc: &lopdf::Document, page_id: (u32, u16)) -> Result<bool, String> {
     let page = doc
-        .get_object_mut(page_id)
+        .get_object(page_id)
         .map_err(|e| format!("Failed to get page object: {}", e))?
-        .as_dict_mut()
+        .as_dict()
         .map_err(|_| "Page is not a dictionary".to_string())?;
 
     // Get content stream (may be direct or indirect reference)
@@ -218,7 +218,9 @@ pub fn run_ocr(pdf_path: &PathBuf, options: OcrOptions) -> Result<OcrResult, Str
     // Route to the appropriate backend
     let results = match options.backend {
         OcrBackend::Tesseract => run_tesseract_ocr(pdf_path, &pages_to_process, &options)?,
-        OcrBackend::GoogleCloudVision => run_google_vision_ocr(pdf_path, &pages_to_process, &options)?,
+        OcrBackend::GoogleCloudVision => {
+            tauri::async_runtime::block_on(run_google_vision_ocr(pdf_path, &pages_to_process, &options))?
+        }
     };
 
     // If overlay_text is requested, overlay results onto output PDF
@@ -297,16 +299,20 @@ pub fn check_tesseract_available() -> Result<(), String> {
     }
 }
 
+fn load_pdfium_bindings() -> Result<Box<dyn pdfium_render::prelude::PdfiumLibraryBindings>, String> {
+    use pdfium_render::prelude::*;
+
+    Pdfium::bind_to_system_library()
+        .map_err(|e| format!("Failed to load PDFium: {}", e))
+}
+
 /// Render a single PDF page to a temporary PNG image at 300 DPI.
 fn render_pdf_page_to_image(pdf_path: &PathBuf, page_index: usize) -> Result<PathBuf, String> {
     use pdfium_render::prelude::*;
 
     // Load PDF
-    let pdfium = Pdfium::new(
-        Pdfium::bind_to_library(Pdfium::bind_to_system_library())
-            .or_else(|_| Pdfium::bind_to_library(Pdfium::bind_to_builtin_library()))
-            .map_err(|e| format!("Failed to initialize PDFium: {:?}", e))?,
-    );
+    let bindings = load_pdfium_bindings()?;
+    let pdfium = Pdfium::new(bindings);
 
     let document = pdfium
         .load_pdf_from_file(&pdf_path, None)
@@ -315,8 +321,8 @@ fn render_pdf_page_to_image(pdf_path: &PathBuf, page_index: usize) -> Result<Pat
     // Get the specific page
     let page = document
         .pages()
-        .get(page_index as u32)
-        .ok_or_else(|| format!("Page {} not found", page_index))?;
+        .get(page_index as i32)
+        .or_else(|_| Err(format!("Page {} not found", page_index)))?;
 
     // Render at 300 DPI for OCR (standard for text recognition)
     let dpi = 300.0;
@@ -329,7 +335,8 @@ fn render_pdf_page_to_image(pdf_path: &PathBuf, page_index: usize) -> Result<Pat
     let bitmap = page
         .render_with_config(&render_config)
         .map_err(|e| format!("Failed to render page: {:?}", e))?
-        .as_image();
+        .as_image()
+        .map_err(|e| format!("Failed to convert page to image: {:?}", e))?;
 
     // Save to temporary file
     let temp_file = tempfile::NamedTempFile::new()
@@ -769,8 +776,8 @@ fn parse_google_vision_response(
 
 static RATE_LIMIT_COUNTER: std::sync::atomic::AtomicUsize =
     std::sync::atomic::AtomicUsize::new(0);
-static RATE_LIMIT_WINDOW_START: std::sync::Mutex<std::time::Instant> =
-    std::sync::Mutex::new(std::time::Instant::now);
+static RATE_LIMIT_WINDOW_START: std::sync::LazyLock<std::sync::Mutex<std::time::Instant>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(std::time::Instant::now()));
 
 const RATE_LIMIT_PER_MINUTE: usize = 1800;
 
@@ -870,20 +877,23 @@ fn overlay_ocr_text(
     let mut doc = Document::load(input_path)
         .map_err(|e| format!("Failed to load PDF: {}", e))?;
 
-    let pages = doc.get_pages_mut();
-
     // Track page index in the results
     for page_result in results {
         let page_index = page_result.page_index;
-        let page_id = pages
-            .iter()
-            .nth(page_index)
-            .map(|(id, _)| *id)
-            .ok_or_else(|| format!("Page {} not found in PDF", page_index))?;
+
+        // Find the page_id for this index
+        let mut page_id_opt = None;
+        for (idx, (_, id)) in doc.get_pages().iter().enumerate() {
+            if idx == page_index {
+                page_id_opt = Some(*id);
+                break;
+            }
+        }
+        let page_id = page_id_opt.ok_or_else(|| format!("Page {} not found in PDF", page_index))?;
 
         // Get the page object
         let page = doc
-            .get_object_mut(page_id)
+            .get_object_mut(page_id.clone())
             .map_err(|e| format!("Failed to get page {}: {}", page_index, e))?
             .as_dict_mut()
             .map_err(|_| format!("Page {} is not a dictionary", page_index))?;
@@ -954,7 +964,7 @@ fn extract_number(obj: &lopdf::Object) -> Result<f32, String> {
 /// (word) Tj                    % Show text
 /// ET                           % End text
 /// ```
-fn generate_text_layer(regions: &[OcrTextRegion], page_width: f32, page_height: f32) -> Result<String, String> {
+fn generate_text_layer(regions: &[OcrTextRegion], _page_width: f32, page_height: f32) -> Result<String, String> {
     if regions.is_empty() {
         return Ok(String::new());
     }
@@ -966,7 +976,7 @@ fn generate_text_layer(regions: &[OcrTextRegion], page_width: f32, page_height: 
     content.push_str("3 Tr\n"); // Text rendering mode 3: invisible (searchable but hidden)
 
     for region in regions {
-        let (bbox_x, bbox_y, bbox_w, bbox_h) = region.bbox;
+        let (bbox_x, bbox_y, _bbox_w, bbox_h) = region.bbox;
 
         // Convert bounding box to PDF coordinates
         // Image space: (0,0) = top-left, X right, Y down
@@ -1010,7 +1020,7 @@ fn escape_pdf_string(text: &str) -> String {
 fn append_content_stream(page: &mut lopdf::Dictionary, new_content: &str) -> Result<(), String> {
     // Get existing content stream
     match page.get(b"Contents") {
-        Ok(lopdf::Object::Reference(content_ref)) => {
+        Ok(lopdf::Object::Reference(_content_ref)) => {
             // Content is an indirect reference; update it
             // For now, we'll append to the stream by re-fetching it
             // This is a simplified approach; real implementation would load, modify, save
@@ -1026,6 +1036,8 @@ fn append_content_stream(page: &mut lopdf::Dictionary, new_content: &str) -> Res
             let stream_obj = lopdf::Object::Stream(lopdf::Stream {
                 content: new_data,
                 dict: stream.dict.clone(),
+                allows_compression: true,
+                start_position: None,
             });
 
             page.set("Contents", stream_obj);
@@ -1035,6 +1047,8 @@ fn append_content_stream(page: &mut lopdf::Dictionary, new_content: &str) -> Res
             let stream = lopdf::Stream {
                 content: new_content.as_bytes().to_vec(),
                 dict: Default::default(),
+                allows_compression: true,
+                start_position: None,
             };
             page.set("Contents", lopdf::Object::Stream(stream));
         }
@@ -1043,6 +1057,8 @@ fn append_content_stream(page: &mut lopdf::Dictionary, new_content: &str) -> Res
             let stream = lopdf::Stream {
                 content: new_content.as_bytes().to_vec(),
                 dict: Default::default(),
+                allows_compression: true,
+                start_position: None,
             };
             page.set("Contents", lopdf::Object::Stream(stream));
         }
@@ -1172,7 +1188,7 @@ mod tests {
         let real_obj = lopdf::Object::Real(3.14);
         assert!((extract_number(&real_obj).unwrap() - 3.14).abs() < 0.001);
 
-        let string_obj = lopdf::Object::String(b"not a number".to_vec(), false);
+        let string_obj = lopdf::Object::String(b"not a number".to_vec(), lopdf::StringFormat::Literal);
         assert!(extract_number(&string_obj).is_err());
     }
 

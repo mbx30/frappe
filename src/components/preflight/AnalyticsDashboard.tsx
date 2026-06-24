@@ -51,14 +51,11 @@ export default function AnalyticsDashboard({ clientId, refreshKey = 0 }: Analyti
     setLoading(true)
     setError(null)
     try {
-      // Prefer the combined dashboard endpoint when present; fall
-      // back to the legacy summary when the Tauri side hasn't been
-      // updated yet.
       try {
         const result = await invoke<AnalyticsDashboardData>('get_analytics_dashboard')
         setData(result)
         return
-      } catch (_e) {
+      } catch {
         const summary = await invoke<AnalyticsSummary>('get_analytics_summary')
         setData({
           summary,
@@ -75,6 +72,7 @@ export default function AnalyticsDashboard({ clientId, refreshKey = 0 }: Analyti
   }, [])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     refresh()
   }, [refresh, refreshKey])
 

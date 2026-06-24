@@ -933,8 +933,9 @@ pub fn create_certified_version(
     comment: String,
 ) -> Result<i64, String> {
     let file_path = security::validate_read_path(&file_path)?;
+    let file_path_str = file_path.to_str().ok_or("file path is not valid UTF-8")?;
     let metadata = std::fs::metadata(&file_path).map_err(|e| format!("File not found: {}", e))?;
-    db.save_certified_version(job_id, &file_path, metadata.len(), &author, &comment)
+    db.save_certified_version(job_id, file_path_str, metadata.len(), &author, &comment)
         .map_err(|e| e.to_string())
 }
 
@@ -955,8 +956,9 @@ pub fn render_page_thumbnail(
     width_px: Option<u32>,
 ) -> Result<String, String> {
     let path = security::validate_read_path(&path)?;
+    let path_str = path.to_str().ok_or("path is not valid UTF-8")?;
     use image::RgbaImage;
-    let doc = engine.open_document(&path)?;
+    let doc = engine.open_document(path_str)?;
     let idx: i32 = page_index
         .try_into()
         .map_err(|_| format!("Page index too large: {page_index}"))?;
@@ -1006,9 +1008,10 @@ pub fn render_page(
     dpi: Option<f32>,
 ) -> Result<String, String> {
     let path = security::validate_read_path(&path)?;
+    let path_str = path.to_str().ok_or("path is not valid UTF-8")?;
     use image::RgbaImage;
     use pdfium_render::prelude::PdfRenderConfig;
-    let doc = engine.open_document(&path)?;
+    let doc = engine.open_document(path_str)?;
     let idx: i32 = page_index
         .try_into()
         .map_err(|_| format!("Page index too large: {page_index}"))?;
@@ -1068,9 +1071,10 @@ pub fn render_page_with_overprint(
     dpi: Option<f32>,
 ) -> Result<String, String> {
     let path = security::validate_read_path(&path)?;
+    let path_str = path.to_str().ok_or("path is not valid UTF-8")?;
     use image::RgbaImage;
     use pdfium_render::prelude::PdfRenderConfig;
-    let doc = engine.open_document(&path)?;
+    let doc = engine.open_document(path_str)?;
     let idx: i32 = page_index
         .try_into()
         .map_err(|_| format!("Page index too large: {page_index}"))?;
@@ -1123,7 +1127,7 @@ pub fn get_page_dimensions(
     page_index: usize,
 ) -> Result<PageDimensions, String> {
     let _path = security::validate_read_path(&path)?;
-    let doc = engine.open_document(&_path)?;
+    let doc = engine.open_document(_path.to_str().ok_or("path is not valid UTF-8")?)?;
     let idx: i32 = page_index
         .try_into()
         .map_err(|_| format!("Page index too large: {page_index}"))?;
@@ -2207,7 +2211,7 @@ pub async fn replace_text(
             .map_err(|e| format!("Failed to save: {e}"))?;
         Ok(ReplaceResult {
             replacements_made: total_replacements,
-            output_path,
+            output_path: output_path.to_string_lossy().to_string(),
         })
     })
     .await
@@ -3356,7 +3360,8 @@ pub fn create_debug_session(
     steps: Vec<crate::pdf::action_list::ActionStep>,
 ) -> Result<crate::pdf::action_list_debugger::DebugSession, String> {
     let pdf_path = security::validate_read_path(&pdf_path)?;
-    crate::pdf::action_list_debugger::create_debug_session(&db, &name, &pdf_path, &steps)
+    let pdf_path_str = pdf_path.to_str().ok_or("path is not valid UTF-8")?;
+    crate::pdf::action_list_debugger::create_debug_session(&db, &name, pdf_path_str, &steps)
 }
 
 #[tauri::command]
@@ -3530,9 +3535,11 @@ pub async fn compress_pdf(
     } else {
         None
     };
+    let path_str = path.to_string_lossy().into_owned();
+    let output_path_str: Option<String> = output_path.map(|p| p.to_string_lossy().into_owned());
     let opts = options.unwrap_or_default();
     tauri::async_runtime::spawn_blocking(move || {
-        crate::pdf::compress::compress_pdf(&path, output_path.as_deref(), &opts)
+        crate::pdf::compress::compress_pdf(&path_str, output_path_str.as_deref(), &opts)
     })
     .await
     .map_err(|e| format!("spawn_blocking join error: {e}"))?
@@ -3566,14 +3573,16 @@ pub fn redact_pdf(
     // In-memory pipeline: read the source, redact, hash, then write. No
     // intermediate plaintext temp file is created.
     let input = std::fs::read(&path).map_err(|e| format!("Failed to read PDF: {e}"))?;
-    let result = crate::pdf::redact::redact_pdf_content(&input, &redactions, &output_path)?;
+    let output_path_str = output_path.to_str().ok_or("output path is not valid UTF-8")?;
+    let result = crate::pdf::redact::redact_pdf_content(&input, &redactions, output_path_str)?;
 
     let regions_json = serde_json::to_string(&redactions).unwrap_or_else(|_| "[]".to_string());
     let operator = operator_name.unwrap_or_default();
     let notes = notes.unwrap_or_default();
+    let path_str = path.to_str().ok_or("path is not valid UTF-8")?;
 
     db.log_redaction_operation(
-        &path,
+        path_str,
         &result.output_path,
         &result.content_hash,
         &regions_json,
@@ -3618,8 +3627,9 @@ pub fn detect_barcodes(
     page_index: usize,
 ) -> Result<Vec<crate::pdf::barcode::BarcodeDetection>, String> {
     let path = security::validate_read_path(&path)?;
+    let path_str = path.to_str().ok_or("path is not valid UTF-8")?;
     use image::RgbaImage;
-    let doc = engine.open_document(&path)?;
+    let doc = engine.open_document(path_str)?;
     let idx: i32 = page_index
         .try_into()
         .map_err(|_| format!("Page index too large: {page_index}"))?;
@@ -3756,7 +3766,7 @@ pub async fn run_ocr(
         crate::pdf::ocr::run_ocr(&pdf_path, options)
     })
     .await
-    .map_err(|e| format!(“spawn_blocking join error: {e}”))?
+    .map_err(|e| format!("spawn_blocking join error: {e}"))?
 }
 
 /// Check if Tesseract OCR engine is available on this system.
@@ -4231,6 +4241,89 @@ pub fn set_alt_text(
         .map_err(|e| e.to_string())
 }
 
+// ── PDF Annotations (#230) ──────────────────────────────────────────────
+
+/// Add a new annotation to a PDF page. Returns the created annotation row.
+#[tauri::command]
+pub fn pdf_annotation_add(
+    db: State<'_, Database>,
+    file_path: String,
+    page: i64,
+    annotation_type: String,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    color: String,
+    content: String,
+) -> Result<crate::models::PdfAnnotation, String> {
+    if !crate::pdf::annotations::is_valid_rect(width, height) {
+        return Err(“annotation must have positive width and height”.into());
+    }
+    db.add_annotation(&file_path, page, &annotation_type, x, y, width, height, &color, &content)
+        .map_err(|e| e.to_string())
+}
+
+/// List all annotations for a PDF file, ordered by page then creation time.
+#[tauri::command]
+pub fn pdf_annotations_list(
+    db: State<'_, Database>,
+    file_path: String,
+) -> Result<Vec<crate::models::PdfAnnotation>, String> {
+    db.list_annotations(&file_path).map_err(|e| e.to_string())
+}
+
+/// Update color and/or content of an existing annotation.
+#[tauri::command]
+pub fn pdf_annotation_update(
+    db: State<'_, Database>,
+    id: i64,
+    color: Option<String>,
+    content: Option<String>,
+) -> Result<crate::models::PdfAnnotation, String> {
+    db.update_annotation(id, color.as_deref(), content.as_deref())
+        .map_err(|e| e.to_string())
+}
+
+/// Delete an annotation (and its replies via CASCADE).
+#[tauri::command]
+pub fn pdf_annotation_delete(
+    db: State<'_, Database>,
+    id: i64,
+) -> Result<(), String> {
+    db.delete_annotation(id).map_err(|e| e.to_string())
+}
+
+/// Return a map of `page_index → annotation_count` for the given file.
+#[tauri::command]
+pub fn pdf_annotation_page_counts(
+    db: State<'_, Database>,
+    file_path: String,
+) -> Result<std::collections::HashMap<i64, i64>, String> {
+    db.annotation_page_counts(&file_path).map_err(|e| e.to_string())
+}
+
+/// Add a reply to an existing annotation.
+#[tauri::command]
+pub fn pdf_annotation_reply_add(
+    db: State<'_, Database>,
+    annotation_id: i64,
+    content: String,
+) -> Result<crate::models::PdfAnnotationReply, String> {
+    db.add_annotation_reply(annotation_id, &content)
+        .map_err(|e| e.to_string())
+}
+
+/// List all replies for an annotation, ordered by creation time.
+#[tauri::command]
+pub fn pdf_annotation_replies_list(
+    db: State<'_, Database>,
+    annotation_id: i64,
+) -> Result<Vec<crate::models::PdfAnnotationReply>, String> {
+    db.list_annotation_replies(annotation_id)
+        .map_err(|e| e.to_string())
+}
+
 // Issue #291 â€” Command batching (#291)
 
 /// A single batched command. The `name` field is the Tauri command name
@@ -4391,7 +4484,7 @@ pub enum AppEvent {
     HotFolder {
         watcher_id: String,
         file_path: String,
-        kind: String,
+        event_kind: String,
         message: String,
     },
     Metrics {
@@ -4449,7 +4542,7 @@ pub async fn render_page_b64(
     dpi: Option<f32>,
 ) -> Result<String, String> {
     let _path = security::validate_read_path(&path)?;
-    let doc = engine.open_document(&_path)?;
+    let doc = engine.open_document(_path.to_str().ok_or("path is not valid UTF-8")?)?;
     let idx: i32 = page_index
         .try_into()
         .map_err(|_| format!("Page index too large: {page_index}"))?;

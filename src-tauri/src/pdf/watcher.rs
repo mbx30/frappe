@@ -11,8 +11,8 @@
 //! `hot_folder_event` for live UI updates.
 
 use lopdf::Document;
-use notify::{RecursiveMode, Watcher};
-use notify_debouncer_full::{new_debouncer, DebounceEventResult, Debouncer, FileIdMap};
+use notify::RecursiveMode;
+use notify_debouncer_full::{new_debouncer, DebounceEventResult};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -59,7 +59,7 @@ pub struct HotFolderEvent {
 
 struct WatcherState {
     watcher_id: String,
-    debouncer: Option<Debouncer<notify::RecommendedWatcher, FileIdMap>>,
+    debouncer: Option<Box<dyn std::any::Any + Send + Sync>>,
     stop_flag: Arc<AtomicBool>,
     active: Arc<AtomicU32>,
     queued: Arc<AtomicU32>,
@@ -244,7 +244,7 @@ pub fn start_hot_folder_watcher(
 
     let state_with_debouncer = WatcherState {
         watcher_id: watcher_id.clone(),
-        debouncer: Some(debouncer),
+        debouncer: Some(Box::new(debouncer)),
         stop_flag: stop_flag.clone(),
         active: state.active.clone(),
         queued: state.queued.clone(),

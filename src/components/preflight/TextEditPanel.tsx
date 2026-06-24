@@ -67,6 +67,7 @@ export default function TextEditPanel({ filePath, pageCount }: TextEditPanelProp
   }, [filePath, query, replace, matches, currentIndex])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMatches([])
     setCurrentIndex(0)
     setReplacementPath(null)

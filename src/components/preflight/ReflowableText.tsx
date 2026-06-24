@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { invoke, convertFileSrc } from '@tauri-apps/api/core'
 import { Button, Card } from '../../design-system'
 
@@ -35,44 +35,53 @@ export default function ReflowableText({ filePath }: ReflowableTextProps) {
   const [error, setError] = useState<string | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  const extract = useCallback(async () => {
+  useEffect(() => {
     if (!filePath) return
-    setLoading(true)
-    setError(null)
-    try {
-      const cat = await invoke<Record<string, string>>('get_pdf_catalog', { path: filePath })
-      const n = Number(cat.PageCount ?? 0)
-      setPageCount(n)
-      setPage((p) => Math.min(p, Math.max(0, n - 1)))
+
+    let isMounted = true
+    const extract = async () => {
+      setLoading(true)
+      setError(null)
       try {
-        const matches = await invoke<Array<{ page_index: number; text: string; bbox: [number, number, number, number] | null }>>(
-          'search_text',
-          { path: filePath, query: ' ', caseSensitive: false }
-        )
-        if (matches.length > 0) {
-          setWords(matches.slice(0, 200).map((m) => ({ text: m.text, page: m.page_index, bbox: m.bbox })))
-        } else {
-          setWords(SAMPLE_EXTRACTION(filePath, page))
+        const cat = await invoke<Record<string, string>>('get_pdf_catalog', { path: filePath })
+        const n = Number(cat.PageCount ?? 0)
+        if (isMounted) {
+          setPageCount(n)
+          setPage((p) => Math.min(p, Math.max(0, n - 1)))
         }
-      } catch {
-        setWords(SAMPLE_EXTRACTION(filePath, page))
+        try {
+          const matches = await invoke<Array<{ page_index: number; text: string; bbox: [number, number, number, number] | null }>>(
+            'search_text',
+            { path: filePath, query: ' ', caseSensitive: false }
+          )
+          if (isMounted) {
+            if (matches.length > 0) {
+              setWords(matches.slice(0, 200).map((m) => ({ text: m.text, page: m.page_index, bbox: m.bbox })))
+            } else {
+              setWords(SAMPLE_EXTRACTION(filePath, page))
+            }
+          }
+        } catch {
+          if (isMounted) setWords(SAMPLE_EXTRACTION(filePath, page))
+        }
+        try {
+          const url = await invoke<string>('render_page_thumbnail', { path: filePath, pageIndex: page, widthPx: 480 })
+          if (isMounted) setThumb(url)
+        } catch {
+          if (isMounted) setThumb(null)
+        }
+      } catch (e) {
+        if (isMounted) setError(String(e))
+      } finally {
+        if (isMounted) setLoading(false)
       }
-      try {
-        const url = await invoke<string>('render_page_thumbnail', { path: filePath, pageIndex: page, widthPx: 480 })
-        setThumb(url)
-      } catch {
-        setThumb(null)
-      }
-    } catch (e) {
-      setError(String(e))
-    } finally {
-      setLoading(false)
+    }
+
+    extract()
+    return () => {
+      isMounted = false
     }
   }, [filePath, page])
-
-  useEffect(() => {
-    extract()
-  }, [extract])
 
   const handlePageChange = (delta: number) => {
     setPage((p) => {

@@ -1,5 +1,4 @@
 import type { Workbook } from '../types'
-import { Button } from '../design-system'
 import { RoundedButton } from '../design-system/components/RoundedButton'
 
 interface WorkbookListProps {

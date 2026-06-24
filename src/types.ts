@@ -647,6 +647,32 @@ export interface ApprovalSheetConfig {
   notes: string
 }
 
+// ── Issue #230 PDF Annotation types ──────────────────────────────────────
+
+export type AnnotationType = 'highlight' | 'underline' | 'strikethrough' | 'note'
+
+export interface PdfAnnotation {
+  id: number
+  file_path: string
+  page: number
+  annotation_type: AnnotationType
+  x: number
+  y: number
+  width: number
+  height: number
+  color: string
+  content: string
+  created_at: string
+  updated_at: string
+}
+
+export interface PdfAnnotationReply {
+  id: number
+  annotation_id: number
+  content: string
+  created_at: string
+}
+
 // ── Issue #229 OCR types ──────────────────────────────────────────────
 
 export type PdfType = 'TextBased' | 'Scanned' | {
