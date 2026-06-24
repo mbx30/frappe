@@ -97,7 +97,7 @@ rusqlite = { version = "0.34", features = ["bundled"] }
 # instances cannot run simultaneously (#147). `fs2` provides
 # `FileExt::try_lock_exclusive` across Windows + macOS.
 fs2 = "0.4"
-lru = "0.12"
+lru = "0.16"
 # SHA-256 for the redaction audit hash-chain (#231). Each applied redaction
 # operation stores the SHA-256 of the resulting PDF and a link to the previous
 # operation's hash, giving a tamper-evident compliance trail.
