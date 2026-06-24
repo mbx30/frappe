@@ -30,6 +30,7 @@ export default function LayerPanel({ filePath, onLayerChanged }: LayerPanelProps
   }, [filePath])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     refresh()
   }, [refresh])
 

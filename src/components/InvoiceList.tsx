@@ -41,7 +41,6 @@ export default memo(function InvoiceList({ onCreateNew, onEditInvoice }: Invoice
   }
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadInvoices()
   }, [])
 

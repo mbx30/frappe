@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { invoke, convertFileSrc } from '@tauri-apps/api/core'
 import { Button, Card } from '../../design-system'
 
@@ -56,18 +56,18 @@ export default function AccessibilityCheck({ filePath }: AccessibilityCheckProps
   const [error, setError] = useState<string | null>(null)
   const [thumb, setThumb] = useState<string | null>(null)
   const [showLuminanceDemo, setShowLuminanceDemo] = useState(false)
+  const isMountedRef = useRef(true)
 
   const runChecks = useCallback(async () => {
     if (!filePath) return
-    setLoading(true)
-    setError(null)
-    setFindings([])
-    try {
-      const collected: AccessibilityFinding[] = []
 
+    try {
+      setLoading(true)
+      setError(null)
+      setFindings([])
+
+      const collected: AccessibilityFinding[] = []
       const cat = await invoke<Record<string, string>>('get_pdf_catalog', { path: filePath })
-      const pageCount = Number(cat.PageCount ?? 0)
-      const pdfVersion = cat.PDFVersion ?? ''
 
       // ── (1) Tag tree / structure ──────────────────────────────
       const hasStructTree = !!cat.StructTreeRoot
@@ -102,7 +102,7 @@ export default function AccessibilityCheck({ filePath }: AccessibilityCheckProps
       // ── (3) Image alt text (heuristic via page count + render) ──
       try {
         const url = await invoke<string>('render_page_thumbnail', { path: filePath, pageIndex: 0, widthPx: 320 })
-        setThumb(url)
+        if (isMountedRef.current) setThumb(url)
         const imageCount = Number(cat.ImageCount ?? 0)
         if (imageCount > 0) {
           collected.push({
@@ -143,17 +143,24 @@ export default function AccessibilityCheck({ filePath }: AccessibilityCheckProps
         detail: `WCAG 2.1 AA requires a 4.5:1 contrast ratio for normal text and 3:1 for large text (18pt+ or 14pt+ bold). PDF/UA-1 mirrors this. We sampled body text vs page background as a reference; for live checks of the actual rendered text, open the document in a magnifier.`,
       })
 
-      setFindings(collected)
+      if (isMountedRef.current) setFindings(collected)
     } catch (e) {
-      setError(String(e))
+      if (isMountedRef.current) setError(String(e))
     } finally {
-      setLoading(false)
+      if (isMountedRef.current) setLoading(false)
     }
   }, [filePath])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     runChecks()
   }, [runChecks])
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [])
 
   const summary = summarize(findings)
 

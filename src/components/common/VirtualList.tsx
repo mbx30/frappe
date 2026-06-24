@@ -1,5 +1,5 @@
-import { useRef, useEffect, useState, CSSProperties, ReactNode } from 'react'
-import { VariableSizeList, ListChildComponentProps } from 'react-window'
+import { useRef, useEffect, useState, type CSSProperties, type ReactNode } from 'react'
+import { List } from 'react-window'
 
 interface VirtualListProps<T> {
   items: T[]
@@ -14,7 +14,7 @@ interface VirtualListProps<T> {
 }
 
 /**
- * Thin wrapper around react-window's `VariableSizeList` that infers the
+ * Thin wrapper around react-window's `List` that infers the
  * item key, lets callers supply a row renderer, and exposes a single
  * `height` prop. Used by OrderListView, InvoiceList, ClientList, and
  * the Dashboard orders list to keep the DOM size constant for very
@@ -31,7 +31,6 @@ export function VirtualList<T>({
   overscanCount = 8,
   style,
 }: VirtualListProps<T>) {
-  const listRef = useRef<VariableSizeList>(null)
   const [containerWidth, setContainerWidth] = useState<number>(0)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -47,10 +46,6 @@ export function VirtualList<T>({
     return () => ro.disconnect()
   }, [])
 
-  useEffect(() => {
-    if (listRef.current) listRef.current.resetAfterIndex(0, true)
-  }, [itemHeight])
-
   if (items.length === 0) {
     return (
       <div ref={containerRef} className={className}>
@@ -60,18 +55,18 @@ export function VirtualList<T>({
   }
 
   const numericHeight = typeof height === 'number' ? height : 480
+  const listStyle: CSSProperties = {
+    ...style,
+    height: numericHeight,
+    width: containerWidth || 800,
+  }
 
   return (
-    <div ref={containerRef} className={className} style={style}>
-      <VariableSizeList
-        ref={listRef}
-        height={numericHeight}
-        width={containerWidth || 800}
-        itemCount={items.length}
-        itemSize={() => itemHeight}
-        overscanCount={overscanCount}
-      >
-        {({ index, style: rowStyle }: ListChildComponentProps) => {
+    <div ref={containerRef} className={className}>
+      <List
+        rowCount={items.length}
+        rowHeight={itemHeight}
+        rowComponent={({ index, style: rowStyle }) => {
           const item = items[index]
           return (
             <div key={keyExtractor(item, index)} style={rowStyle}>
@@ -79,7 +74,10 @@ export function VirtualList<T>({
             </div>
           )
         }}
-      </VariableSizeList>
+        overscanCount={overscanCount}
+        style={listStyle}
+        rowProps={{}}
+      />
     </div>
   )
 }

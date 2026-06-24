@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, type ChangeEvent } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import { Button, Card, Input, Switch, Select } from '../design-system'
+import { Button, Card, Input, Switch, Select } from '../../design-system'
 import { t } from '../../i18n'
 
 interface Preferences {
@@ -138,7 +138,7 @@ export default function PreferencesPanel() {
             min={0}
             max={20}
             step={0.5}
-            onChange={(e) => update('pdf_settings', { default_bleed_mm: Number(e.target.value) })}
+            onChange={(e: ChangeEvent<HTMLInputElement>) => update('pdf_settings', { default_bleed_mm: Number(e.target.value) })}
           />
           <Input
             type="number"
@@ -147,13 +147,13 @@ export default function PreferencesPanel() {
             min={72}
             max={1200}
             step={10}
-            onChange={(e) => update('pdf_settings', { default_dpi_threshold: Number(e.target.value) })}
+            onChange={(e: ChangeEvent<HTMLInputElement>) => update('pdf_settings', { default_dpi_threshold: Number(e.target.value) })}
           />
           <div className="preferences-field">
             <label className="pdf-label">{t('preferences.icc')}</label>
             <Select
               value={prefs.pdf_settings.default_icc_profile}
-              onChange={(e) => update('pdf_settings', { default_icc_profile: e.target.value })}
+              onChange={(e: ChangeEvent<HTMLSelectElement>) => update('pdf_settings', { default_icc_profile: e.target.value })}
               options={[
                 { value: 'FOGRA39-ISO-Coated-v2', label: 'FOGRA39 (ISO Coated v2)' },
                 { value: 'FOGRA47-ISO-Uncoated-v3', label: 'FOGRA47 (ISO Uncoated v3)' },
@@ -167,7 +167,7 @@ export default function PreferencesPanel() {
             <label className="pdf-label">{t('preferences.pdfx_standard')}</label>
             <Select
               value={prefs.pdf_settings.default_pdfx_standard}
-              onChange={(e) => update('pdf_settings', { default_pdfx_standard: e.target.value })}
+              onChange={(e: ChangeEvent<HTMLSelectElement>) => update('pdf_settings', { default_pdfx_standard: e.target.value })}
               options={[
                 { value: 'PDF/X-1a:2001', label: 'PDF/X-1a:2001' },
                 { value: 'PDF/X-1a:2003', label: 'PDF/X-1a:2003' },
@@ -186,13 +186,13 @@ export default function PreferencesPanel() {
           <Switch
             label={t('preferences.ai.enable')}
             checked={prefs.ai_visual_check.enabled}
-            onChange={(e) => update('ai_visual_check', { enabled: e.target.checked })}
+            onChange={(e: ChangeEvent<HTMLInputElement>) => update('ai_visual_check', { enabled: e.target.checked })}
           />
         </div>
         <Input
           label={t('preferences.ai.endpoint')}
           value={prefs.ai_visual_check.endpoint}
-          onChange={(e) => update('ai_visual_check', { endpoint: e.target.value })}
+          onChange={(e: ChangeEvent<HTMLInputElement>) => update('ai_visual_check', { endpoint: e.target.value })}
           disabled={!prefs.ai_visual_check.enabled}
         />
       </Card>
@@ -204,7 +204,7 @@ export default function PreferencesPanel() {
           <Switch
             label={t('preferences.telemetry.opt_in')}
             checked={prefs.telemetry.opt_in}
-            onChange={(e) => update('telemetry', { opt_in: e.target.checked })}
+            onChange={(e: ChangeEvent<HTMLInputElement>) => update('telemetry', { opt_in: e.target.checked })}
           />
         </div>
       </Card>
@@ -215,7 +215,7 @@ export default function PreferencesPanel() {
           <Switch
             label={t('preferences.keyboard.mac')}
             checked={prefs.keyboard.mac_shortcuts}
-            onChange={(e) => update('keyboard', { mac_shortcuts: e.target.checked })}
+            onChange={(e: ChangeEvent<HTMLInputElement>) => update('keyboard', { mac_shortcuts: e.target.checked })}
           />
         </div>
       </Card>
@@ -226,7 +226,7 @@ export default function PreferencesPanel() {
           <label className="pdf-label">{t('preferences.ui.locale')}</label>
           <Select
             value={prefs.ui.default_locale}
-            onChange={(e) => update('ui', { default_locale: e.target.value })}
+            onChange={(e: ChangeEvent<HTMLSelectElement>) => update('ui', { default_locale: e.target.value })}
             options={[
               { value: 'en', label: 'English' },
             ]}
@@ -236,7 +236,7 @@ export default function PreferencesPanel() {
           <Switch
             label={t('preferences.ui.show_advanced')}
             checked={prefs.ui.show_advanced}
-            onChange={(e) => update('ui', { show_advanced: e.target.checked })}
+            onChange={(e: ChangeEvent<HTMLInputElement>) => update('ui', { show_advanced: e.target.checked })}
           />
         </div>
       </Card>
