@@ -297,16 +297,21 @@ pub fn check_tesseract_available() -> Result<(), String> {
     }
 }
 
+fn load_pdfium_bindings() -> Result<Box<dyn pdfium_render::prelude::PdfiumLibraryBindings>, String> {
+    use pdfium_render::prelude::*;
+
+    Pdfium::bind_to_system_library()
+        .or_else(|_| Pdfium::bind_to_builtin_library())
+        .map_err(|e| format!("Failed to load PDFium: {}", e))
+}
+
 /// Render a single PDF page to a temporary PNG image at 300 DPI.
 fn render_pdf_page_to_image(pdf_path: &PathBuf, page_index: usize) -> Result<PathBuf, String> {
     use pdfium_render::prelude::*;
 
     // Load PDF
-    let pdfium = Pdfium::new(
-        Pdfium::bind_to_library(Pdfium::bind_to_system_library())
-            .or_else(|_| Pdfium::bind_to_library(Pdfium::bind_to_builtin_library()))
-            .map_err(|e| format!("Failed to initialize PDFium: {:?}", e))?,
-    );
+    let bindings = load_pdfium_bindings()?;
+    let pdfium = Pdfium::new(bindings);
 
     let document = pdfium
         .load_pdf_from_file(&pdf_path, None)
@@ -1029,8 +1034,6 @@ fn append_content_stream(page: &mut lopdf::Dictionary, new_content: &str) -> Res
             let stream_obj = lopdf::Object::Stream(lopdf::Stream {
                 content: new_data,
                 dict: stream.dict.clone(),
-                allows_compression: true,
-                start_position: None,
             });
 
             page.set("Contents", stream_obj);
@@ -1040,8 +1043,6 @@ fn append_content_stream(page: &mut lopdf::Dictionary, new_content: &str) -> Res
             let stream = lopdf::Stream {
                 content: new_content.as_bytes().to_vec(),
                 dict: Default::default(),
-                allows_compression: true,
-                start_position: None,
             };
             page.set("Contents", lopdf::Object::Stream(stream));
         }
@@ -1050,8 +1051,6 @@ fn append_content_stream(page: &mut lopdf::Dictionary, new_content: &str) -> Res
             let stream = lopdf::Stream {
                 content: new_content.as_bytes().to_vec(),
                 dict: Default::default(),
-                allows_compression: true,
-                start_position: None,
             };
             page.set("Contents", lopdf::Object::Stream(stream));
         }
