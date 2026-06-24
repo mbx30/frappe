@@ -3766,7 +3766,7 @@ pub async fn run_ocr(
         crate::pdf::ocr::run_ocr(&pdf_path, options)
     })
     .await
-    .map_err(|e| format!(“spawn_blocking join error: {e}”))?
+    .map_err(|e| format!("spawn_blocking join error: {e}"))?
 }
 
 /// Check if Tesseract OCR engine is available on this system.
