@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { invoke, convertFileSrc } from '@tauri-apps/api/core'
 import { Button, Card } from '../../design-system'
 
@@ -57,101 +57,106 @@ export default function AccessibilityCheck({ filePath }: AccessibilityCheckProps
   const [thumb, setThumb] = useState<string | null>(null)
   const [showLuminanceDemo, setShowLuminanceDemo] = useState(false)
 
-  const runChecks = useCallback(async () => {
+  useEffect(() => {
     if (!filePath) return
-    setLoading(true)
-    setError(null)
-    setFindings([])
-    try {
-      const collected: AccessibilityFinding[] = []
 
-      const cat = await invoke<Record<string, string>>('get_pdf_catalog', { path: filePath })
+    let isMounted = true
+    const runChecks = async () => {
+      setLoading(true)
+      setError(null)
+      setFindings([])
+      try {
+        const collected: AccessibilityFinding[] = []
 
-      // ── (1) Tag tree / structure ──────────────────────────────
-      const hasStructTree = !!cat.StructTreeRoot
-      if (!hasStructTree) {
-        collected.push({
-          category: 'tag_tree',
-          severity: 'warning',
-          message: 'No document structure tree found.',
-          detail: 'Tagged PDFs expose the logical reading order and heading hierarchy to assistive technology. Without it, screen readers infer the order from visual position which is often wrong for multi-column layouts.',
-        })
-      }
+        const cat = await invoke<Record<string, string>>('get_pdf_catalog', { path: filePath })
 
-      // ── (2) Form field labels ─────────────────────────────────
-      if (cat.AcroForm) {
+        // ── (1) Tag tree / structure ──────────────────────────────
+        const hasStructTree = !!cat.StructTreeRoot
+        if (!hasStructTree) {
+          collected.push({
+            category: 'tag_tree',
+            severity: 'warning',
+            message: 'No document structure tree found.',
+            detail: 'Tagged PDFs expose the logical reading order and heading hierarchy to assistive technology. Without it, screen readers infer the order from visual position which is often wrong for multi-column layouts.',
+          })
+        }
+
+        // ── (2) Form field labels ─────────────────────────────────
+        if (cat.AcroForm) {
+          try {
+            const acro = JSON.parse(cat.AcroForm) as { Fields?: unknown[] }
+            const fieldCount = Array.isArray(acro.Fields) ? acro.Fields.length : 0
+            if (fieldCount > 0) {
+              collected.push({
+                category: 'form_labels',
+                severity: 'info',
+                message: `${fieldCount} AcroForm field${fieldCount === 1 ? '' : 's'} detected.`,
+                detail: 'Verify every field has a TU (tooltip) or accessible name in the widget annotation. PDF/UA requires a /T (partial field name) and /TU (tooltip) on every widget annotation.',
+              })
+            }
+          } catch {
+            // Ignore — the AcroForm entry may not be a JSON array; we already
+            // know the form exists.
+          }
+        }
+
+        // ── (3) Image alt text (heuristic via page count + render) ──
         try {
-          const acro = JSON.parse(cat.AcroForm) as { Fields?: unknown[] }
-          const fieldCount = Array.isArray(acro.Fields) ? acro.Fields.length : 0
-          if (fieldCount > 0) {
+          const url = await invoke<string>('render_page_thumbnail', { path: filePath, pageIndex: 0, widthPx: 320 })
+          if (isMounted) setThumb(url)
+          const imageCount = Number(cat.ImageCount ?? 0)
+          if (imageCount > 0) {
             collected.push({
-              category: 'form_labels',
+              category: 'alt_text',
+              severity: 'warning',
+              message: `${imageCount} raster image${imageCount === 1 ? '' : 's'} on first page.`,
+              detail: 'Verify every Image XObject has a parent Form XObject with an /Alt entry. PDF/UA requires alt text on every meaningful image; decorative images should be marked as artifacts via /Artifact /Subtype /Background.',
+            })
+          } else {
+            collected.push({
+              category: 'alt_text',
               severity: 'info',
-              message: `${fieldCount} AcroForm field${fieldCount === 1 ? '' : 's'} detected.`,
-              detail: 'Verify every field has a TU (tooltip) or accessible name in the widget annotation. PDF/UA requires a /T (partial field name) and /TU (tooltip) on every widget annotation.',
+              message: 'No raster images detected on first page.',
+              detail: 'Run the AltTextEditor to attach alt text to images across the document if any are present on later pages.',
             })
           }
         } catch {
-          // Ignore — the AcroForm entry may not be a JSON array; we already
-          // know the form exists.
-        }
-      }
-
-      // ── (3) Image alt text (heuristic via page count + render) ──
-      try {
-        const url = await invoke<string>('render_page_thumbnail', { path: filePath, pageIndex: 0, widthPx: 320 })
-        setThumb(url)
-        const imageCount = Number(cat.ImageCount ?? 0)
-        if (imageCount > 0) {
-          collected.push({
-            category: 'alt_text',
-            severity: 'warning',
-            message: `${imageCount} raster image${imageCount === 1 ? '' : 's'} on first page.`,
-            detail: 'Verify every Image XObject has a parent Form XObject with an /Alt entry. PDF/UA requires alt text on every meaningful image; decorative images should be marked as artifacts via /Artifact /Subtype /Background.',
-          })
-        } else {
           collected.push({
             category: 'alt_text',
             severity: 'info',
-            message: 'No raster images detected on first page.',
-            detail: 'Run the AltTextEditor to attach alt text to images across the document if any are present on later pages.',
+            message: 'Could not render first page for alt-text preview.',
+            detail: 'PDFium may be unavailable. Alt-text checks still apply once the engine is back online.',
           })
         }
-      } catch {
+
+        // ── (4) Contrast ratio demo (informational) ───────────────
+        // We surface a static guidance sample so the panel always has
+        // something to teach even on a clean PDF.
+        const fg: [number, number, number] = [34, 34, 34]
+        const bg: [number, number, number] = [255, 255, 255]
+        const ratio = contrastRatio(fg, bg)
+        const passesAA = ratio >= 4.5
+        const passesAALarge = ratio >= 3
         collected.push({
-          category: 'alt_text',
-          severity: 'info',
-          message: 'Could not render first page for alt-text preview.',
-          detail: 'PDFium may be unavailable. Alt-text checks still apply once the engine is back online.',
+          category: 'contrast',
+          severity: passesAA ? 'info' : passesAALarge ? 'warning' : 'error',
+          message: `Reference contrast: ${ratio.toFixed(2)}:1 (${passesAA ? 'AA passes' : passesAALarge ? 'AA large text only' : 'AA fails'}).`,
+          detail: `WCAG 2.1 AA requires a 4.5:1 contrast ratio for normal text and 3:1 for large text (18pt+ or 14pt+ bold). PDF/UA-1 mirrors this. We sampled body text vs page background as a reference; for live checks of the actual rendered text, open the document in a magnifier.`,
         })
+
+        if (isMounted) setFindings(collected)
+      } catch (e) {
+        if (isMounted) setError(String(e))
+      } finally {
+        if (isMounted) setLoading(false)
       }
+    }
 
-      // ── (4) Contrast ratio demo (informational) ───────────────
-      // We surface a static guidance sample so the panel always has
-      // something to teach even on a clean PDF.
-      const fg: [number, number, number] = [34, 34, 34]
-      const bg: [number, number, number] = [255, 255, 255]
-      const ratio = contrastRatio(fg, bg)
-      const passesAA = ratio >= 4.5
-      const passesAALarge = ratio >= 3
-      collected.push({
-        category: 'contrast',
-        severity: passesAA ? 'info' : passesAALarge ? 'warning' : 'error',
-        message: `Reference contrast: ${ratio.toFixed(2)}:1 (${passesAA ? 'AA passes' : passesAALarge ? 'AA large text only' : 'AA fails'}).`,
-        detail: `WCAG 2.1 AA requires a 4.5:1 contrast ratio for normal text and 3:1 for large text (18pt+ or 14pt+ bold). PDF/UA-1 mirrors this. We sampled body text vs page background as a reference; for live checks of the actual rendered text, open the document in a magnifier.`,
-      })
-
-      setFindings(collected)
-    } catch (e) {
-      setError(String(e))
-    } finally {
-      setLoading(false)
+    runChecks()
+    return () => {
+      isMounted = false
     }
   }, [filePath])
-
-  useEffect(() => {
-    runChecks()
-  }, [runChecks])
 
   const summary = summarize(findings)
 

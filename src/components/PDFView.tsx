@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { invoke, convertFileSrc } from '@tauri-apps/api/core'
 import type { PdfSummary, CombinedPreflightResult, TextMatch } from '../types'
 import PreflightReport from './preflight/PreflightReport'
@@ -344,7 +344,7 @@ export default function PDFView({ summary, jobs, onOpenFile, onSaveJob, onDelete
     }
   }, [summary, findQuery, showViewer])
 
-  const handleKeyDown = useCallback(makeKeyDownHandler({
+  const handlers = useMemo(() => ({
     onFind: handleFind,
     onSaveProfile: () => onSaveJob(),
     onRunProfile: runFullPreflight,
@@ -363,6 +363,10 @@ export default function PDFView({ summary, jobs, onOpenFile, onSaveJob, onDelete
     },
     onHelp: () => setShowHelp(true),
   } satisfies ShortcutHandlers), [handleFind, onSaveJob, runFullPreflight, onOpenFile, showViewer, summary?.page_count])
+
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    makeKeyDownHandler(handlers)(e)
+  }, [handlers])
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown)

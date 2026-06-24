@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { invoke, convertFileSrc } from '@tauri-apps/api/core'
 
 interface ArtworkPreviewProps {
@@ -23,7 +23,7 @@ interface PdfInfo {
 }
 
 export default function ArtworkPreview({ filePath, onOpenInPdfTools, showOpenButton = true, height = 240 }: ArtworkPreviewProps) {
-  const [format, setFormat] = useState<FormatKind>('unsupported')
+  const format = useMemo(() => classify(filePath), [filePath])
   const [error, setError] = useState<string | null>(null)
   const [pdfPageCount, setPdfPageCount] = useState<number | null>(null)
   const [pdfThumb, setPdfThumb] = useState<string | null>(null)
@@ -53,7 +53,6 @@ export default function ArtworkPreview({ filePath, onOpenInPdfTools, showOpenBut
   }, [filePath, format])
 
   useEffect(() => {
-    setFormat(classify(filePath))
     setError(null)
     setPdfThumb(null)
     setPdfPageCount(null)

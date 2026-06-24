@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { invoke, convertFileSrc } from '@tauri-apps/api/core'
 import { Button, Card, Input } from '../../design-system'
 
@@ -31,56 +31,63 @@ export default function AltTextEditor({ filePath, pageIndex = 0 }: AltTextEditor
   const [savedMessage, setSavedMessage] = useState<string | null>(null)
   const [page, setPage] = useState(pageIndex)
 
-  const load = useCallback(async () => {
+  useEffect(() => {
     if (!filePath) return
-    setLoading(true)
-    setError(null)
-    try {
-      const stored = await invoke<Array<[number, string, boolean]>>('list_alt_text', { filePath })
-      const storedMap = new Map<number, { alt_text: string; is_decorative: boolean }>()
-      for (const [oid, alt, deco] of stored) {
-        storedMap.set(oid, { alt_text: alt, is_decorative: deco })
-      }
 
+    let isMounted = true
+    const load = async () => {
+      setLoading(true)
+      setError(null)
       try {
-        const cat = await invoke<Record<string, string>>('get_pdf_catalog', { path: filePath })
-        const pageCount = Number(cat.PageCount ?? 0)
-        const imageCount = Number(cat.ImageCount ?? 0)
-        const entries: ImageEntry[] = []
-        for (let i = 0; i < Math.min(imageCount, 50); i += 1) {
-          const oid = i + 1
-          const storedEntry = storedMap.get(oid)
-          entries.push({
-            object_id: oid,
-            page: 0,
-            bbox: null,
-            alt_text: storedEntry?.alt_text ?? '',
-            is_decorative: storedEntry?.is_decorative ?? false,
-            saved: !!storedEntry,
-          })
+        const stored = await invoke<Array<[number, string, boolean]>>('list_alt_text', { filePath })
+        const storedMap = new Map<number, { alt_text: string; is_decorative: boolean }>()
+        for (const [oid, alt, deco] of stored) {
+          storedMap.set(oid, { alt_text: alt, is_decorative: deco })
         }
-        setImages(entries)
-        setPage((p) => Math.min(p, Math.max(0, pageCount - 1)))
-      } catch (e) {
-        setError(String(e))
-      }
 
-      try {
-        const url = await invoke<string>('render_page_thumbnail', { path: filePath, pageIndex: page, widthPx: 480 })
-        setThumb(url)
-      } catch {
-        setThumb(null)
+        try {
+          const cat = await invoke<Record<string, string>>('get_pdf_catalog', { path: filePath })
+          const pageCount = Number(cat.PageCount ?? 0)
+          const imageCount = Number(cat.ImageCount ?? 0)
+          const entries: ImageEntry[] = []
+          for (let i = 0; i < Math.min(imageCount, 50); i += 1) {
+            const oid = i + 1
+            const storedEntry = storedMap.get(oid)
+            entries.push({
+              object_id: oid,
+              page: 0,
+              bbox: null,
+              alt_text: storedEntry?.alt_text ?? '',
+              is_decorative: storedEntry?.is_decorative ?? false,
+              saved: !!storedEntry,
+            })
+          }
+          if (isMounted) {
+            setImages(entries)
+            setPage((p) => Math.min(p, Math.max(0, pageCount - 1)))
+          }
+        } catch (e) {
+          if (isMounted) setError(String(e))
+        }
+
+        try {
+          const url = await invoke<string>('render_page_thumbnail', { path: filePath, pageIndex: page, widthPx: 480 })
+          if (isMounted) setThumb(url)
+        } catch {
+          if (isMounted) setThumb(null)
+        }
+      } catch (e) {
+        if (isMounted) setError(String(e))
+      } finally {
+        if (isMounted) setLoading(false)
       }
-    } catch (e) {
-      setError(String(e))
-    } finally {
-      setLoading(false)
+    }
+
+    load()
+    return () => {
+      isMounted = false
     }
   }, [filePath, page])
-
-  useEffect(() => {
-    load()
-  }, [load])
 
   const updateField = (id: number, patch: Partial<ImageEntry>) => {
     setImages((prev) => prev.map((e) => (e.object_id === id ? { ...e, ...patch, saved: false } : e)))
