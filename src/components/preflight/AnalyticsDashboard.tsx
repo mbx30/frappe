@@ -71,8 +71,8 @@ export default function AnalyticsDashboard({ clientId, refreshKey = 0 }: Analyti
     }
   }, [])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     refresh()
   }, [refresh, refreshKey])
 

@@ -30,8 +30,8 @@ export default function ArtworkPreview({ filePath, onOpenInPdfTools, showOpenBut
   const [expanded, setExpanded] = useState(false)
   const [fullThumb, setFullThumb] = useState<string | null>(null)
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setError(null)
     setPdfThumb(null)
     setPdfPageCount(null)
