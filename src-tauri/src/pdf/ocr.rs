@@ -875,18 +875,18 @@ fn overlay_ocr_text(
         let page_index = page_result.page_index;
 
         // Find the page_id for this index
-        let mut page_id = None;
+        let mut page_id_opt = None;
         for (idx, (id, _)) in doc.get_pages().iter().enumerate() {
             if idx == page_index {
-                page_id = Some(*id);
+                page_id_opt = Some(*id);
                 break;
             }
         }
-        let page_id = page_id.ok_or_else(|| format!("Page {} not found in PDF", page_index))?;
+        let page_id = page_id_opt.ok_or_else(|| format!("Page {} not found in PDF", page_index))?;
 
         // Get the page object
         let page = doc
-            .get_object_mut(page_id)
+            .get_object_mut(page_id.clone())
             .map_err(|e| format!("Failed to get page {}: {}", page_index, e))?
             .as_dict_mut()
             .map_err(|_| format!("Page {} is not a dictionary", page_index))?;
