@@ -1327,16 +1327,18 @@ pub fn check_bleed(path: String, min_bleed_mm: Option<f64>) -> Result<Vec<BleedF
 }
 
 #[tauri::command]
-pub async fn add_bleed(
+pub fn add_bleed(
     path: String,
     amount_mm: f64,
     output_path: String,
 ) -> Result<(), String> {
     let _ = validate_read_path(&path)?;
     let _ = validate_write_path(&output_path)?;
-    tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
-        let mut doc =
-            lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
+    if amount_mm < 0.0 {
+        return Err("amount_mm must be non-negative".to_string());
+    }
+    let mut doc = lopdf::Document::load(&path)
+        .map_err(|e| format!("Failed to open PDF: {}", e))?;
         let page_ids: Vec<(u32, u16)> = doc.get_pages().values().copied().collect();
         let amount_pts = amount_mm / 0.3528;
 
@@ -1422,9 +1424,7 @@ pub async fn add_bleed(
         doc.save(&output_path)
             .map_err(|e| format!("Failed to save PDF: {}", e))?;
         Ok(())
-    })
-    .await
-    .map_err(|e| format!("spawn_blocking join error: {e}"))?
+    }
 }
 
 #[tauri::command]
@@ -4340,11 +4340,6 @@ pub enum AppEvent {
     Heartbeat { ts: u64 },
 }
 
-// `Channel<T>` in Tauri v2 requires `T: IpcResponse` which is
-// auto-impl'd for any `Serialize` type. The explicit `impl` here
-// documents the bound so the compiler error message is clear.
-impl tauri::ipc::IpcResponse for AppEvent {}
-
 /// Subscribe to a stream of `AppEvent` values. The Tauri v2 `Channel`
 /// type is a one-way typed pipe that survives reloads and is fully
 /// cancellable on drop. Events are emitted from a background task;
@@ -4406,10 +4401,12 @@ pub async fn render_page_b64(
     dpi: Option<f32>,
 ) -> Result<String, String> {
     let _ = validate_read_path(&path)?;
+    let path_clone = path.clone();
+    let engine_ref = &*engine;
     tauri::async_runtime::spawn_blocking(move || -> Result<String, String> {
         use image::ImageEncoder;
         use pdfium_render::prelude::PdfRenderConfig;
-        let doc = engine.open_document(&path)?;
+        let doc = engine_ref.open_document(&path_clone)?;
         let idx: i32 = page_index
             .try_into()
             .map_err(|_| format!("Page index too large: {page_index}"))?;
