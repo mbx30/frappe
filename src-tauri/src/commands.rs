@@ -3714,6 +3714,51 @@ pub async fn ai_visual_check(
     crate::ai_check::ai_visual_check(&path, &prompt).await
 }
 
+// Issue #229 â€” Optical Character Recognition (OCR)
+
+/// Detect whether a PDF is text-based or scanned (image-based).
+///
+/// Returns classification:
+/// - TextBased: PDF contains embedded text and fonts (already searchable)
+/// - Scanned: PDF is primarily image-based (requires OCR)
+/// - Mixed: Some pages are text-based, some are scanned
+#[tauri::command]
+pub fn detect_pdf_type(path: String) -> Result<crate::pdf::ocr::PdfType, String> {
+    let pdf_path = security::validate_read_path(&path)?;
+    crate::pdf::ocr::detect_pdf_type(&pdf_path)
+}
+
+/// Run OCR on a PDF using the specified backend (Tesseract or Google Cloud Vision).
+///
+/// Supports:
+/// - Selecting specific pages to OCR
+/// - Overlaying extracted text as a hidden searchable layer
+/// - Backend selection (local Tesseract or cloud Vision API)
+/// - Language hints
+/// - Confidence score reporting
+///
+/// **Phase 1 (scaffolding):** Backend implementations are stubs. This command
+/// will error until Tesseract or Google Cloud Vision integration is complete.
+#[tauri::command]
+pub async fn run_ocr(
+    path: String,
+    options: crate::pdf::ocr::OcrOptions,
+) -> Result<crate::pdf::ocr::OcrResult, String> {
+    let pdf_path = security::validate_read_path(&path)?;
+
+    // Validate output path if provided
+    if let Some(ref out) = options.output_path {
+        security::validate_write_path(out)?;
+    }
+
+    // Run OCR (currently returns “not implemented” stub)
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::pdf::ocr::run_ocr(&pdf_path, options)
+    })
+    .await
+    .map_err(|e| format!(“spawn_blocking join error: {e}”))?
+}
+
 // Issue #278 â€” Crash reporting + opt-in telemetry
 
 #[tauri::command]
