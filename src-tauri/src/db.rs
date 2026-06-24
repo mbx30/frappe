@@ -145,6 +145,20 @@ pub struct Database {
     /// Acquired in `Database::new` via `fs2::FileExt::try_lock_exclusive`;
     /// the lock is released when the file handle is dropped at process exit.
     _db_lock: Mutex<Option<std::fs::File>>,
+    /// 30 s TTL cache for the PDF job list. Invalidated on save / delete
+    /// (#252). The dashboard polls this list every few seconds when on the
+    /// PDF view screen; without a cache the read is the hottest path in the
+    /// app.
+    pdf_jobs_cache: QueryCache<Vec<PdfSummary>>,
+    /// 60 s TTL cache for the preflight profile list. Invalidated on any
+    /// create / delete / update of a profile (#252).
+    preflight_profiles_cache: QueryCache<Vec<PreflightProfile>>,
+    /// 30 s TTL cache for the hot-folder list. Invalidated on any
+    /// create / delete / toggle of a hot folder (#252).
+    hot_folders_cache: QueryCache<Vec<HotFolder>>,
+    /// 60 s TTL cache for the singleton business-info row (#252). The
+    /// business header is rendered on every PDF so this is on the hot path.
+    business_info_cache: QueryCache<Option<BusinessInfo>>,
 }
 
 impl Database {
@@ -243,6 +257,10 @@ impl Database {
                 key,
                 db_path: db_path.clone(),
                 _db_lock: Mutex::new(Some(lock_file)),
+                pdf_jobs_cache: QueryCache::with_ttl(4, Duration::from_secs(30)),
+                preflight_profiles_cache: QueryCache::with_ttl(8, Duration::from_secs(60)),
+                hot_folders_cache: QueryCache::with_ttl(4, Duration::from_secs(30)),
+                business_info_cache: QueryCache::with_ttl(2, Duration::from_secs(60)),
             };
             db.initialize_schema()?;
             return Ok(db);
@@ -258,6 +276,10 @@ impl Database {
                 key: DatabaseKey::generate(), // placeholder
                 db_path: db_path.clone(),
                 _db_lock: Mutex::new(Some(lock_file)),
+                pdf_jobs_cache: QueryCache::with_ttl(4, Duration::from_secs(30)),
+                preflight_profiles_cache: QueryCache::with_ttl(8, Duration::from_secs(60)),
+                hot_folders_cache: QueryCache::with_ttl(4, Duration::from_secs(30)),
+                business_info_cache: QueryCache::with_ttl(2, Duration::from_secs(60)),
             };
             db.initialize_schema()?;
             Ok(db)
@@ -331,6 +353,10 @@ impl Database {
             key: key.clone(),
             db_path: db_path.clone(),
             _db_lock: Mutex::new(Some(lock_file)),
+            pdf_jobs_cache: QueryCache::with_ttl(4, Duration::from_secs(30)),
+            preflight_profiles_cache: QueryCache::with_ttl(8, Duration::from_secs(60)),
+            hot_folders_cache: QueryCache::with_ttl(4, Duration::from_secs(30)),
+            business_info_cache: QueryCache::with_ttl(2, Duration::from_secs(60)),
         })
     }
 
@@ -1400,6 +1426,9 @@ impl Database {
     }
 
     pub fn get_business_info(&self) -> Result<Option<BusinessInfo>> {
+        if let Some(cached) = self.business_info_cache.get("row") {
+            return Ok(cached);
+        }
         let conn = self
             .conn
             .lock()
@@ -1416,11 +1445,16 @@ impl Database {
                 completed_onboarding: row.get::<_, i32>(4)? != 0,
             })
         });
-        match result {
+        drop(stmt);
+        drop(conn);
+        let result = match result {
             Ok(info) => Ok(Some(info)),
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(e),
-        }
+        }?;
+        self.business_info_cache.put("row", result.clone());
+        crate::metrics::inc_db_query();
+        Ok(result)
     }
 
     pub fn save_business_info(
@@ -1439,6 +1473,8 @@ impl Database {
              VALUES (1, ?1, ?2, ?3, ?4, 1, datetime('now'))",
             params![business_name, industry, company_size, order_number_prefix],
         )?;
+        drop(conn);
+        self.business_info_cache.invalidate_all();
         Ok(())
     }
 
@@ -3255,10 +3291,17 @@ impl Database {
             "INSERT INTO pdf_jobs (file_path, file_name, page_count, pdf_version, file_size_bytes, title, creator, producer, is_encrypted, creation_date) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![summary.file_path, summary.file_name, summary.page_count as i64, summary.pdf_version, summary.file_size_bytes as i64, summary.title, summary.creator, summary.producer, summary.is_encrypted as i32, summary.creation_date],
         )?;
-        Ok(conn.last_insert_rowid())
+        let id = conn.last_insert_rowid();
+        drop(conn);
+        self.pdf_jobs_cache.invalidate_all();
+        crate::metrics::inc_db_query();
+        Ok(id)
     }
 
     pub fn list_pdf_jobs(&self) -> Result<Vec<PdfSummary>> {
+        if let Some(cached) = self.pdf_jobs_cache.get("list") {
+            return Ok(cached);
+        }
         let conn = self
             .conn
             .lock()
@@ -3281,7 +3324,12 @@ impl Database {
                 creation_date: row.get(10)?,
             })
         })?;
-        rows.collect()
+        let result: Vec<PdfSummary> = rows.collect::<Result<Vec<_>>>()?;
+        drop(stmt);
+        drop(conn);
+        self.pdf_jobs_cache.put("list", result.clone());
+        crate::metrics::inc_db_query();
+        Ok(result)
     }
 
     pub fn delete_pdf_job(&self, id: i64) -> Result<()> {
@@ -3290,6 +3338,8 @@ impl Database {
             .lock()
             .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute("DELETE FROM pdf_jobs WHERE id = ?1", params![id])?;
+        drop(conn);
+        self.pdf_jobs_cache.invalidate_all();
         Ok(())
     }
 
@@ -3402,6 +3452,8 @@ impl Database {
             params![input.name, input.description],
         )?;
         let id = conn.last_insert_rowid();
+        drop(conn);
+        self.preflight_profiles_cache.invalidate_all();
         Ok(PreflightProfile {
             id,
             name: input.name.clone(),
@@ -3413,6 +3465,9 @@ impl Database {
     }
 
     pub fn list_preflight_profiles(&self) -> Result<Vec<PreflightProfile>> {
+        if let Some(cached) = self.preflight_profiles_cache.get("list") {
+            return Ok(cached);
+        }
         let conn = self
             .conn
             .lock()
@@ -3430,7 +3485,12 @@ impl Database {
                 updated_at: row.get(5)?,
             })
         })?;
-        rows.collect()
+        let result: Vec<PreflightProfile> = rows.collect::<Result<Vec<_>>>()?;
+        drop(stmt);
+        drop(conn);
+        self.preflight_profiles_cache.put("list", result.clone());
+        crate::metrics::inc_db_query();
+        Ok(result)
     }
 
     pub fn get_preflight_profile(&self, id: i64) -> Result<PreflightProfile> {
@@ -3463,6 +3523,8 @@ impl Database {
             "DELETE FROM preflight_profiles WHERE id = ?1 AND is_builtin = 0",
             params![id],
         )?;
+        drop(conn);
+        self.preflight_profiles_cache.invalidate_all();
         Ok(())
     }
 
@@ -3496,6 +3558,8 @@ impl Database {
             "UPDATE profile_checks SET enabled = ?1, severity = ?2 WHERE id = ?3",
             params![enabled as i32, severity, check_id],
         )?;
+        drop(conn);
+        self.preflight_profiles_cache.invalidate_all();
         Ok(())
     }
 
@@ -3528,6 +3592,8 @@ impl Database {
             "UPDATE profile_fixups SET enabled = ?1, params = ?2 WHERE id = ?3",
             params![enabled as i32, params, fixup_id],
         )?;
+        drop(conn);
+        self.preflight_profiles_cache.invalidate_all();
         Ok(())
     }
 
@@ -3865,6 +3931,8 @@ impl Database {
             params![input.name, input.watch_path, input.action_list_id, input.output_path, input.file_pattern],
         )?;
         let id = conn.last_insert_rowid();
+        drop(conn);
+        self.hot_folders_cache.invalidate_all();
         Ok(HotFolder {
             id,
             name: input.name.clone(),
@@ -3879,6 +3947,9 @@ impl Database {
     }
 
     pub fn list_hot_folders(&self) -> Result<Vec<HotFolder>> {
+        if let Some(cached) = self.hot_folders_cache.get("list") {
+            return Ok(cached);
+        }
         let conn = self
             .conn
             .lock()
@@ -3899,7 +3970,12 @@ impl Database {
                 updated_at: row.get(8)?,
             })
         })?;
-        rows.collect()
+        let result: Vec<HotFolder> = rows.collect::<Result<Vec<_>>>()?;
+        drop(stmt);
+        drop(conn);
+        self.hot_folders_cache.put("list", result.clone());
+        crate::metrics::inc_db_query();
+        Ok(result)
     }
 
     pub fn delete_hot_folder(&self, id: i64) -> Result<()> {
@@ -3908,6 +3984,8 @@ impl Database {
             .lock()
             .map_err(|_| rusqlite::Error::InvalidQuery)?;
         conn.execute("DELETE FROM hot_folders WHERE id = ?1", params![id])?;
+        drop(conn);
+        self.hot_folders_cache.invalidate_all();
         Ok(())
     }
 
@@ -3920,6 +3998,8 @@ impl Database {
             "UPDATE hot_folders SET is_active = ?1, updated_at = datetime('now') WHERE id = ?2",
             params![is_active as i32, id],
         )?;
+        drop(conn);
+        self.hot_folders_cache.invalidate_all();
         Ok(())
     }
 

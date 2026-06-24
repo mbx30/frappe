@@ -8,11 +8,6 @@ use suppaftp::FtpStream;
 /// Upload a single local file to a remote FTP server using the persisted
 /// `FtpSettings`. The FTP password is read from the OS keychain at call time
 /// and is never logged.
-///
-/// Plain (non-FTPS) FTP is used; the `suppaftp` crate is built with the
-/// `rustls` feature flag so FTPS would also be possible, but a Tauri command
-/// surface that silently upgrades to TLS is a footgun. This stays plain FTP
-/// for now and the call site can be wrapped in a future FTPS helper.
 pub fn upload_file_via_ftp(
     settings: &FtpSettings,
     local_path: &str,

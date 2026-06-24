@@ -8,13 +8,6 @@ use std::path::Path;
 
 /// Send an email via SMTP using the persisted `EmailSettings`. The SMTP
 /// password is read from the OS keychain at call time, never logged.
-///
-/// `attachment_path` is optional; when present, the file is attached to the
-/// outgoing message using the file's stem as the filename.
-///
-/// This function is best-effort: it requires that the user has saved SMTP
-/// settings via `save_email_settings`. If the settings are missing or the
-/// password is not in the keychain, a clear `Err` is returned.
 pub fn send_email_via_smtp(
     settings: &EmailSettings,
     to: &str,
