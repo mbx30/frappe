@@ -12,7 +12,7 @@
 
 use lopdf::Document;
 use notify::RecursiveMode;
-use notify_debouncer_full::{new_debouncer, DebounceEventResult, Debouncer, FileIdMap, file_id_map};
+use notify_debouncer_full::{new_debouncer, DebounceEventResult, Debouncer, FileIdMap};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -199,7 +199,7 @@ pub fn start_hot_folder_watcher(
     let queued_for_cb = state.queued.clone();
     let mut debouncer = new_debouncer(
         Duration::from_millis(750),
-        Some(file_id_map::FileIdMap::default()),
+        Some(FileIdMap::default()),
         move |result: DebounceEventResult| match result {
             Ok(events) => {
                 for ev in events {
