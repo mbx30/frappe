@@ -120,7 +120,7 @@ pub fn detect_pdf_type(pdf_path: &PathBuf) -> Result<PdfType, String> {
     let mut scanned_pages = Vec::new();
 
     // Check each page for text content
-    for (page_index, (page_id, _)) in doc.get_pages().iter().enumerate() {
+    for (page_index, (_, page_id)) in doc.get_pages().iter().enumerate() {
         let has_text = has_page_text(&doc, *page_id)?;
 
         if has_text {
@@ -303,7 +303,6 @@ fn load_pdfium_bindings() -> Result<Box<dyn pdfium_render::prelude::PdfiumLibrar
     use pdfium_render::prelude::*;
 
     Pdfium::bind_to_system_library()
-        .or_else(|_| Pdfium::bind_to_builtin_library())
         .map_err(|e| format!("Failed to load PDFium: {}", e))
 }
 
@@ -336,7 +335,8 @@ fn render_pdf_page_to_image(pdf_path: &PathBuf, page_index: usize) -> Result<Pat
     let bitmap = page
         .render_with_config(&render_config)
         .map_err(|e| format!("Failed to render page: {:?}", e))?
-        .as_image();
+        .as_image()
+        .map_err(|e| format!("Failed to convert page to image: {:?}", e))?;
 
     // Save to temporary file
     let temp_file = tempfile::NamedTempFile::new()
@@ -883,7 +883,7 @@ fn overlay_ocr_text(
 
         // Find the page_id for this index
         let mut page_id_opt = None;
-        for (idx, (id, _)) in doc.get_pages().iter().enumerate() {
+        for (idx, (_, id)) in doc.get_pages().iter().enumerate() {
             if idx == page_index {
                 page_id_opt = Some(*id);
                 break;
@@ -1036,6 +1036,8 @@ fn append_content_stream(page: &mut lopdf::Dictionary, new_content: &str) -> Res
             let stream_obj = lopdf::Object::Stream(lopdf::Stream {
                 content: new_data,
                 dict: stream.dict.clone(),
+                allows_compression: true,
+                start_position: None,
             });
 
             page.set("Contents", stream_obj);
@@ -1045,6 +1047,8 @@ fn append_content_stream(page: &mut lopdf::Dictionary, new_content: &str) -> Res
             let stream = lopdf::Stream {
                 content: new_content.as_bytes().to_vec(),
                 dict: Default::default(),
+                allows_compression: true,
+                start_position: None,
             };
             page.set("Contents", lopdf::Object::Stream(stream));
         }
@@ -1053,6 +1057,8 @@ fn append_content_stream(page: &mut lopdf::Dictionary, new_content: &str) -> Res
             let stream = lopdf::Stream {
                 content: new_content.as_bytes().to_vec(),
                 dict: Default::default(),
+                allows_compression: true,
+                start_position: None,
             };
             page.set("Contents", lopdf::Object::Stream(stream));
         }

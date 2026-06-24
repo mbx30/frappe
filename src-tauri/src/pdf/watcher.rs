@@ -59,7 +59,7 @@ pub struct HotFolderEvent {
 
 struct WatcherState {
     watcher_id: String,
-    debouncer: Option<Box<dyn std::any::Any + Send>>,
+    debouncer: Option<Box<dyn std::any::Any + Send + Sync>>,
     stop_flag: Arc<AtomicBool>,
     active: Arc<AtomicU32>,
     queued: Arc<AtomicU32>,
@@ -199,7 +199,7 @@ pub fn start_hot_folder_watcher(
     let queued_for_cb = state.queued.clone();
     let mut debouncer = new_debouncer(
         Duration::from_millis(750),
-        Some(FileIdMap::default()),
+        None,
         move |result: DebounceEventResult| match result {
             Ok(events) => {
                 for ev in events {
