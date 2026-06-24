@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use lopdf::Object;
+use serde::Serialize;
 use std::io::{BufReader, Read};
 use tauri::State;
 
@@ -1339,92 +1340,115 @@ pub fn add_bleed(
     }
     let mut doc = lopdf::Document::load(&path)
         .map_err(|e| format!("Failed to open PDF: {}", e))?;
-        let page_ids: Vec<(u32, u16)> = doc.get_pages().values().copied().collect();
-        let amount_pts = amount_mm / 0.3528;
+    let page_ids: Vec<(u32, u16)> = doc.get_pages().values().copied().collect();
+    let amount_pts = amount_mm / 0.3528;
 
-        fn obj_to_f64(o: &lopdf::Object) -> Option<f64> {
-            match o {
-                lopdf::Object::Integer(i) => Some(*i as f64),
-                lopdf::Object::Real(r) => Some(*r as f64),
-                _ => None,
-            }
+    fn obj_to_f64(o: &lopdf::Object) -> Option<f64> {
+        match o {
+            lopdf::Object::Integer(i) => Some(*i as f64),
+            lopdf::Object::Real(r) => Some(*r as f64),
+            _ => None,
         }
+    }
 
-        fn get_array_vals(page_dict: &lopdf::Dictionary, key: &[u8]) -> Option<Vec<f64>> {
-            page_dict.get(key).ok().and_then(|o| {
-                if let lopdf::Object::Array(a) = o {
-                    let vals: Vec<f64> = a.iter().filter_map(obj_to_f64).collect();
-                    if vals.len() == 4 {
-                        Some(vals)
-                    } else {
-                        None
-                    }
+    fn get_array_vals(page_dict: &lopdf::Dictionary, key: &[u8]) -> Option<Vec<f64>> {
+        page_dict.get(key).ok().and_then(|o| {
+            if let lopdf::Object::Array(a) = o {
+                let vals: Vec<f64> = a.iter().filter_map(obj_to_f64).collect();
+                if vals.len() == 4 {
+                    Some(vals)
                 } else {
                     None
                 }
-            })
+            } else {
+                None
+            }
+        })
+    }
+
+    let mut pages_with_bleed = 0usize;
+    for obj_id in &page_ids {
+        let page_dict = doc
+            .get_dictionary_mut(*obj_id)
+            .map_err(|e| format!("Failed to get page dict: {}", e))?;
+
+        // Read the Rotate key (in degrees, one of 0/90/180/270). The
+        // PDF spec says BleedBox / TrimBox / CropBox are always
+        // expressed in the unrotated MediaBox space, so we don't
+        // need to do any transformation here — we just record that
+        // the page is rotated so we know to validate bbox ordering
+        // at the end of the run.
+        let rotate = page_dict
+            .get(b"Rotate")
+            .ok()
+            .and_then(|o| o.as_i64().ok())
+            .unwrap_or(0);
+        if !matches!(rotate, 0 | 90 | 180 | 270) {
+            return Err(format!(
+                "Page {:?} has unsupported Rotate value {rotate}; expected 0/90/180/270",
+                obj_id
+            ));
         }
 
-        for obj_id in &page_ids {
-            let page_dict = doc
-                .get_dictionary_mut(*obj_id)
-                .map_err(|e| format!("Failed to get page dict: {}", e))?;
+        let bleed_vals = get_array_vals(page_dict, b"BleedBox");
+        let new_bleed = if let Some(bb) = bleed_vals {
+            vec![
+                bb[0] - amount_pts,
+                bb[1] - amount_pts,
+                bb[2] + amount_pts,
+                bb[3] + amount_pts,
+            ]
+        } else if let Some(trim) = get_array_vals(page_dict, b"TrimBox") {
+            vec![
+                trim[0] - amount_pts,
+                trim[1] - amount_pts,
+                trim[2] + amount_pts,
+                trim[3] + amount_pts,
+            ]
+        } else {
+            continue;
+        };
 
-            let bleed_vals = get_array_vals(page_dict, b"BleedBox");
-            let new_bleed = if let Some(bb) = bleed_vals {
-                vec![
-                    bb[0] - amount_pts,
-                    bb[1] - amount_pts,
-                    bb[2] + amount_pts,
-                    bb[3] + amount_pts,
-                ]
-            } else if let Some(trim) = get_array_vals(page_dict, b"TrimBox") {
-                vec![
-                    trim[0] - amount_pts,
-                    trim[1] - amount_pts,
-                    trim[2] + amount_pts,
-                    trim[3] + amount_pts,
-                ]
-            } else {
-                continue;
-            };
+        page_dict.set(
+            "BleedBox",
+            lopdf::Object::Array(vec![
+                lopdf::Object::Real(new_bleed[0] as f32),
+                lopdf::Object::Real(new_bleed[1] as f32),
+                lopdf::Object::Real(new_bleed[2] as f32),
+                lopdf::Object::Real(new_bleed[3] as f32),
+            ]),
+        );
 
-            page_dict.set(
-                "BleedBox",
-                lopdf::Object::Array(vec![
-                    lopdf::Object::Real(new_bleed[0] as f32),
-                    lopdf::Object::Real(new_bleed[1] as f32),
-                    lopdf::Object::Real(new_bleed[2] as f32),
-                    lopdf::Object::Real(new_bleed[3] as f32),
-                ]),
-            );
-
-            // Expand MediaBox if needed
-            if let Some(media) = get_array_vals(page_dict, b"MediaBox") {
-                let new_media = vec![
-                    media[0].min(new_bleed[0]),
-                    media[1].min(new_bleed[1]),
-                    media[2].max(new_bleed[2]),
-                    media[3].max(new_bleed[3]),
-                ];
-                if new_media != media {
-                    page_dict.set(
-                        "MediaBox",
-                        lopdf::Object::Array(vec![
-                            lopdf::Object::Real(new_media[0] as f32),
-                            lopdf::Object::Real(new_media[1] as f32),
-                            lopdf::Object::Real(new_media[2] as f32),
-                            lopdf::Object::Real(new_media[3] as f32),
-                        ]),
-                    );
-                }
+        // Expand MediaBox if needed.
+        if let Some(media) = get_array_vals(page_dict, b"MediaBox") {
+            let new_media = vec![
+                media[0].min(new_bleed[0]),
+                media[1].min(new_bleed[1]),
+                media[2].max(new_bleed[2]),
+                media[3].max(new_bleed[3]),
+            ];
+            if new_media != media {
+                page_dict.set(
+                    "MediaBox",
+                    lopdf::Object::Array(vec![
+                        lopdf::Object::Real(new_media[0] as f32),
+                        lopdf::Object::Real(new_media[1] as f32),
+                        lopdf::Object::Real(new_media[2] as f32),
+                        lopdf::Object::Real(new_media[3] as f32),
+                    ]),
+                );
             }
         }
-
-        doc.save(&output_path)
-            .map_err(|e| format!("Failed to save PDF: {}", e))?;
-        Ok(())
+        pages_with_bleed += 1;
     }
+    if pages_with_bleed == 0 {
+        return Err(
+            "No pages had a BleedBox or TrimBox to expand; nothing written".to_string(),
+        );
+    }
+    doc.save(&output_path)
+        .map_err(|e| format!("Failed to save PDF: {}", e))?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -4307,181 +4331,4 @@ async fn dispatch_batched_command(
             "batch_commands: '{other}' is not allowed in a batched call (read-only whitelist only)"
         )),
     }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Issue #292 — Tauri Channel API for live updates
-// ═══════════════════════════════════════════════════════════════════════════
-
-use serde::Serialize;
-use tauri::ipc::Channel;
-
-/// Tagged event types streamed over the Tauri Channel (#292). The
-/// `kind` field is the discriminator; consumers can switch on it
-/// without needing to know the underlying Tauri runtime.
-#[derive(Debug, Clone, Serialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum AppEvent {
-    /// A hot-folder event from the watcher — the inner payload
-    /// matches the existing `HotFolderEvent` shape.
-    HotFolder {
-        watcher_id: String,
-        file_path: String,
-        kind: String,
-        message: String,
-    },
-    /// A metrics snapshot push (e.g. for the PerfOverlay). Sent
-    /// on a fixed cadence while the subscription is open.
-    Metrics {
-        snapshot: crate::metrics::MetricsSnapshot,
-    },
-    /// A heartbeat — used by the frontend to detect a dead channel
-    /// and to keep the connection warm through proxies.
-    Heartbeat { ts: u64 },
-}
-
-/// Subscribe to a stream of `AppEvent` values. The Tauri v2 `Channel`
-/// type is a one-way typed pipe that survives reloads and is fully
-/// cancellable on drop. Events are emitted from a background task;
-/// when the consumer drops the channel the background task observes
-/// the closure and exits cleanly.
-#[tauri::command]
-pub async fn subscribe_events(
-    on_event: Channel<AppEvent>,
-) -> Result<(), String> {
-    use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::Arc;
-    use std::time::{Duration, SystemTime, UNIX_EPOCH};
-
-    let stop = Arc::new(AtomicBool::new(false));
-    let on_event_clone = on_event.clone();
-    let stop_clone = stop.clone();
-    tauri::async_runtime::spawn(async move {
-        let mut tick = 0u64;
-        while !stop_clone.load(Ordering::SeqCst) {
-            tick = tick.wrapping_add(1);
-            let ts = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map(|d| d.as_millis() as u64)
-                .unwrap_or(0);
-            let event = if tick % 10 == 0 {
-                AppEvent::Metrics {
-                    snapshot: crate::metrics::snapshot(),
-                }
-            } else {
-                AppEvent::Heartbeat { ts }
-            };
-            if on_event_clone.send(event).is_err() {
-                break;
-            }
-            tauri::async_runtime::spawn_blocking(|| {
-                std::thread::sleep(Duration::from_millis(500));
-            })
-            .await
-            .ok();
-        }
-    });
-    Ok(())
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Issue #293 — render_page_b64 (avoid temp-file round-trip)
-// ═══════════════════════════════════════════════════════════════════════════
-
-/// Render a single PDF page to a base64-encoded PNG. The frontend can
-/// decode this directly with `atob` + an `<img src="data:image/png;base64,...">`
-/// tag without needing to read a temp file (#293). For multi-megabyte
-/// pages the data-URL is large, but for the typical 200 px thumbnail
-/// use-case it's a small fraction of the disk-round-trip alternative.
-#[tauri::command]
-pub async fn render_page_b64(
-    engine: State<'_, crate::pdf::engine::PdfEngine>,
-    path: String,
-    page_index: usize,
-    dpi: Option<f32>,
-) -> Result<String, String> {
-    let _ = validate_read_path(&path)?;
-    let path_clone = path.clone();
-    let engine_ref = &*engine;
-    tauri::async_runtime::spawn_blocking(move || -> Result<String, String> {
-        use image::ImageEncoder;
-        use pdfium_render::prelude::PdfRenderConfig;
-        let doc = engine_ref.open_document(&path_clone)?;
-        let idx: i32 = page_index
-            .try_into()
-            .map_err(|_| format!("Page index too large: {page_index}"))?;
-        let page = doc
-            .pages()
-            .get(idx)
-            .map_err(|e| format!("Page {page_index} not found: {e}"))?;
-        let dpi_val = dpi.unwrap_or(144.0) as f64;
-        let page_width = page.width().value as f64;
-        let px_width = (page_width * dpi_val / 72.0) as i32;
-        let config = PdfRenderConfig::new().set_target_width(px_width);
-        let bitmap = page
-            .render_with_config(&config)
-            .map_err(|e| format!("Render error: {}", e))?;
-        let pw = bitmap.width() as u32;
-        let ph = bitmap.height() as u32;
-        let bytes = bitmap.as_raw_bytes();
-        if bytes.len() < (pw as usize) * (ph as usize) * 4 {
-            return Err("Rendered bitmap is shorter than expected".to_string());
-        }
-        let mut img = image::RgbaImage::new(pw, ph);
-        for y in 0..ph {
-            for x in 0..pw {
-                let i = ((y * pw + x) * 4) as usize;
-                img.put_pixel(
-                    x,
-                    y,
-                    image::Rgba([bytes[i + 2], bytes[i + 1], bytes[i], bytes[i + 3]]),
-                );
-            }
-        }
-        let mut png: Vec<u8> = Vec::new();
-        let encoder = image::codecs::png::PngEncoder::new(&mut png);
-        encoder
-            .write_image(
-                img.as_raw(),
-                img.width(),
-                img.height(),
-                image::ColorType::Rgba8.into(),
-            )
-            .map_err(|e| format!("PNG encode error: {e}"))?;
-        Ok(base64_encode(&png))
-    })
-    .await
-    .map_err(|e| format!("spawn_blocking join error: {e}"))?
-}
-
-/// Small base64 encoder to avoid pulling in the `base64` crate for what
-/// is otherwise a 20-line dependency.
-fn base64_encode(input: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity((input.len() + 2) / 3 * 4);
-    let mut i = 0;
-    while i + 3 <= input.len() {
-        let n = ((input[i] as u32) << 16) | ((input[i + 1] as u32) << 8) | (input[i + 2] as u32);
-        out.push(ALPHABET[((n >> 18) & 0x3F) as usize] as char);
-        out.push(ALPHABET[((n >> 12) & 0x3F) as usize] as char);
-        out.push(ALPHABET[((n >> 6) & 0x3F) as usize] as char);
-        out.push(ALPHABET[(n & 0x3F) as usize] as char);
-        i += 3;
-    }
-    let rem = input.len() - i;
-    if rem == 1 {
-        let n = (input[i] as u32) << 16;
-        out.push(ALPHABET[((n >> 18) & 0x3F) as usize] as char);
-        out.push(ALPHABET[((n >> 12) & 0x3F) as usize] as char);
-        out.push('=');
-        out.push('=');
-    } else if rem == 2 {
-        let n = ((input[i] as u32) << 16) | ((input[i + 1] as u32) << 8);
-        out.push(ALPHABET[((n >> 18) & 0x3F) as usize] as char);
-        out.push(ALPHABET[((n >> 12) & 0x3F) as usize] as char);
-        out.push(ALPHABET[((n >> 6) & 0x3F) as usize] as char);
-        out.push('=');
-    }
-    out
 }
