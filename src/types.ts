@@ -647,6 +647,53 @@ export interface ApprovalSheetConfig {
   notes: string
 }
 
+// ── Issue #229 OCR types ──────────────────────────────────────────────
+
+export type PdfType = 'TextBased' | 'Scanned' | {
+  Mixed: {
+    text_pages: number[]
+    scanned_pages: number[]
+  }
+}
+
+export type OcrBackend = 'Tesseract' | 'GoogleCloudVision'
+
+export interface OcrTextRegion {
+  text: string
+  bbox: [number, number, number, number]  // [x, y, width, height]
+  confidence: number
+}
+
+export interface OcrPageResult {
+  page_index: number
+  text: string
+  confidence: number
+  regions: OcrTextRegion[]
+}
+
+export interface OcrOptions {
+  pages: number[]
+  backend: OcrBackend
+  overlay_text: boolean
+  output_path: string | null
+  language: string
+}
+
+export interface OcrResult {
+  pages: OcrPageResult[]
+  total_text: string
+  backend: string
+  pages_processed: number
+  duration_ms: number
+}
+
+export interface CostEstimate {
+  page_count: number
+  billable_pages: number
+  cost_usd: number
+  currency: string
+}
+
 // ── Phase 6 types ──────────────────────────────────────────────────────
 
 export interface EmailSettings {
