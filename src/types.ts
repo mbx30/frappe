@@ -85,7 +85,7 @@ export interface Invoice {
   currency: string
   internal_notes: string
   customer_notes: string
-  qb_sync_status: 'not_synced' | 'synced' | 'pending' | 'error'
+  qb_sync_status: 'not_synced' | 'synced' | 'pending' | 'error' | 'sync_error'
   amount_paid: number
   created_at: string
   updated_at: string

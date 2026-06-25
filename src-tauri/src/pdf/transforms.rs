@@ -727,6 +727,7 @@ fn decode_image_stream(stream: &lopdf::Stream) -> Option<Vec<u8>> {
     }
 }
 
+#[allow(dead_code)] // Kept for potential future content stream analysis
 fn parse_content_operations(content: &[u8]) -> Vec<(String, Vec<f64>, Vec<Vec<u8>>)> {
     let len = content.len();
     let mut ops = Vec::new();

@@ -105,7 +105,21 @@ fn opt_in_enabled() -> bool {
 
 fn read_dsn() -> Option<String> {
     match keychain::read_secret(SERVICE_NAME, DSN_NAME) {
-        Ok(secret) => secret.value.filter(|v| !v.is_empty()),
+        Ok(secret) => {
+            let dsn = secret.value.filter(|v| !v.is_empty())?;
+            // Validate the DSN against private/loopback IPs and require HTTPS.
+            // A compromised frontend could set a malicious DSN and exfiltrate
+            // crash data to an attacker-controlled endpoint.
+            if let Err(e) = crate::comm_cmds::validate_command_url(&dsn) {
+                tracing::warn!(
+                    "Invalid Sentry DSN ({}); crash reporting disabled to \
+                     prevent data exfiltration",
+                    e
+                );
+                return None;
+            }
+            Some(dsn)
+        }
         Err(_) => None,
     }
 }

@@ -11,7 +11,7 @@
 //! `before` / `after` PDF paths produced by the replay.
 
 use crate::db::Database;
-use crate::pdf::action_list::{ActionList, ActionStep, ReplayResult, StepResult};
+use crate::pdf::action_list::{ActionStep, ReplayResult, StepResult};
 use lopdf::Document;
 use printpdf::{BuiltinFont, IndirectFontRef, Mm, PdfDocument, PdfDocumentReference, PdfLayerReference, Rgb};
 use rusqlite::params;
