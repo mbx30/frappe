@@ -12,6 +12,7 @@ pub type SecurityResult<T> = Result<T, SecurityError>;
 pub enum SecurityError {
     PathContainsNullBytes,
     PathNotFound,
+    PathNotADirectory,
     PathCanonicalizeFailure(String),
     PathTraversalAttempt,
     PathInsideSystemLocation,
@@ -28,6 +29,7 @@ impl std::fmt::Display for SecurityError {
         match self {
             Self::PathContainsNullBytes => write!(f, "Path contains null bytes"),
             Self::PathNotFound => write!(f, "Path does not exist"),
+            Self::PathNotADirectory => write!(f, "Path is not a directory"),
             Self::PathCanonicalizeFailure(e) => write!(f, "Cannot canonicalize path: {}", e),
             Self::PathTraversalAttempt => write!(f, "Path contains parent directory traversal (..)"),
             Self::PathInsideSystemLocation => write!(f, "Path is inside a system location"),
@@ -67,19 +69,30 @@ pub fn validate_read_path(path: &str) -> SecurityResult<PathBuf> {
     }
 
     let p = PathBuf::from(path);
-    if !p.exists() {
-        return Err(SecurityError::PathNotFound);
-    }
 
-    // Reject parent-directory components in the original path.
+    // Reject parent-directory components in the original path before
+    // checking existence so traversal attempts are reported consistently.
     for component in p.components() {
         if matches!(component, Component::ParentDir) {
             return Err(SecurityError::PathTraversalAttempt);
         }
     }
 
+    if !p.exists() {
+        return Err(SecurityError::PathNotFound);
+    }
+
     p.canonicalize()
         .map_err(|e| SecurityError::PathCanonicalizeFailure(e.to_string()))
+}
+
+/// Validate a path for read operations and ensure it is a directory.
+pub fn validate_read_dir(path: &str) -> SecurityResult<PathBuf> {
+    let canonical = validate_read_path(path)?;
+    if !canonical.is_dir() {
+        return Err(SecurityError::PathNotADirectory);
+    }
+    Ok(canonical)
 }
 
 /// Validate a path for read operations with optional file extension allowlist.

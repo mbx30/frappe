@@ -1,20 +1,7 @@
 //! New Tauri commands added in the #289-#293 batch.
 
-use std::path::PathBuf;
-
 use serde::Serialize;
 use tauri::ipc::Channel;
-
-fn validate_read_path(path: &str) -> Result<PathBuf, String> {
-    if path.contains('\0') {
-        return Err("Path contains null bytes".to_string());
-    }
-    let p = PathBuf::from(path);
-    if !p.exists() {
-        return Err(format!("File not found: {}", path));
-    }
-    p.canonicalize().map_err(|e| format!("Invalid path: {}", e))
-}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct AppEventMetrics {
@@ -83,8 +70,8 @@ pub async fn render_page_b64(
     page_index: usize,
     dpi: Option<f32>,
 ) -> Result<String, String> {
-    let _ = validate_read_path(&path)?;
-    let doc = engine.open_document(&path)?;
+    let path = crate::security::validate_read_path(&path)?;
+    let doc = engine.open_document(&path.to_string_lossy())?;
     let idx: i32 = page_index
         .try_into()
         .map_err(|_| format!("Page index too large: {page_index}"))?;

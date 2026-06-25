@@ -736,8 +736,13 @@ mod tests {
     use super::*;
     use std::fs;
 
+    // The global RECORDING state is shared across tests, so serialize the
+    // lifecycle tests to avoid one test cancelling another's session.
+    static TEST_RECORDING_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn record_capture_round_trip() {
+        let _guard = TEST_RECORDING_LOCK.lock().unwrap();
         cancel_recording().unwrap();
         start_recording("test").unwrap();
         record_step(ActionStep {
@@ -754,6 +759,7 @@ mod tests {
 
     #[test]
     fn double_start_recording_errors() {
+        let _guard = TEST_RECORDING_LOCK.lock().unwrap();
         cancel_recording().unwrap();
         start_recording("a").unwrap();
         assert!(start_recording("b").is_err());
@@ -771,8 +777,8 @@ mod tests {
         let p = std::path::PathBuf::from("/tmp/foo.pdf");
         let n = derive_step_output(&p, "bleed");
         let s = n.to_string_lossy();
-        assert!(s.starts_with("/tmp/foo_bleed_"));
-        assert!(s.ends_with(".pdf"));
-        let _ = fs::create_dir_all("/tmp"); // ensure exists
+        let normalized = s.replace('\\', "/");
+        assert!(normalized.starts_with("/tmp/foo_bleed_"));
+        assert!(normalized.ends_with(".pdf"));
     }
 }

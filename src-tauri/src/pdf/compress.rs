@@ -651,7 +651,7 @@ mod tests {
 
     #[test]
     fn ascii85_roundtrip() {
-        let input = b"Hello, world!";
+        let input = b"Hello world!";
         let encoded = b"87cURD]j7BEbo80~>";
         let decoded = ascii85_decode(encoded).expect("decode");
         assert_eq!(decoded, input);
@@ -667,6 +667,7 @@ mod tests {
     #[test]
     fn derive_output_path_appends_suffix() {
         let p = derive_output_path("/tmp/foo.pdf");
-        assert!(p.ends_with("/foo_compressed.pdf"));
+        let normalized = p.replace('\\', "/");
+        assert!(normalized.ends_with("/foo_compressed.pdf"));
     }
 }

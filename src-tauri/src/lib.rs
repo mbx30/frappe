@@ -329,6 +329,11 @@ pub fn run() {
             commands::pdf_annotation_page_counts,
             commands::pdf_annotation_reply_add,
             commands::pdf_annotation_replies_list,
+            // Issue #289-#293 — server-streamed events and base64 page render.
+            commands_extra::subscribe_events,
+            commands_extra::render_page_b64,
+            // Issue #291 — batched read-only IPC.
+            commands::batch_commands,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

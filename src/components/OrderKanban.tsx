@@ -73,6 +73,8 @@ const statusLabels: Record<string, string> = {
   completed: 'Completed',
 }
 
+const statusOrder = Object.keys(statusLabels)
+
 const priorityColors: Record<string, 'success' | 'warning' | 'danger' | 'info'> = {
   low: 'info',
   normal: 'info',

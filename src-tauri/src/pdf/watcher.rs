@@ -168,9 +168,15 @@ fn process_file(
 }
 
 pub fn start_hot_folder_watcher(
-    config: HotFolderConfig,
+    mut config: HotFolderConfig,
     app_handle: Option<AppHandle>,
 ) -> Result<String, String> {
+    config.watch_path = crate::security::validate_read_dir(&config.watch_path)?
+        .to_string_lossy()
+        .to_string();
+    config.output_path = crate::security::validate_write_path(&config.output_path)?
+        .to_string_lossy()
+        .to_string();
     let watch_dir = PathBuf::from(&config.watch_path);
     if !watch_dir.is_dir() {
         return Err(format!(

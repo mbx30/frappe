@@ -31,7 +31,7 @@ export interface AnnotationState {
   replies: PdfAnnotationReply[]
   editingAnnotation: PdfAnnotation | null
   setEditingAnnotation: React.Dispatch<React.SetStateAction<PdfAnnotation | null>>
-  overlayRef: React.RefObject<HTMLDivElement>
+  overlayRef: React.RefObject<HTMLDivElement | null>
   dragging: React.MutableRefObject<boolean>
   filePath: string
   pageIndex: number

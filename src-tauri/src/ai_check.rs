@@ -246,12 +246,9 @@ fn current_day() -> u64 {
 }
 
 fn encode_image_as_data_url(path: &str) -> Result<String, String> {
-    let p = Path::new(path);
-    if !p.exists() {
-        return Err(format!("Image not found: {path}"));
-    }
-    let bytes = std::fs::read(p).map_err(|e| format!("Failed to read image: {e}"))?;
-    let mime = match p
+    let canonical = crate::security::validate_read_path(path)?;
+    let bytes = std::fs::read(&canonical).map_err(|e| format!("Failed to read image: {e}"))?;
+    let mime = match canonical
         .extension()
         .and_then(|e| e.to_str())
         .map(|s| s.to_ascii_lowercase())
@@ -262,17 +259,9 @@ fn encode_image_as_data_url(path: &str) -> Result<String, String> {
         Some("webp") => "image/webp",
         _ => "application/octet-stream",
     };
-    use std::fmt::Write as _;
-    let mut out = String::with_capacity(bytes.len() * 4 / 3 + 32);
-    out.push_str("data:");
-    out.push_str(mime);
-    out.push_str(";base64,");
-    let mut buf = String::new();
-    for b in &bytes {
-        let _ = write!(buf, "{b:02x}");
-    }
-    out.push_str(&buf);
-    Ok(out)
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    let b64 = STANDARD.encode(&bytes);
+    Ok(format!("data:{mime};base64,{b64}"))
 }
 
 fn parse_response(raw: &str) -> (String, Vec<String>) {

@@ -61,45 +61,51 @@ in `src-tauri/src/lib.rs`. As of this writing the full surface is:
 | `create_preflight_profile` / `list_preflight_profiles` / `get_preflight_profile` / `delete_preflight_profile` / `list_profile_checks` / `update_profile_check` / `list_profile_fixups` / `update_profile_fixup` | numeric + text | n/a | n/a | |
 | `create_action_list` / `list_action_lists` / `get_action_list` / `delete_action_list` / `add_action_list_step` / `list_action_list_steps` / `delete_action_list_step` / `reorder_action_list_steps` | numeric + text | n/a | n/a | |
 | `create_batch_job` / `list_batch_jobs` / `get_batch_job` / `run_batch` / `list_batch_results` | numeric + file paths | `validate_read_path` (in batch runner) | n/a | **PASS** |
-| `create_hot_folder` / `list_hot_folders` / `delete_hot_folder` / `toggle_hot_folder` | text | n/a | n/a | cached read (`hot_folders_cache`) |
-| `start_hot_folder_watcher` / `stop_hot_folder_watcher` | text | n/a | n/a | writes only to in-process state |
+| `create_hot_folder` | `watch_path`, `output_path` | `validate_read_dir` + `validate_write_path` | n/a | **PASS** |
+| `list_hot_folders` / `delete_hot_folder` / `toggle_hot_folder` | text | n/a | n/a | cached read (`hot_folders_cache`) |
+| `start_hot_folder_watcher` / `stop_hot_folder_watcher` | `watch_path`, `output_path` | `validate_read_dir` + `validate_write_path` | n/a | **PASS** |
 | `compress_pdf` | `path: String`, `output_path: Option<String>` | `validate_read_path` + `validate_write_path` | n/a | **PASS** |
 | `redact_pdf` | `path: String`, `output_path: String` | `validate_read_path` + `validate_write_path` | n/a | **PASS** (audit log hash-chain) |
 | `get_redaction_audit_log` / `verify_redaction_chain` | `path: String` | n/a | n/a | path is treated as a key only |
 | `detect_barcodes` | `path: String` | `validate_read_path` | n/a | **PASS** |
 | `get_analytics_summary` / `get_analytics_dashboard` | none | n/a | n/a | |
-| `ai_visual_check` | `path: String` (unused stub) | n/a | n/a | returns unimplemented error |
-| `save_email_settings` / `get_email_settings` / `send_email` | `attachment_path: Option<String>` | implicit (read in email helper) | uses `lettre` SMTP over rustls | **PASS** |
-| `save_ftp_settings` / `get_ftp_settings` / `ftp_upload` | `local_path: String`, `remote_path: String` | validated inside `ftp_upload` | n/a | **PASS** |
+| `ai_visual_check` | `path: String` | `validate_read_path` | n/a | **PASS** |
+| `save_email_settings` / `get_email_settings` | text | n/a | n/a | |
+| `send_email` | `attachment_path: Option<String>` | `validate_read_path` | uses `lettre` SMTP over rustls | **PASS** |
+| `save_ftp_settings` / `get_ftp_settings` | text | n/a | n/a | |
+| `ftp_upload` | `local_path: String`, `remote_path: String` | `validate_read_path` (local_path) | n/a | **PASS** |
 | `create_webhook` / `list_webhooks` / `delete_webhook` | `url: String` | n/a | `validate_command_url` | **PASS** (HTTPS-only, no private IPs) |
 | `generate_job_ticket` | `output_path: String` | `validate_write_path` | n/a | **PASS** |
-| `upload_event_batch_cmd` / `upload_snapshot_cmd` / `get_cloud_backup_status` | `file_path: String` | n/a (snapshot uses path as key) | relies on the cloud backend (stub) | |
+| `upload_event_batch_cmd` / `get_cloud_backup_status` | text | n/a | relies on the cloud backend (stub) | |
+| `upload_snapshot_cmd` | `file_path: String` | `validate_read_path` | relies on the cloud backend (stub) | **PASS** |
 | `keychain_read` / `keychain_write` / `keychain_delete` | `service: String`, `key: String` | n/a | n/a | stored in OS keychain (Windows DPAPI / macOS Keychain / Linux Secret Service) |
-| `get_schema_version` / `create_backup` / `list_backups` / `export_plaintext_backup` | `output_path: Option<String>` | `validate_write_path` (where applicable) | n/a | **PASS** |
+| `get_schema_version` / `list_backups` | text | n/a | n/a | |
+| `create_backup` | `backup_path: String` | `validate_write_path` | n/a | **PASS** |
+| `export_plaintext_backup` | `output_path: String` | `validate_write_path` | n/a | **PASS** |
 | `reveal_logs` | none | n/a | n/a | opens the OS file manager at the log dir |
 | `get_metrics_snapshot` / `crash_report` | `error_message: String` | n/a | trusts the (opt-in) Sentry endpoint via `observability.rs` | |
 | `get_preference` / `set_preference` / `get_all_preferences` | text | n/a | n/a | |
 | `get_alt_text` / `list_alt_text` / `set_alt_text` | `file_path: String` | n/a (DB key only) | n/a | |
 | `set_layer_visibility` | `path: String`, `output_path: String` | `validate_read_path` + `validate_write_path` | n/a | **PASS** |
 | `get_debug_session` / `list_debug_sessions` / `create_debug_session` / `delete_debug_session` / `step_forward_debug` / `run_from_here_debug` / `render_debug_thumbnail` / `export_debug_report_pdf` | various | n/a | n/a | |
-| `batch_commands` | read-only whitelist | n/a | n/a | rejects any command not in the whitelist |
-| `subscribe_events` | `Channel<AppEvent>` | n/a | n/a | server-streamed events |
-| `render_page_b64` | `path: String` | `validate_read_path` | n/a | **PASS** |
+| `batch_commands` | read-only whitelist | n/a | n/a | **PASS** (registered in `generate_handler!`) |
+| `subscribe_events` | `Channel<AppEvent>` | n/a | n/a | **PASS** (registered in `generate_handler!`) |
+| `render_page_b64` | `path: String` | `validate_read_path` | n/a | **PASS** (registered in `generate_handler!`) |
 
 ## 2. Path validation
 
-`validate_read_path` and `validate_write_path` are defined in
-`src-tauri/src/commands.rs` and used by every command that takes a
-file path argument. `validate_read_path` rejects NUL bytes, requires the
-file to exist, and canonicalizes the path. `validate_write_path` also
+`validate_read_path`, `validate_read_dir`, and `validate_write_path` are
+defined in `src-tauri/src/security.rs` and used by every command that takes
+a file path argument. `validate_read_path` rejects NUL bytes, requires the
+file to exist, rejects parent-traversal (`..`), and canonicalizes the path.
+`validate_read_dir` adds a directory check. `validate_write_path` also
 rejects NUL bytes, requires the parent directory to exist, refuses
 parent-traversal (`..`), and blocks system locations
 (`C:\Windows`, `C:\Program Files`, `/etc`, `/usr`, `/bin`, …).
 
-**Status: PASS** for every command that takes a path. The audit in
-issue #296 closed the only known gap (`check_ink_coverage` was
-missing `validate_read_path`; `add_output_intent` was missing it for
-the `icc_profile` argument — both now fixed).
+**Status: PASS** for every command that takes a path after the fixes in
+this audit. The validators live in `security.rs` and are called at the
+Tauri command boundary before any disk access.
 
 ## 3. URL validation
 

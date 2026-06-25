@@ -426,8 +426,17 @@ fn write_line(
 fn truncate(s: &str, max: usize) -> String {
     if s.len() <= max {
         s.to_string()
+    } else if max > 3 {
+        let take = max.saturating_sub(3);
+        let boundary = s
+            .char_indices()
+            .map(|(i, _)| i)
+            .filter(|&i| i <= take)
+            .last()
+            .unwrap_or(0);
+        format!("{}...", &s[..boundary])
     } else {
-        format!("{}...", &s[..max.saturating_sub(1)])
+        s.chars().take(max).collect()
     }
 }
 
