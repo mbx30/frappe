@@ -243,7 +243,19 @@ fn blocked_system_locations() -> Vec<&'static str> {
     ]
 }
 
-#[cfg(unix)]
+// On macOS /var is a symlink to /private/var, and the system temp directory
+// lives at /var/folders/... (→ /private/var/folders/...). Blocking /var would
+// reject all temp files on macOS, so we omit it here and block the macOS-specific
+// system directories instead.
+#[cfg(target_os = "macos")]
+fn blocked_system_locations() -> Vec<&'static str> {
+    vec![
+        "/etc", "/usr", "/bin", "/sbin", "/boot", "/dev",
+        "/System", "/Library",
+    ]
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
 fn blocked_system_locations() -> Vec<&'static str> {
     vec![
         "/etc", "/usr", "/bin", "/sbin", "/var", "/boot", "/sys", "/proc",
