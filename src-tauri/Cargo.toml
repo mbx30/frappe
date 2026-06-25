@@ -169,3 +169,14 @@ palette = "0.7"
 # pulling in `mach2`.
 once_cell = "1"
 libc = "0.2"
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "compression"
+harness = false
+
+[[bench]]
+name = "preflight"
+harness = false

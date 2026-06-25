@@ -21,17 +21,17 @@ fn bench_full_preflight(c: &mut Criterion) {
                 .expect("load pdf");
             // Re-run every check the public command runs. The benchmark
             // measures the combined cost of the suite.
-            let _pdfx = crate::pdf::pdfx::check_metadata(&doc);
-            let _color = crate::pdf::color::check_color_spaces(&doc, "any");
-            let _overprint = crate::pdf::overprint::check_overprint(&doc);
-            let _transparency = crate::pdf::overprint::check_transparency(&doc);
-            let _hidden = crate::pdf::overprint::check_hidden_content(&doc);
-            let _fonts = crate::pdf::fonts::collect_fonts(&doc);
-            let _boxes = crate::pdf::boxes::check_page_boxes(&doc);
-            let _images = crate::pdf::images::check_image_resolution(&doc);
-            let _bleed = crate::pdf::bleed::check_bleed(&doc, 3.0);
-            let _oi = crate::pdf::metadata::get_output_intents(&doc);
-            let _sec = crate::pdf::security::check_security(&doc);
+            let _pdfx = app_lib::pdf::pdfx::check_metadata(&doc);
+            let _color = app_lib::pdf::color::check_color_spaces(&doc, "any");
+            let _overprint = app_lib::pdf::overprint::check_overprint(&doc);
+            let _transparency = app_lib::pdf::overprint::check_transparency(&doc);
+            let _hidden = app_lib::pdf::overprint::check_hidden_content(&doc);
+            let _fonts = app_lib::pdf::fonts::collect_fonts(&doc);
+            let _boxes = app_lib::pdf::boxes::check_page_boxes(&doc);
+            let _images = app_lib::pdf::images::check_image_resolution(&doc);
+            let _bleed = app_lib::pdf::bleed::check_bleed(&doc, 3.0);
+            let _oi = app_lib::pdf::metadata::get_output_intents(&doc);
+            let _sec = app_lib::pdf::security::check_security(&doc);
         });
     });
     group.finish();
