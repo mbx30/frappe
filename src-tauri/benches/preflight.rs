@@ -14,23 +14,15 @@ mod fixtures;
 
 fn bench_full_preflight(c: &mut Criterion) {
     let input: PathBuf = fixtures::twenty_page_pdf();
+    let path = input.to_str().unwrap().to_string();
     let mut group = c.benchmark_group("preflight");
     group.bench_function("twenty_page_full", |b| {
         b.iter(|| {
-            let doc = lopdf::Document::load(input.to_str().unwrap()).expect("load pdf");
-            // Re-run every check the public command runs. The benchmark
-            // measures the combined cost of the suite.
-            let _pdfx = app_lib::pdf::pdfx::check_metadata(&doc);
-            let _color = app_lib::pdf::color::check_color_spaces(&doc, "any");
-            let _overprint = app_lib::pdf::overprint::check_overprint(&doc);
-            let _transparency = app_lib::pdf::overprint::check_transparency(&doc);
-            let _hidden = app_lib::pdf::overprint::check_hidden_content(&doc);
-            let _fonts = app_lib::pdf::fonts::collect_fonts(&doc);
-            let _boxes = app_lib::pdf::boxes::check_page_boxes(&doc);
-            let _images = app_lib::pdf::images::check_image_resolution(&doc);
-            let _bleed = app_lib::pdf::bleed::check_bleed(&doc, 3.0);
-            let _oi = app_lib::pdf::metadata::get_output_intents(&doc);
-            let _sec = app_lib::pdf::security::check_security(&doc);
+            // Use the path-based public API so this bench does not import
+            // lopdf::Document directly. A direct import would create a second
+            // compilation instance of lopdf when app_lib is built as cdylib,
+            // causing an E0308 type mismatch at compile time.
+            let _ = app_lib::preflight_cmds::check_full_preflight(path.clone());
         });
     });
     group.finish();
