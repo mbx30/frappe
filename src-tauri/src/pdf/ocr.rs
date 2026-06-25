@@ -955,7 +955,7 @@ fn extract_number(obj: &lopdf::Object) -> Result<f32, String> {
 /// Generate PDF text content stream operators for OCR regions.
 ///
 /// Output format:
-/// ```
+/// ```text
 /// BT                           % Begin text
 /// /F1 12 Tf                    % Font selection (invisible mode)
 /// 0 0 0 rg                     % RGB color (black) - PDF viewer ignores this with Tr 3
