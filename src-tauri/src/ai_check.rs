@@ -78,10 +78,7 @@ pub struct BatchedPage {
 
 /// Run an AI visual check on a single page image. Returns a structured
 /// `AiCheckResult` and never panics on missing configuration.
-pub async fn ai_visual_check(
-    image_path: &str,
-    prompt: &str,
-) -> Result<AiCheckResult, String> {
+pub async fn ai_visual_check(image_path: &str, prompt: &str) -> Result<AiCheckResult, String> {
     let items = vec![BatchedPage {
         page_index: 0,
         image_path: image_path.to_string(),
@@ -155,8 +152,12 @@ pub async fn ai_visual_check_batched(
         ));
     }
 
-    let parsed: ChatResponse = serde_json::from_str(&text)
-        .map_err(|e| format!("AI response parse error: {e}; body={}", text.chars().take(200).collect::<String>()))?;
+    let parsed: ChatResponse = serde_json::from_str(&text).map_err(|e| {
+        format!(
+            "AI response parse error: {e}; body={}",
+            text.chars().take(200).collect::<String>()
+        )
+    })?;
 
     let raw = parsed
         .choices
@@ -295,7 +296,11 @@ fn parse_response(raw: &str) -> (String, Vec<String>) {
             continue;
         }
         if trimmed.starts_with('-') || trimmed.starts_with('*') {
-            issues.push(trimmed.trim_start_matches(|c: char| c == '-' || c == '*' || c == ' ').to_string());
+            issues.push(
+                trimmed
+                    .trim_start_matches(|c: char| c == '-' || c == '*' || c == ' ')
+                    .to_string(),
+            );
         } else {
             summary_lines.push(trimmed);
         }

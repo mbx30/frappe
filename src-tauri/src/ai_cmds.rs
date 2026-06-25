@@ -82,11 +82,9 @@ pub async fn run_ocr(
     if let Some(ref out) = options.output_path {
         security::validate_write_path(out)?;
     }
-    tauri::async_runtime::spawn_blocking(move || {
-        crate::pdf::ocr::run_ocr(&pdf_path, options)
-    })
-    .await
-    .map_err(|e| format!("spawn_blocking join error: {e}"))?
+    tauri::async_runtime::spawn_blocking(move || crate::pdf::ocr::run_ocr(&pdf_path, options))
+        .await
+        .map_err(|e| format!("spawn_blocking join error: {e}"))?
 }
 
 /// Check if Tesseract OCR engine is available on this system.

@@ -12,8 +12,7 @@ use serde::Serialize;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
-static START_INSTANT: once_cell::sync::Lazy<Instant> =
-    once_cell::sync::Lazy::new(Instant::now);
+static START_INSTANT: once_cell::sync::Lazy<Instant> = once_cell::sync::Lazy::new(Instant::now);
 
 static COLD_START_MS: AtomicU64 = AtomicU64::new(0);
 static SLOW_OPS: AtomicU64 = AtomicU64::new(0);
@@ -127,7 +126,8 @@ fn read_rss_bytes() -> u64 {
     unsafe {
         let mut info: MachTaskBasicInfo = std::mem::zeroed();
         let mut count = (std::mem::size_of::<MachTaskBasicInfo>()
-            / std::mem::size_of::<libc::c_int>()) as libc::mach_msg_type_number_t;
+            / std::mem::size_of::<libc::c_int>())
+            as libc::mach_msg_type_number_t;
         let kr = libc::task_info(
             mach_task_self() as libc::task_t,
             MACH_TASK_BASIC_INFO as libc::task_flavor_t,

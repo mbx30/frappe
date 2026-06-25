@@ -492,10 +492,18 @@ fn rewrite_image(
             stats.bytes_saved = stats
                 .bytes_saved
                 .saturating_add(old_len.saturating_sub(stream_obj.content.len() as u64));
-            stream_obj.dict.set("Filter", Object::Name(new_filter.to_vec()));
-            stream_obj.dict.set("ColorSpace", Object::Name(new_cs.to_vec()));
-            stream_obj.dict.set("Width", Object::Integer(final_w as i64));
-            stream_obj.dict.set("Height", Object::Integer(final_h as i64));
+            stream_obj
+                .dict
+                .set("Filter", Object::Name(new_filter.to_vec()));
+            stream_obj
+                .dict
+                .set("ColorSpace", Object::Name(new_cs.to_vec()));
+            stream_obj
+                .dict
+                .set("Width", Object::Integer(final_w as i64));
+            stream_obj
+                .dict
+                .set("Height", Object::Integer(final_h as i64));
             stream_obj.dict.remove(b"Length");
             return Ok((true, downsampled));
         }
@@ -544,7 +552,9 @@ fn recompress_non_image_stream(
             stats.bytes_saved = stats
                 .bytes_saved
                 .saturating_add(old_len.saturating_sub(stream_obj.content.len() as u64));
-            stream_obj.dict.set("Filter", Object::Name(b"FlateDecode".to_vec()));
+            stream_obj
+                .dict
+                .set("Filter", Object::Name(b"FlateDecode".to_vec()));
             stream_obj.dict.remove(b"Length");
             stream_obj.dict.remove(b"DecodeParms");
             stats.streams_recompressed += 1;
@@ -580,10 +590,7 @@ fn derive_output_path(input: &str) -> String {
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("compressed");
-    let ext = path
-        .extension()
-        .and_then(|s| s.to_str())
-        .unwrap_or("pdf");
+    let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("pdf");
     let parent = path.parent().unwrap_or_else(|| std::path::Path::new("."));
     parent
         .join(format!("{stem}_compressed.{ext}"))
@@ -613,12 +620,9 @@ pub fn compress_pdf(
         .map(|s| s.to_string())
         .unwrap_or_else(|| derive_output_path(path));
     if out == path {
-        return Err(
-            "Refusing to overwrite source PDF; pass a different output_path".to_string(),
-        );
+        return Err("Refusing to overwrite source PDF; pass a different output_path".to_string());
     }
-    doc.save(&out)
-        .map_err(|e| format!("Failed to save: {e}"))?;
+    doc.save(&out).map_err(|e| format!("Failed to save: {e}"))?;
 
     let compressed_bytes = std::fs::metadata(&out).map(|m| m.len()).unwrap_or(0);
     let ratio = if original_bytes > 0 {

@@ -61,9 +61,9 @@ async fn dispatch_batched_command(
             let limit = args.get("limit").and_then(|v| v.as_i64());
             let offset = args.get("offset").and_then(|v| v.as_i64());
             let value = match (limit, offset) {
-                (Some(l), Some(o)) => serde_json::to_value(
-                    db.list_orders_paginated(l, o).map_err(|e| e.to_string())?,
-                ),
+                (Some(l), Some(o)) => {
+                    serde_json::to_value(db.list_orders_paginated(l, o).map_err(|e| e.to_string())?)
+                }
                 _ => serde_json::to_value(db.list_orders().map_err(|e| e.to_string())?),
             }
             .map_err(|e| e.to_string())?;
@@ -74,7 +74,8 @@ async fn dispatch_batched_command(
             let offset = args.get("offset").and_then(|v| v.as_i64());
             let value = match (limit, offset) {
                 (Some(l), Some(o)) => serde_json::to_value(
-                    db.list_invoices_paginated(l, o).map_err(|e| e.to_string())?,
+                    db.list_invoices_paginated(l, o)
+                        .map_err(|e| e.to_string())?,
                 ),
                 _ => serde_json::to_value(db.list_invoices().map_err(|e| e.to_string())?),
             }
@@ -98,44 +99,35 @@ async fn dispatch_batched_command(
             Ok(value)
         }
         "get_low_stock_alerts" => {
-            let value = serde_json::to_value(
-                db.get_low_stock_alerts().map_err(|e| e.to_string())?,
-            )
-            .map_err(|e| e.to_string())?;
+            let value = serde_json::to_value(db.get_low_stock_alerts().map_err(|e| e.to_string())?)
+                .map_err(|e| e.to_string())?;
             Ok(value)
         }
         "get_business_info" => {
-            let value =
-                serde_json::to_value(db.get_business_info().map_err(|e| e.to_string())?)
-                    .map_err(|e| e.to_string())?;
+            let value = serde_json::to_value(db.get_business_info().map_err(|e| e.to_string())?)
+                .map_err(|e| e.to_string())?;
             Ok(value)
         }
         "list_preflight_profiles" => {
-            let value = serde_json::to_value(
-                db.list_preflight_profiles().map_err(|e| e.to_string())?,
-            )
-            .map_err(|e| e.to_string())?;
+            let value =
+                serde_json::to_value(db.list_preflight_profiles().map_err(|e| e.to_string())?)
+                    .map_err(|e| e.to_string())?;
             Ok(value)
         }
         "list_hot_folders" => {
-            let value = serde_json::to_value(
-                db.list_hot_folders().map_err(|e| e.to_string())?,
-            )
-            .map_err(|e| e.to_string())?;
+            let value = serde_json::to_value(db.list_hot_folders().map_err(|e| e.to_string())?)
+                .map_err(|e| e.to_string())?;
             Ok(value)
         }
         "list_pdf_jobs" => {
-            let value = serde_json::to_value(
-                db.list_pdf_jobs().map_err(|e| e.to_string())?,
-            )
-            .map_err(|e| e.to_string())?;
+            let value = serde_json::to_value(db.list_pdf_jobs().map_err(|e| e.to_string())?)
+                .map_err(|e| e.to_string())?;
             Ok(value)
         }
         "get_analytics_summary" => {
-            let value = serde_json::to_value(
-                db.get_analytics_summary().map_err(|e| e.to_string())?,
-            )
-            .map_err(|e| e.to_string())?;
+            let value =
+                serde_json::to_value(db.get_analytics_summary().map_err(|e| e.to_string())?)
+                    .map_err(|e| e.to_string())?;
             Ok(value)
         }
         other => Err(format!(

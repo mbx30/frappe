@@ -17,8 +17,7 @@ fn bench_full_preflight(c: &mut Criterion) {
     let mut group = c.benchmark_group("preflight");
     group.bench_function("twenty_page_full", |b| {
         b.iter(|| {
-            let doc = lopdf::Document::load(input.to_str().unwrap())
-                .expect("load pdf");
+            let doc = lopdf::Document::load(input.to_str().unwrap()).expect("load pdf");
             // Re-run every check the public command runs. The benchmark
             // measures the combined cost of the suite.
             let _pdfx = app_lib::pdf::pdfx::check_metadata(&doc);

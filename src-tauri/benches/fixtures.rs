@@ -16,13 +16,18 @@ pub fn five_mb_pdf() -> PathBuf {
         return path;
     }
     std::fs::create_dir_all(FIXTURES_DIR).expect("create fixtures dir");
-    let (doc, page1, layer1) =
-        PdfDocument::new("Benchmark PDF", Mm(210.0), Mm(297.0), "Layer 1");
+    let (doc, page1, layer1) = PdfDocument::new("Benchmark PDF", Mm(210.0), Mm(297.0), "Layer 1");
     let font = doc
         .add_builtin_font(BuiltinFont::Helvetica)
         .expect("add font");
     let layer = doc.get_page(page1).get_layer(layer1);
-    layer.use_text("Frappe compress benchmark", 14.0, Mm(20.0), Mm(280.0), &font);
+    layer.use_text(
+        "Frappe compress benchmark",
+        14.0,
+        Mm(20.0),
+        Mm(280.0),
+        &font,
+    );
     // Fill ~5 MB of uncompressible random data into the content stream.
     let chunk: Vec<u8> = (0..4096).map(|i| (i % 251) as u8).collect();
     for _ in 0..(5 * 1024 * 1024 / 4096) {
@@ -49,8 +54,7 @@ pub fn twenty_page_pdf() -> PathBuf {
         return path;
     }
     std::fs::create_dir_all(FIXTURES_DIR).expect("create fixtures dir");
-    let (doc, page1, layer1) =
-        PdfDocument::new("Preflight 20-page", Mm(210.0), Mm(297.0), "L1");
+    let (doc, page1, layer1) = PdfDocument::new("Preflight 20-page", Mm(210.0), Mm(297.0), "L1");
     let font = doc
         .add_builtin_font(BuiltinFont::Helvetica)
         .expect("add font");

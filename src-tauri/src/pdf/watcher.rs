@@ -135,14 +135,8 @@ fn wait_for_stable_size(path: &Path, poll: Duration, max_retries: u32) -> Result
 fn move_to_error_folder(src: &Path, watch_dir: &Path) -> Result<PathBuf, String> {
     let error_dir = watch_dir.join("_error");
     std::fs::create_dir_all(&error_dir).map_err(|e| format!("create _error dir: {e}"))?;
-    let stem = src
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("file");
-    let ext = src
-        .extension()
-        .and_then(|s| s.to_str())
-        .unwrap_or("pdf");
+    let stem = src.file_stem().and_then(|s| s.to_str()).unwrap_or("file");
+    let ext = src.extension().and_then(|s| s.to_str()).unwrap_or("pdf");
     let target = error_dir.join(format!("{}_{}.{}", stem, Uuid::new_v4().simple(), ext));
     std::fs::rename(src, &target).map_err(|e| format!("move to _error: {e}"))?;
     Ok(target)
@@ -157,10 +151,7 @@ fn process_file(
     let doc = Document::load(path).map_err(|e| format!("open: {e}"))?;
     let _ = doc;
     std::fs::create_dir_all(output_path).map_err(|e| format!("mkdir output: {e}"))?;
-    let stem = path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("file");
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("file");
     let target = PathBuf::from(output_path).join(format!("{stem}.pdf"));
     std::fs::copy(path, &target).map_err(|e| format!("copy to output: {e}"))?;
     let _ = action_list_id;
@@ -316,9 +307,8 @@ fn run_pipeline(
                     &path.to_string_lossy(),
                     &format!("worker {worker_idx} picked up file"),
                 );
-                let result = wait_for_stable_size(&path, poll, write_retries).and_then(|_| {
-                    process_file(&path, &watch_dir, action_list_id, &output_path)
-                });
+                let result = wait_for_stable_size(&path, poll, write_retries)
+                    .and_then(|_| process_file(&path, &watch_dir, action_list_id, &output_path));
                 match result {
                     Ok(out) => {
                         state.emit(

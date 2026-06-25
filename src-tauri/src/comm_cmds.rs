@@ -18,7 +18,10 @@ fn validate_smtp_host(host: &str, port: u16) -> Result<(), String> {
     }
     let allowed_ports = [25u16, 465, 587, 2525];
     if !allowed_ports.contains(&port) {
-        return Err(format!("SMTP port {} is not allowed (use 25, 465, 587, or 2525)", port));
+        return Err(format!(
+            "SMTP port {} is not allowed (use 25, 465, 587, or 2525)",
+            port
+        ));
     }
     let resolved: Vec<std::net::IpAddr> = match host.parse::<std::net::IpAddr>() {
         Ok(ip) => vec![ip],
@@ -130,11 +133,7 @@ pub fn ftp_upload(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "FTP settings not configured. Save FTP settings first.".to_string())?;
     let local_path = security::validate_read_path(&local_path)?;
-    crate::ftp::upload_file_via_ftp(
-        &settings,
-        &local_path.to_string_lossy(),
-        &remote_path,
-    )
+    crate::ftp::upload_file_via_ftp(&settings, &local_path.to_string_lossy(), &remote_path)
 }
 
 #[tauri::command]
@@ -176,10 +175,8 @@ pub(crate) fn validate_command_url(url: &str) -> Result<(), String> {
     let host = parsed
         .host_str()
         .ok_or_else(|| "URL missing host".to_string())?;
-    let is_local_dev = host == "localhost"
-        || host == "127.0.0.1"
-        || host == "::1"
-        || host.ends_with(".localhost");
+    let is_local_dev =
+        host == "localhost" || host == "127.0.0.1" || host == "::1" || host.ends_with(".localhost");
     if scheme != "https" && !(is_local_dev && scheme == "http") {
         return Err(format!(
             "URL must use HTTPS (got scheme '{}', host '{}')",
@@ -211,17 +208,17 @@ pub(crate) fn is_blocked_ip(ip: std::net::IpAddr) -> bool {
     match ip {
         IpAddr::V4(v4) => {
             v4.is_loopback()
-            || v4.is_private()
-            || v4.is_link_local()
-            || v4.is_unspecified()
-            || v4.is_multicast()
-            || v4.octets()[0] == 100 && (v4.octets()[1] >= 64 && v4.octets()[1] <= 127)
+                || v4.is_private()
+                || v4.is_link_local()
+                || v4.is_unspecified()
+                || v4.is_multicast()
+                || v4.octets()[0] == 100 && (v4.octets()[1] >= 64 && v4.octets()[1] <= 127)
         }
         IpAddr::V6(v6) => {
             v6.is_loopback()
-            || v6.is_unspecified()
-            || v6.segments()[0] & 0xfe00 == 0xfc00
-            || v6.segments()[0] & 0xffc0 == 0xfe80
+                || v6.is_unspecified()
+                || v6.segments()[0] & 0xfe00 == 0xfc00
+                || v6.segments()[0] & 0xffc0 == 0xfe80
         }
     }
 }
