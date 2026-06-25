@@ -71,7 +71,7 @@ fn bleed_round_trip_adds_bleed_and_passes_recheck() {
     make_pdf_with_trim_box(trim, &source);
 
     // Run add_bleed via the public command surface.
-    app_lib::commands::add_bleed(
+    app_lib::preflight_cmds::add_bleed(
         source.to_string_lossy().to_string(),
         AMOUNT_MM,
         output.to_string_lossy().to_string(),

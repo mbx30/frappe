@@ -21,7 +21,7 @@ pub mod metrics;
 mod models;
 pub mod pdf;
 pub mod pdf_cmds;
-mod preflight_cmds;
+pub mod preflight_cmds;
 pub mod security;
 mod settings_cmds;
 mod text_cmds;
