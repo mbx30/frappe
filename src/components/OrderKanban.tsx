@@ -82,6 +82,13 @@ const priorityColors: Record<string, 'success' | 'warning' | 'danger' | 'info'> 
   urgent: 'danger',
 }
 
+const VALID_TRANSITIONS: Record<string, string[]> = {
+  prepress: ['production'],
+  production: ['delivery'],
+  delivery: ['completed'],
+  completed: [],
+}
+
 export default memo(function OrderKanban({ orders, onOrdersChange }: OrderKanbanProps) {
   const [draggedOrder, setDraggedOrder] = useState<Order | null>(null)
 
@@ -120,13 +127,6 @@ export default memo(function OrderKanban({ orders, onOrdersChange }: OrderKanban
     e.preventDefault()
     e.dataTransfer.dropEffect = 'move'
   }, [])
-
-  const VALID_TRANSITIONS: Record<string, string[]> = {
-    prepress: ['production'],
-    production: ['delivery'],
-    delivery: ['completed'],
-    completed: [],
-  }
 
   const handleDrop = useCallback(
     async (status: string) => {
