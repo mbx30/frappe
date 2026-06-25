@@ -96,7 +96,10 @@ pub enum PdfType {
     /// PDF is primarily image-based (scanned document).
     Scanned,
     /// PDF is mixed (some pages text-based, some scanned).
-    Mixed { text_pages: Vec<usize>, scanned_pages: Vec<usize> },
+    Mixed {
+        text_pages: Vec<usize>,
+        scanned_pages: Vec<usize>,
+    },
 }
 
 /// Analyze a PDF to determine if it's text-based or scanned.
@@ -108,8 +111,7 @@ pub enum PdfType {
 pub fn detect_pdf_type(pdf_path: &PathBuf) -> Result<PdfType, String> {
     use lopdf::Document;
 
-    let doc = Document::load(pdf_path)
-        .map_err(|e| format!("Failed to load PDF: {}", e))?;
+    let doc = Document::load(pdf_path).map_err(|e| format!("Failed to load PDF: {}", e))?;
 
     let page_count = doc.get_pages().len();
     if page_count == 0 {
@@ -178,7 +180,7 @@ fn has_page_text(doc: &lopdf::Document, page_id: (u32, u16)) -> Result<bool, Str
             content_data.contains(" TJ ") ||  // Show text with positioning
             content_data.contains(" Td ") ||  // Text matrix
             content_data.contains(" TD ") ||  // Text matrix
-            content_data.contains(" T* ");     // Next line
+            content_data.contains(" T* "); // Next line
 
         Ok(has_text_ops)
     } else {
@@ -191,8 +193,7 @@ fn has_page_text(doc: &lopdf::Document, page_id: (u32, u16)) -> Result<bool, Str
 pub fn get_page_count(pdf_path: &PathBuf) -> Result<usize, String> {
     use lopdf::Document;
 
-    let doc = Document::load(pdf_path)
-        .map_err(|e| format!("Failed to load PDF: {}", e))?;
+    let doc = Document::load(pdf_path).map_err(|e| format!("Failed to load PDF: {}", e))?;
 
     Ok(doc.get_pages().len())
 }
@@ -216,12 +217,13 @@ pub fn run_ocr(pdf_path: &PathBuf, options: OcrOptions) -> Result<OcrResult, Str
     };
 
     // Route to the appropriate backend
-    let results = match options.backend {
-        OcrBackend::Tesseract => run_tesseract_ocr(pdf_path, &pages_to_process, &options)?,
-        OcrBackend::GoogleCloudVision => {
-            tauri::async_runtime::block_on(run_google_vision_ocr(pdf_path, &pages_to_process, &options))?
-        }
-    };
+    let results =
+        match options.backend {
+            OcrBackend::Tesseract => run_tesseract_ocr(pdf_path, &pages_to_process, &options)?,
+            OcrBackend::GoogleCloudVision => tauri::async_runtime::block_on(
+                run_google_vision_ocr(pdf_path, &pages_to_process, &options),
+            )?,
+        };
 
     // If overlay_text is requested, overlay results onto output PDF
     if options.overlay_text {
@@ -299,11 +301,11 @@ pub fn check_tesseract_available() -> Result<(), String> {
     }
 }
 
-fn load_pdfium_bindings() -> Result<Box<dyn pdfium_render::prelude::PdfiumLibraryBindings>, String> {
+fn load_pdfium_bindings() -> Result<Box<dyn pdfium_render::prelude::PdfiumLibraryBindings>, String>
+{
     use pdfium_render::prelude::*;
 
-    Pdfium::bind_to_system_library()
-        .map_err(|e| format!("Failed to load PDFium: {}", e))
+    Pdfium::bind_to_system_library().map_err(|e| format!("Failed to load PDFium: {}", e))
 }
 
 /// Render a single PDF page to a temporary PNG image at 300 DPI.
@@ -339,8 +341,8 @@ fn render_pdf_page_to_image(pdf_path: &PathBuf, page_index: usize) -> Result<Pat
         .map_err(|e| format!("Failed to convert page to image: {:?}", e))?;
 
     // Save to temporary file
-    let temp_file = tempfile::NamedTempFile::new()
-        .map_err(|e| format!("Failed to create temp file: {}", e))?;
+    let temp_file =
+        tempfile::NamedTempFile::new().map_err(|e| format!("Failed to create temp file: {}", e))?;
 
     let temp_path = temp_file.path().with_extension("png");
     bitmap
@@ -433,8 +435,7 @@ async fn run_google_vision_ocr(
     options: &OcrOptions,
 ) -> Result<Vec<OcrPageResult>, String> {
     // Validate API key is available
-    let api_key = get_google_vision_api_key()
-        .await?;
+    let api_key = get_google_vision_api_key().await?;
 
     // Check rate limiting
     check_rate_limit(pages.len())?;
@@ -470,18 +471,16 @@ pub async fn get_google_vision_api_key() -> Result<String, String> {
         Ok(entry) => match entry.get_password() {
             Ok(password) if !password.is_empty() => return Ok(password),
             _ => {} // Fall through to settings
-        }
+        },
         Err(_) => {} // Keyring unavailable on this platform; fall through
     }
 
     // Fall back to settings database
     // Note: In a real app, we'd have access to the DB from an async context
     // For now, return error and require API key to be set via command
-    Err(
-        "Google Cloud Vision API key not configured. \
+    Err("Google Cloud Vision API key not configured. \
          Run set_google_vision_api_key() command to configure."
-            .to_string(),
-    )
+        .to_string())
 }
 
 /// Store Google Cloud Vision API key in system keychain (preferred) or settings.
@@ -495,14 +494,20 @@ pub fn set_google_vision_api_key(api_key: &str) -> Result<(), String> {
         Ok(entry) => {
             if let Err(e) = entry.set_password(api_key) {
                 // Keyring storage failed; log but continue
-                log::warn!("Failed to store API key in keychain: {}. Falling back to preferences.", e);
+                log::warn!(
+                    "Failed to store API key in keychain: {}. Falling back to preferences.",
+                    e
+                );
             } else {
                 log::info!("API key stored in system keychain");
                 return Ok(());
             }
         }
         Err(e) => {
-            log::warn!("Keyring not available on this platform: {}. Falling back to preferences.", e);
+            log::warn!(
+                "Keyring not available on this platform: {}. Falling back to preferences.",
+                e
+            );
         }
     }
 
@@ -515,11 +520,11 @@ pub async fn test_google_vision_connection() -> Result<bool, String> {
 
     // Create a simple test request (1x1 pixel PNG)
     let test_image_data = vec![
-        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48,
-        0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00,
-        0x00, 0x1f, 0x15, 0xc4, 0x89, 0x00, 0x00, 0x00, 0x0a, 0x49, 0x44, 0x41, 0x54, 0x78,
-        0x9c, 0x63, 0x00, 0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00,
-        0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44,
+        0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1f,
+        0x15, 0xc4, 0x89, 0x00, 0x00, 0x00, 0x0a, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0x00,
+        0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00, 0x00, 0x00, 0x00, 0x49,
+        0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
     ];
 
     use base64::Engine;
@@ -586,8 +591,8 @@ async fn call_google_vision_api(
     use base64::Engine;
 
     // Read and encode image as base64
-    let image_data = std::fs::read(image_path)
-        .map_err(|e| format!("Failed to read image: {}", e))?;
+    let image_data =
+        std::fs::read(image_path).map_err(|e| format!("Failed to read image: {}", e))?;
     let encoded = base64::engine::general_purpose::STANDARD.encode(&image_data);
 
     // Build request JSON
@@ -623,10 +628,7 @@ async fn call_google_vision_api(
             .text()
             .await
             .unwrap_or_else(|_| "(empty)".to_string());
-        return Err(format!(
-            "Google Vision API returned {}: {}",
-            status, body
-        ));
+        return Err(format!("Google Vision API returned {}: {}", status, body));
     }
 
     let json: serde_json::Value = response
@@ -686,8 +688,7 @@ fn parse_google_vision_response(
                 for block in blocks {
                     if let Some(paragraphs) = block.get("paragraphs").and_then(|p| p.as_array()) {
                         for paragraph in paragraphs {
-                            if let Some(words) = paragraph.get("words").and_then(|w| w.as_array())
-                            {
+                            if let Some(words) = paragraph.get("words").and_then(|w| w.as_array()) {
                                 for word in words {
                                     let word_text = word
                                         .get("symbols")
@@ -706,7 +707,8 @@ fn parse_google_vision_response(
                                     let confidence = word
                                         .get("confidence")
                                         .and_then(|c| c.as_f64())
-                                        .unwrap_or(0.9) as f32;
+                                        .unwrap_or(0.9)
+                                        as f32;
 
                                     // Extract bounding box
                                     let bbox = word
@@ -718,19 +720,23 @@ fn parse_google_vision_response(
                                                 let x1 = vertices[0]
                                                     .get("x")
                                                     .and_then(|x| x.as_f64())
-                                                    .unwrap_or(0.0) as f32;
+                                                    .unwrap_or(0.0)
+                                                    as f32;
                                                 let y1 = vertices[0]
                                                     .get("y")
                                                     .and_then(|y| y.as_f64())
-                                                    .unwrap_or(0.0) as f32;
+                                                    .unwrap_or(0.0)
+                                                    as f32;
                                                 let x2 = vertices[2]
                                                     .get("x")
                                                     .and_then(|x| x.as_f64())
-                                                    .unwrap_or(0.0) as f32;
+                                                    .unwrap_or(0.0)
+                                                    as f32;
                                                 let y2 = vertices[2]
                                                     .get("y")
                                                     .and_then(|y| y.as_f64())
-                                                    .unwrap_or(0.0) as f32;
+                                                    .unwrap_or(0.0)
+                                                    as f32;
                                                 Some((x1, y1, x2 - x1, y2 - y1))
                                             } else {
                                                 None
@@ -774,8 +780,7 @@ fn parse_google_vision_response(
 /// Limit: 1800 requests/minute (Google's default quota)
 /// Per-page cost: 1 request per page (DOCUMENT_TEXT_DETECTION)
 
-static RATE_LIMIT_COUNTER: std::sync::atomic::AtomicUsize =
-    std::sync::atomic::AtomicUsize::new(0);
+static RATE_LIMIT_COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 static RATE_LIMIT_WINDOW_START: std::sync::LazyLock<std::sync::Mutex<std::time::Instant>> =
     std::sync::LazyLock::new(|| std::sync::Mutex::new(std::time::Instant::now()));
 
@@ -874,8 +879,7 @@ fn overlay_ocr_text(
 ) -> Result<(), String> {
     use lopdf::Document;
 
-    let mut doc = Document::load(input_path)
-        .map_err(|e| format!("Failed to load PDF: {}", e))?;
+    let mut doc = Document::load(input_path).map_err(|e| format!("Failed to load PDF: {}", e))?;
 
     // Track page index in the results
     for page_result in results {
@@ -964,7 +968,11 @@ fn extract_number(obj: &lopdf::Object) -> Result<f32, String> {
 /// (word) Tj                    % Show text
 /// ET                           % End text
 /// ```
-fn generate_text_layer(regions: &[OcrTextRegion], _page_width: f32, page_height: f32) -> Result<String, String> {
+fn generate_text_layer(
+    regions: &[OcrTextRegion],
+    _page_width: f32,
+    page_height: f32,
+) -> Result<String, String> {
     if regions.is_empty() {
         return Ok(String::new());
     }
@@ -1007,8 +1015,7 @@ fn generate_text_layer(regions: &[OcrTextRegion], _page_width: f32, page_height:
 /// - ( (open paren) becomes \(
 /// - ) (close paren) becomes \)
 fn escape_pdf_string(text: &str) -> String {
-    text
-        .replace('\\', "\\\\")
+    text.replace('\\', "\\\\")
         .replace('(', "\\(")
         .replace(')', "\\)")
 }
@@ -1024,7 +1031,9 @@ fn append_content_stream(page: &mut lopdf::Dictionary, new_content: &str) -> Res
             // Content is an indirect reference; update it
             // For now, we'll append to the stream by re-fetching it
             // This is a simplified approach; real implementation would load, modify, save
-            log::warn!("Content stream is indirect reference; text overlay may not be applied correctly");
+            log::warn!(
+                "Content stream is indirect reference; text overlay may not be applied correctly"
+            );
         }
         Ok(lopdf::Object::Stream(stream)) => {
             // Content is a direct stream; append new content
@@ -1074,7 +1083,10 @@ mod tests {
     #[test]
     fn test_ocr_backend_as_str() {
         assert_eq!(OcrBackend::Tesseract.as_str(), "tesseract");
-        assert_eq!(OcrBackend::GoogleCloudVision.as_str(), "google_cloud_vision");
+        assert_eq!(
+            OcrBackend::GoogleCloudVision.as_str(),
+            "google_cloud_vision"
+        );
     }
 
     #[test]
@@ -1188,7 +1200,8 @@ mod tests {
         let real_obj = lopdf::Object::Real(3.14);
         assert!((extract_number(&real_obj).unwrap() - 3.14).abs() < 0.001);
 
-        let string_obj = lopdf::Object::String(b"not a number".to_vec(), lopdf::StringFormat::Literal);
+        let string_obj =
+            lopdf::Object::String(b"not a number".to_vec(), lopdf::StringFormat::Literal);
         assert!(extract_number(&string_obj).is_err());
     }
 

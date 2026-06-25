@@ -33,46 +33,45 @@ fn ensure_sample_pdf(corpus: &Path) -> Option<PathBuf> {
 fn make_minimal_pdf(trim: [f64; 4], out_path: &Path) {
     let mut doc = lopdf::Document::new();
     let pages_id = doc.new_object_id();
-    let page_id = doc.add_object(Object::Dictionary(lopdf::Dictionary::from_iter(
-        vec![
-            (b"Type".to_vec(), Object::Name(b"Page".to_vec())),
-            (b"Parent".to_vec(), Object::Reference(pages_id)),
-            (
-                b"MediaBox".to_vec(),
-                Object::Array(vec![
-                    Object::Real(0.0 as f32),
-                    Object::Real(0.0 as f32),
-                    Object::Real(trim[2] as f32),
-                    Object::Real(trim[3] as f32),
-                ]),
-            ),
-            (
-                b"TrimBox".to_vec(),
-                Object::Array(vec![
-                    Object::Real(trim[0] as f32),
-                    Object::Real(trim[1] as f32),
-                    Object::Real(trim[2] as f32),
-                    Object::Real(trim[3] as f32),
-                ]),
-            ),
-            (
-                b"Resources".to_vec(),
-                Object::Dictionary(lopdf::Dictionary::new()),
-            ),
-        ],
-    )));
+    let page_id = doc.add_object(Object::Dictionary(lopdf::Dictionary::from_iter(vec![
+        (b"Type".to_vec(), Object::Name(b"Page".to_vec())),
+        (b"Parent".to_vec(), Object::Reference(pages_id)),
+        (
+            b"MediaBox".to_vec(),
+            Object::Array(vec![
+                Object::Real(0.0 as f32),
+                Object::Real(0.0 as f32),
+                Object::Real(trim[2] as f32),
+                Object::Real(trim[3] as f32),
+            ]),
+        ),
+        (
+            b"TrimBox".to_vec(),
+            Object::Array(vec![
+                Object::Real(trim[0] as f32),
+                Object::Real(trim[1] as f32),
+                Object::Real(trim[2] as f32),
+                Object::Real(trim[3] as f32),
+            ]),
+        ),
+        (
+            b"Resources".to_vec(),
+            Object::Dictionary(lopdf::Dictionary::new()),
+        ),
+    ])));
     let pages_dict = lopdf::Dictionary::from_iter(vec![
         (b"Type".to_vec(), Object::Name(b"Pages".to_vec())),
-        (b"Kids".to_vec(), Object::Array(vec![Object::Reference(page_id)])),
+        (
+            b"Kids".to_vec(),
+            Object::Array(vec![Object::Reference(page_id)]),
+        ),
         (b"Count".to_vec(), Object::Integer(1)),
     ]);
     doc.objects.insert(pages_id, Object::Dictionary(pages_dict));
-    let catalog_id = doc.add_object(Object::Dictionary(lopdf::Dictionary::from_iter(
-        vec![
-            (b"Type".to_vec(), Object::Name(b"Catalog".to_vec())),
-            (b"Pages".to_vec(), Object::Reference(pages_id)),
-        ],
-    )));
+    let catalog_id = doc.add_object(Object::Dictionary(lopdf::Dictionary::from_iter(vec![
+        (b"Type".to_vec(), Object::Name(b"Catalog".to_vec())),
+        (b"Pages".to_vec(), Object::Reference(pages_id)),
+    ])));
     doc.trailer.set("Root", Object::Reference(catalog_id));
     let _ = doc.save(out_path);
 }
@@ -127,22 +126,15 @@ fn e2e_profile_actionlist_batch_hotfolder_debugger() {
 
     // 2) Action list: build a 1-step "add 5mm bleed" list and
     //    replay it against the sample.
-    let working_dir = std::env::temp_dir().join(format!(
-        "frappe_e2e_{}",
-        uuid::Uuid::new_v4()
-    ));
+    let working_dir = std::env::temp_dir().join(format!("frappe_e2e_{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&working_dir).unwrap();
     let steps = vec![app_lib::pdf::action_list::ActionStep {
         kind: "add_bleed".to_string(),
         params: serde_json::json!({"amount_mm": 5.0}),
         label: Some("Add 5mm bleed".to_string()),
     }];
-    let replay = app_lib::pdf::action_list::replay(
-        &sample,
-        &steps,
-        &working_dir,
-    )
-    .expect("replay should succeed");
+    let replay = app_lib::pdf::action_list::replay(&sample, &steps, &working_dir)
+        .expect("replay should succeed");
     assert_eq!(replay.steps.len(), 1, "one step should have run");
     assert!(
         replay.steps[0].success,
@@ -153,7 +145,10 @@ fn e2e_profile_actionlist_batch_hotfolder_debugger() {
         .final_output
         .clone()
         .expect("final_output should be set");
-    assert!(std::path::Path::new(&final_pdf).exists(), "final pdf exists");
+    assert!(
+        std::path::Path::new(&final_pdf).exists(),
+        "final pdf exists"
+    );
 
     // 3) Re-open the replayed PDF and confirm the bleed was
     //    added (minimum 3mm on all sides).
@@ -173,12 +168,8 @@ fn e2e_profile_actionlist_batch_hotfolder_debugger() {
     // 4) Batch: feed the replayed file through the batch_job
     //    path. We don't have a Database here, so we just exercise
     //    the per-file replay that the batch runner would call.
-    let batch_replay = app_lib::pdf::action_list::replay(
-        &sample,
-        &steps,
-        &working_dir,
-    )
-    .expect("batch replay should succeed");
+    let batch_replay = app_lib::pdf::action_list::replay(&sample, &steps, &working_dir)
+        .expect("batch replay should succeed");
     assert!(
         batch_replay.steps.iter().all(|s| s.success),
         "all batch steps should succeed"
@@ -200,7 +191,10 @@ fn e2e_profile_actionlist_batch_hotfolder_debugger() {
     };
 
     let _ = std::fs::remove_dir_all(&working_dir);
-    eprintln!("e2e scenario complete: {} pages checked, replay ok", bleed.len());
+    eprintln!(
+        "e2e scenario complete: {} pages checked, replay ok",
+        bleed.len()
+    );
 }
 
 #[test]
@@ -229,7 +223,10 @@ fn e2e_minimal_pdf_loads() {
     // check_image_resolution returns entries only for pages that have images;
     // this imageless PDF produces 0 entries.
     assert_eq!(bleed.len(), 1, "bleed: one finding per page");
-    assert!(!boxes.is_empty(), "boxes: should return findings for the page");
+    assert!(
+        !boxes.is_empty(),
+        "boxes: should return findings for the page"
+    );
     let _ = images; // imageless PDF → 0 entries, just verify no panic
 
     let _ = std::fs::remove_dir_all(&dir);

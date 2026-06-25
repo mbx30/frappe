@@ -20,9 +20,20 @@ pub enum SecurityError {
     PathEmpty,
     PathNoParent,
     PathNoFilename,
-    InvalidFileExtension { allowed: Vec<String>, got: String },
-    InvalidIntRange { param: String, min: i64, max: i64, got: i64 },
-    InvalidStringFormat { param: String, reason: String },
+    InvalidFileExtension {
+        allowed: Vec<String>,
+        got: String,
+    },
+    InvalidIntRange {
+        param: String,
+        min: i64,
+        max: i64,
+        got: i64,
+    },
+    InvalidStringFormat {
+        param: String,
+        reason: String,
+    },
 }
 
 impl std::fmt::Display for SecurityError {
@@ -32,16 +43,31 @@ impl std::fmt::Display for SecurityError {
             Self::PathNotFound => write!(f, "Path does not exist"),
             Self::PathNotADirectory => write!(f, "Path is not a directory"),
             Self::PathCanonicalizeFailure(e) => write!(f, "Cannot canonicalize path: {}", e),
-            Self::PathTraversalAttempt => write!(f, "Path contains parent directory traversal (..)"),
+            Self::PathTraversalAttempt => {
+                write!(f, "Path contains parent directory traversal (..)")
+            }
             Self::PathInsideSystemLocation => write!(f, "Path is inside a system location"),
             Self::PathEmpty => write!(f, "Path is empty"),
             Self::PathNoParent => write!(f, "Path has no parent directory"),
             Self::PathNoFilename => write!(f, "Path has no filename component"),
             Self::InvalidFileExtension { allowed, got } => {
-                write!(f, "Invalid file extension '{}'. Allowed: {:?}", got, allowed)
+                write!(
+                    f,
+                    "Invalid file extension '{}'. Allowed: {:?}",
+                    got, allowed
+                )
             }
-            Self::InvalidIntRange { param, min, max, got } => {
-                write!(f, "Parameter '{}' out of range [{}, {}]: {}", param, min, max, got)
+            Self::InvalidIntRange {
+                param,
+                min,
+                max,
+                got,
+            } => {
+                write!(
+                    f,
+                    "Parameter '{}' out of range [{}, {}]: {}",
+                    param, min, max, got
+                )
             }
             Self::InvalidStringFormat { param, reason } => {
                 write!(f, "Parameter '{}' has invalid format: {}", param, reason)
@@ -111,10 +137,7 @@ pub fn validate_read_path_with_extension(
     let canonical = validate_read_path(path)?;
 
     // Check file extension.
-    let ext = canonical
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("");
+    let ext = canonical.extension().and_then(|e| e.to_str()).unwrap_or("");
     if !allowed_extensions.is_empty() && !allowed_extensions.contains(&ext) {
         return Err(SecurityError::InvalidFileExtension {
             allowed: allowed_extensions.iter().map(|s| s.to_string()).collect(),
@@ -177,10 +200,7 @@ pub fn validate_write_path_with_extension(
     let canonical = validate_write_path(path)?;
 
     // Check file extension.
-    let ext = canonical
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("");
+    let ext = canonical.extension().and_then(|e| e.to_str()).unwrap_or("");
     if !allowed_extensions.is_empty() && !allowed_extensions.contains(&ext) {
         return Err(SecurityError::InvalidFileExtension {
             allowed: allowed_extensions.iter().map(|s| s.to_string()).collect(),
@@ -211,7 +231,9 @@ fn reject_system_location(path: &Path) -> SecurityResult<()> {
         let blocked_path = Path::new(blocked_str);
         // Canonicalize the blocked path so we compare OS-normalized forms.
         let canonical_blocked = if blocked_path.exists() {
-            blocked_path.canonicalize().unwrap_or_else(|_| blocked_path.to_path_buf())
+            blocked_path
+                .canonicalize()
+                .unwrap_or_else(|_| blocked_path.to_path_buf())
         } else {
             blocked_path.to_path_buf()
         };
@@ -250,16 +272,14 @@ fn blocked_system_locations() -> Vec<&'static str> {
 #[cfg(target_os = "macos")]
 fn blocked_system_locations() -> Vec<&'static str> {
     vec![
-        "/etc", "/usr", "/bin", "/sbin", "/boot", "/dev",
-        "/System", "/Library",
+        "/etc", "/usr", "/bin", "/sbin", "/boot", "/dev", "/System", "/Library",
     ]
 }
 
 #[cfg(all(unix, not(target_os = "macos")))]
 fn blocked_system_locations() -> Vec<&'static str> {
     vec![
-        "/etc", "/usr", "/bin", "/sbin", "/var", "/boot", "/sys", "/proc",
-        "/root", "/dev",
+        "/etc", "/usr", "/bin", "/sbin", "/var", "/boot", "/sys", "/proc", "/root", "/dev",
     ]
 }
 
@@ -295,7 +315,10 @@ pub fn validate_string(param: &str, value: &str, max_len: usize) -> SecurityResu
 
 /// Validate a user-supplied string contains only alphanumeric characters and hyphens.
 pub fn validate_alphanumeric_with_hyphens(param: &str, value: &str) -> SecurityResult<()> {
-    if !value.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+    if !value
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+    {
         return Err(SecurityError::InvalidStringFormat {
             param: param.to_string(),
             reason: "Value must contain only alphanumeric characters, hyphens, and underscores"
@@ -387,12 +410,18 @@ mod tests {
         #[cfg(unix)]
         {
             let result = validate_write_path("/usr/local/bin/output.txt");
-            assert!(matches!(result, Err(SecurityError::PathInsideSystemLocation)));
+            assert!(matches!(
+                result,
+                Err(SecurityError::PathInsideSystemLocation)
+            ));
         }
         #[cfg(windows)]
         {
             let result = validate_write_path("C:\\Windows\\system32\\output.txt");
-            assert!(matches!(result, Err(SecurityError::PathInsideSystemLocation)));
+            assert!(matches!(
+                result,
+                Err(SecurityError::PathInsideSystemLocation)
+            ));
         }
     }
 

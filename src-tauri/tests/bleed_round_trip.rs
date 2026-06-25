@@ -8,46 +8,45 @@ const POINTS_TO_MM: f64 = 0.3528;
 fn make_pdf_with_trim_box(trim: [f64; 4], out_path: &Path) {
     let mut doc = lopdf::Document::new();
     let pages_id = doc.new_object_id();
-    let page_id = doc.add_object(Object::Dictionary(lopdf::Dictionary::from_iter(
-        vec![
-            (b"Type".to_vec(), Object::Name(b"Page".to_vec())),
-            (b"Parent".to_vec(), Object::Reference(pages_id)),
-            (
-                b"MediaBox".to_vec(),
-                Object::Array(vec![
-                    Object::Real(0.0 as f32),
-                    Object::Real(0.0 as f32),
-                    Object::Real(trim[2] as f32),
-                    Object::Real(trim[3] as f32),
-                ]),
-            ),
-            (
-                b"TrimBox".to_vec(),
-                Object::Array(vec![
-                    Object::Real(trim[0] as f32),
-                    Object::Real(trim[1] as f32),
-                    Object::Real(trim[2] as f32),
-                    Object::Real(trim[3] as f32),
-                ]),
-            ),
-            (
-                b"Resources".to_vec(),
-                Object::Dictionary(lopdf::Dictionary::new()),
-            ),
-        ],
-    )));
+    let page_id = doc.add_object(Object::Dictionary(lopdf::Dictionary::from_iter(vec![
+        (b"Type".to_vec(), Object::Name(b"Page".to_vec())),
+        (b"Parent".to_vec(), Object::Reference(pages_id)),
+        (
+            b"MediaBox".to_vec(),
+            Object::Array(vec![
+                Object::Real(0.0 as f32),
+                Object::Real(0.0 as f32),
+                Object::Real(trim[2] as f32),
+                Object::Real(trim[3] as f32),
+            ]),
+        ),
+        (
+            b"TrimBox".to_vec(),
+            Object::Array(vec![
+                Object::Real(trim[0] as f32),
+                Object::Real(trim[1] as f32),
+                Object::Real(trim[2] as f32),
+                Object::Real(trim[3] as f32),
+            ]),
+        ),
+        (
+            b"Resources".to_vec(),
+            Object::Dictionary(lopdf::Dictionary::new()),
+        ),
+    ])));
     let pages_dict = lopdf::Dictionary::from_iter(vec![
         (b"Type".to_vec(), Object::Name(b"Pages".to_vec())),
-        (b"Kids".to_vec(), Object::Array(vec![Object::Reference(page_id)])),
+        (
+            b"Kids".to_vec(),
+            Object::Array(vec![Object::Reference(page_id)]),
+        ),
         (b"Count".to_vec(), Object::Integer(1)),
     ]);
     doc.objects.insert(pages_id, Object::Dictionary(pages_dict));
-    let catalog_id = doc.add_object(Object::Dictionary(lopdf::Dictionary::from_iter(
-        vec![
-            (b"Type".to_vec(), Object::Name(b"Catalog".to_vec())),
-            (b"Pages".to_vec(), Object::Reference(pages_id)),
-        ],
-    )));
+    let catalog_id = doc.add_object(Object::Dictionary(lopdf::Dictionary::from_iter(vec![
+        (b"Type".to_vec(), Object::Name(b"Catalog".to_vec())),
+        (b"Pages".to_vec(), Object::Reference(pages_id)),
+    ])));
     doc.trailer.set("Root", Object::Reference(catalog_id));
     doc.save(out_path).expect("save fixture");
 }

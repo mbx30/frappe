@@ -12,13 +12,14 @@ mod db;
 mod db_cmds;
 mod email;
 mod ftp;
-mod import_cmds;
 mod import;
+mod import_cmds;
 mod job_cmds;
 mod keychain;
 mod logging;
 pub mod metrics;
 mod models;
+mod observability;
 pub mod pdf;
 pub mod pdf_cmds;
 pub mod preflight_cmds;
@@ -26,7 +27,6 @@ pub mod security;
 mod settings_cmds;
 mod text_cmds;
 mod workbook_cmds;
-mod observability;
 
 use crate::pdf::engine::PdfEngine;
 use db::Database;
@@ -86,11 +86,7 @@ pub fn run() {
                         if let Err(e) =
                             crate::pdf::watcher::start_hot_folder_watcher(cfg, Some(ah.clone()))
                         {
-                            tracing::warn!(
-                                "hot folder '{}' failed to start: {}",
-                                folder.name,
-                                e
-                            );
+                            tracing::warn!("hot folder '{}' failed to start: {}", folder.name, e);
                         } else {
                             tracing::info!("hot folder '{}' watcher started", folder.name);
                         }
