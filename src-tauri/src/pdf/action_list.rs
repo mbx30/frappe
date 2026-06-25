@@ -444,8 +444,10 @@ fn add_output_intent_in_place(
     out: &Path,
 ) -> Result<(), String> {
     let icc_bytes: Vec<u8> = if let Some(b64) = &params.icc_base64 {
-        use base64_simple::decode as b64d;
-        b64d(b64.trim()).map_err(|e| format!("base64: {e}"))?
+        use base64::Engine;
+        base64::engine::general_purpose::STANDARD
+            .decode(b64.trim())
+            .map_err(|e| format!("base64: {e}"))?
     } else if let Some(p) = &params.icc_path {
         std::fs::read(p).map_err(|e| format!("read icc: {e}"))?
     } else {
@@ -694,43 +696,6 @@ pub fn replay_with_db(
     replay(input_pdf, steps, working_dir)
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Tiny base64 shim (no extra dependency; base64 alphabet only).
-// ─────────────────────────────────────────────────────────────────────
-mod base64_simple {
-    pub fn decode(input: &str) -> Result<Vec<u8>, String> {
-        const ALPHABET: &[u8; 64] =
-            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-        let cleaned: Vec<u8> = input
-            .bytes()
-            .filter(|b| !b.is_ascii_whitespace())
-            .collect();
-        if cleaned.len() % 4 != 0 {
-            return Err("base64 length not multiple of 4".to_string());
-        }
-        let mut out = Vec::with_capacity(cleaned.len() * 3 / 4);
-        let mut buf: u32 = 0;
-        let mut bits: u32 = 0;
-        for &c in &cleaned {
-            if c == b'=' {
-                break;
-            }
-            let v = match ALPHABET.iter().position(|&a| a == c) {
-                Some(v) => v as u32,
-                None => return Err(format!("invalid base64 char: {c}")),
-            };
-            buf = (buf << 6) | v;
-            bits += 6;
-            if bits >= 8 {
-                bits -= 8;
-                out.push((buf >> bits) as u8);
-                buf &= (1 << bits) - 1;
-            }
-        }
-        Ok(out)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -768,7 +733,10 @@ mod tests {
 
     #[test]
     fn base64_decode_works() {
-        let out = base64_simple::decode("SGVsbG8sIFdvcmxkIQ==").unwrap();
+        use base64::Engine;
+        let out = base64::engine::general_purpose::STANDARD
+            .decode("SGVsbG8sIFdvcmxkIQ==")
+            .unwrap();
         assert_eq!(out, b"Hello, World!");
     }
 

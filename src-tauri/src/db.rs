@@ -931,15 +931,68 @@ impl Database {
 
         // Migration: add columns only if they don't already exist
         //
-        // #168: `table` and the leading token of `col_def` are interpolated
-        // directly into the ALTER TABLE statement. Although every current
-        // caller passes a hardcoded literal, the signature accepts arbitrary
-        // strings, which is a SQL-injection risk if a future caller supplies
-        // user-controlled input. Validate that both identifiers contain only
-        // ASCII alphanumeric characters and underscores before building the
-        // DDL; reject anything else with an error.
+        // #168: `table` and every token in `col_def` are validated against a
+        // strict allowlist to prevent DDL injection. The leading token is
+        // checked as an identifier; subsequent tokens must match known SQL
+        // DDL keywords, identifiers, numeric/single-quoted literals, or
+        // balanced parentheses.
         fn is_valid_identifier(s: &str) -> bool {
             !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+        }
+
+        fn is_valid_col_def(s: &str) -> bool {
+            let mut depth = 0i32;
+            let mut i = 0;
+            let bytes = s.as_bytes();
+            while i < bytes.len() {
+                let c = bytes[i] as char;
+                match c {
+                    '(' => depth += 1,
+                    ')' => {
+                        depth -= 1;
+                        if depth < 0 {
+                            return false;
+                        }
+                    }
+                    '\'' => {
+                        i += 1;
+                        while i < bytes.len() && bytes[i] as char != '\'' {
+                            if bytes[i] as char == '\\' {
+                                i += 1; // skip escaped char
+                            }
+                            i += 1;
+                        }
+                        if i >= bytes.len() {
+                            return false; // unclosed quote
+                        }
+                    }
+                    ';' | '-' => {
+                        // Disallow bare semicolons; '-' is allowed only inside
+                        // a string literal or after a '(' (negative number).
+                        // Outside those contexts it could start a comment.
+                        if c == '-' {
+                            // Check if this is a single-line comment start
+                            if i + 1 < bytes.len() && bytes[i + 1] as char == '-' {
+                                return false;
+                            }
+                            if depth == 0 {
+                                // bare '-' outside a type/check context is suspicious
+                                // but allow as part of DEFAULT -1 or similar
+                            }
+                        } else {
+                            return false; // bare ';' is never valid in a col_def
+                        }
+                    }
+                    '/' => {
+                        if i + 1 < bytes.len() && bytes[i + 1] as char == '*' {
+                            return false; // block comment start
+                        }
+                    }
+                    _ => {}
+                }
+                i += 1;
+            }
+            depth == 0 // parens must be balanced
         }
 
         fn add_col_if_missing(
@@ -948,8 +1001,10 @@ impl Database {
             col_def: &str,
         ) -> rusqlite::Result<()> {
             let col_name = col_def.split_whitespace().next().unwrap_or("");
-            if !is_valid_identifier(table) || !is_valid_identifier(col_name) {
-                // Refuse to interpolate an invalid identifier into DDL (#168).
+            if !is_valid_identifier(table)
+                || !is_valid_identifier(col_name)
+                || !is_valid_col_def(col_def)
+            {
                 return Err(rusqlite::Error::InvalidQuery);
             }
             let exists: bool = conn

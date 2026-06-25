@@ -1,21 +1,32 @@
 mod ai_check;
+mod ai_cmds;
+mod analytics_cmds;
+mod batch_cmds;
 mod cache;
 mod cloud_backup;
 mod cloud_import;
+mod comm_cmds;
 mod commands;
 pub mod commands_extra;
 mod db;
+mod db_cmds;
 mod email;
 mod ftp;
-mod observability;
+mod import_cmds;
 mod import;
+mod job_cmds;
 mod keychain;
 mod logging;
 pub mod metrics;
 mod models;
 pub mod pdf;
+pub mod pdf_cmds;
+mod preflight_cmds;
 pub mod security;
-
+mod settings_cmds;
+mod text_cmds;
+mod workbook_cmds;
+mod observability;
 
 use crate::pdf::engine::PdfEngine;
 use db::Database;
@@ -39,14 +50,9 @@ pub fn run() {
 
             let database = Database::new(app_dir.clone()).expect("failed to initialize database");
 
-            // PDF engine is optional — invoice/estimate/order/inventory features
-            // work without it. Only thumbnail/preflight/page-render features
-            // require it. If init fails, log the error and continue so the
-            // user can still use 95% of the app.
             let pdf_engine = PdfEngine::init();
             app_handle.manage(pdf_engine);
 
-            // Verify database integrity on startup
             let verification_result = database.verify_integrity();
             if !verification_result.is_valid {
                 tracing::error!("Database verification failed");
@@ -60,9 +66,6 @@ pub fn run() {
                 }
             }
 
-            // Issue #269 — auto-start any active hot folders BEFORE we
-            // move the database into managed state, so the watcher setup
-            // can read the folder list without an extra borrow.
             {
                 let ah = app.handle().clone();
                 if let Ok(folders) = database.list_hot_folders() {
@@ -97,30 +100,38 @@ pub fn run() {
 
             app_handle.manage(database);
 
-            // Issue #256 — record cold-start time once the runtime is ready.
             metrics::record_cold_start();
 
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            commands::create_workbook,
-            commands::list_workbooks,
-            commands::delete_workbook,
-            commands::get_workbook,
-            commands::create_sheet,
-            commands::add_column,
-            commands::update_cell_value,
-            commands::add_row,
-            commands::update_workbook_name,
-            commands::import_csv_file,
-            commands::import_excel_file,
-            commands::import_google_sheet,
-            commands::import_notion_database,
-            commands::preview_import,
-            commands::verify_database,
+            // Workbook
+            workbook_cmds::create_workbook,
+            workbook_cmds::list_workbooks,
+            workbook_cmds::delete_workbook,
+            workbook_cmds::get_workbook,
+            workbook_cmds::create_sheet,
+            workbook_cmds::add_column,
+            workbook_cmds::update_cell_value,
+            workbook_cmds::add_row,
+            workbook_cmds::update_workbook_name,
+            // Import
+            import_cmds::import_csv_file,
+            import_cmds::import_excel_file,
+            import_cmds::import_google_sheet,
+            import_cmds::import_notion_database,
+            import_cmds::preview_import,
+            // Database admin
+            db_cmds::verify_database,
+            db_cmds::get_schema_version,
+            db_cmds::create_backup,
+            db_cmds::list_backups,
+            db_cmds::export_plaintext_backup,
+            // Business
             commands::get_business_info,
             commands::save_business_info,
             commands::next_order_number,
+            // Invoices
             commands::create_invoice,
             commands::list_invoices,
             commands::list_invoices_paginated,
@@ -128,212 +139,221 @@ pub fn run() {
             commands::add_invoice_line_item,
             commands::replace_invoice_line_items,
             commands::update_invoice,
+            // Orders
             commands::create_order,
             commands::list_orders,
             commands::list_orders_paginated,
             commands::get_order,
             commands::update_order_status,
             commands::update_order,
+            // Estimates
             commands::create_estimate,
             commands::list_estimates,
             commands::get_estimate,
             commands::add_estimate_line_item,
             commands::replace_estimate_line_items,
             commands::update_estimate,
+            // Inventory
             commands::add_inventory_item,
             commands::list_inventory_items,
             commands::get_inventory_item,
             commands::adjust_inventory,
             commands::get_low_stock_alerts,
             commands::acknowledge_alert,
+            // Clients
             commands::create_client,
             commands::list_clients,
             commands::list_clients_paginated,
             commands::get_client,
             commands::update_client,
             commands::delete_client,
+            // Art approvals
             commands::create_art_approval,
             commands::get_art_approvals_for_order,
             commands::respond_to_art_approval,
             commands::increment_art_approval_follow_up,
+            // Payments
             commands::record_payment,
             commands::list_payments,
             commands::delete_payment,
+            // Search
             commands::search_invoices_and_orders,
+            // Invoice reminders
             commands::log_invoice_reminder,
             commands::list_invoice_reminders,
+            // QuickBooks
             commands::update_invoice_qb_status,
+            // Job specs & fulfillment
             commands::update_order_job_specs,
             commands::update_order_fulfillment,
+            // Department notes
             commands::add_department_note,
             commands::list_department_notes,
             commands::delete_department_note,
-            commands::open_pdf,
-            commands::save_pdf_job,
-            commands::list_pdf_jobs,
-            commands::delete_pdf_job,
-            commands::render_page_thumbnail,
-            commands::render_page,
-            commands::check_fonts,
-            commands::check_page_boxes,
-            commands::check_image_resolution,
-            commands::check_bleed,
-            commands::add_bleed,
-            commands::check_output_intents,
-            commands::check_security,
-            commands::check_full_preflight,
-            commands::check_pdfx,
-            commands::check_color_spaces,
-            commands::check_overprint,
-            commands::check_transparency,
-            commands::check_hidden_content,
-            commands::check_spot_colors,
-            commands::check_ink_coverage,
-            commands::list_icc_profiles,
-            commands::convert_rgb_to_cmyk,
-            commands::add_output_intent,
-            commands::get_pdf_catalog,
-            commands::render_page_with_overprint,
-            commands::get_page_dimensions,
-            commands::extract_pages,
-            commands::delete_pages,
-            commands::rotate_page,
-            commands::save_preflight_run,
-            commands::list_preflight_runs,
-            commands::list_findings_for_run,
-            commands::create_certified_version,
-            commands::list_certified_versions,
-            // Phase 3.2
-            commands::reorder_pages,
-            commands::insert_blank_page,
-            commands::list_layers,
-            commands::set_layer_visibility,
-            // Phase 3.3
-            commands::decode_content_stream,
-            commands::encode_content_stream,
-            commands::round_trip_page,
-            commands::tokenize_content_stream,
-            // Phase 3.4
-            commands::search_text,
-            commands::replace_text,
-            // Phase 3.5
-            commands::replace_image,
-            commands::optimize_image,
-            // Phase 4.1
-            commands::generate_approval_sheet,
-            commands::export_preflight_report_json,
-            commands::export_preflight_report_csv,
-            commands::get_check_registry,
-            commands::run_profile,
-            commands::create_preflight_profile,
-            commands::list_preflight_profiles,
-            commands::get_preflight_profile,
-            commands::delete_preflight_profile,
-            commands::list_profile_checks,
-            commands::update_profile_check,
-            commands::list_profile_fixups,
-            commands::update_profile_fixup,
-            // Phase 4.2
-            commands::create_action_list,
-            commands::list_action_lists,
-            commands::get_action_list,
-            commands::delete_action_list,
-            commands::add_action_list_step,
-            commands::list_action_list_steps,
-            commands::delete_action_list_step,
-            commands::reorder_action_list_steps,
-            commands::start_action_recording,
-            commands::record_action_step,
-            commands::stop_action_recording,
-            commands::cancel_action_recording,
-            commands::is_action_recording,
-            commands::replay_action_list,
-            commands::create_debug_session,
-            commands::list_debug_sessions,
-            commands::get_debug_session,
-            commands::delete_debug_session,
-            commands::step_forward_debug,
-            commands::run_from_here_debug,
-            commands::render_debug_thumbnail,
-            commands::export_debug_report_pdf,
-            // Phase 4.3
-            commands::create_batch_job,
-            commands::list_batch_jobs,
-            commands::get_batch_job,
-            commands::run_batch,
-            commands::list_batch_results,
-            // Phase 4.5
-            commands::create_hot_folder,
-            commands::list_hot_folders,
-            commands::delete_hot_folder,
-            commands::toggle_hot_folder,
-            commands::start_hot_folder_watcher,
-            commands::stop_hot_folder_watcher,
-            // Phase 5.1
-            commands::compress_pdf,
-            // Phase 6.1 — Redaction (#231)
-            commands::redact_pdf,
-            commands::get_redaction_audit_log,
-            commands::verify_redaction_chain,
-            // Phase 5.2
-            commands::detect_barcodes,
-            // Phase 5.3
-            commands::get_analytics_summary,
-            commands::get_analytics_dashboard,
-            // Phase 5.5
-            commands::ai_visual_check,
-            // Phase 6.1
-            commands::save_email_settings,
-            commands::get_email_settings,
-            commands::send_email,
-            commands::save_ftp_settings,
-            commands::get_ftp_settings,
-            commands::ftp_upload,
-            commands::create_webhook,
-            commands::list_webhooks,
-            commands::delete_webhook,
-            // #84 — Job ticket
-            commands::generate_job_ticket,
-            // #85 — Cloud backup
+            // PDF open/save/certified
+            pdf_cmds::open_pdf,
+            pdf_cmds::save_pdf_job,
+            pdf_cmds::list_pdf_jobs,
+            pdf_cmds::delete_pdf_job,
+            pdf_cmds::create_certified_version,
+            pdf_cmds::list_certified_versions,
+            // PDF rendering
+            pdf_cmds::render_page_thumbnail,
+            pdf_cmds::render_page,
+            pdf_cmds::render_page_with_overprint,
+            pdf_cmds::get_page_dimensions,
+            // Page operations
+            pdf_cmds::extract_pages,
+            pdf_cmds::delete_pages,
+            pdf_cmds::rotate_page,
+            pdf_cmds::reorder_pages,
+            pdf_cmds::insert_blank_page,
+            pdf_cmds::get_pdf_catalog,
+            // Layers
+            pdf_cmds::list_layers,
+            pdf_cmds::set_layer_visibility,
+            // Content stream
+            pdf_cmds::decode_content_stream,
+            pdf_cmds::encode_content_stream,
+            pdf_cmds::round_trip_page,
+            pdf_cmds::tokenize_content_stream,
+            // Text
+            text_cmds::search_text,
+            text_cmds::replace_text,
+            // Image ops
+            pdf_cmds::replace_image,
+            pdf_cmds::optimize_image,
+            // Preflight checks
+            preflight_cmds::check_fonts,
+            preflight_cmds::check_page_boxes,
+            preflight_cmds::check_image_resolution,
+            preflight_cmds::check_bleed,
+            preflight_cmds::add_bleed,
+            preflight_cmds::check_output_intents,
+            preflight_cmds::check_security,
+            preflight_cmds::check_full_preflight,
+            preflight_cmds::check_pdfx,
+            preflight_cmds::check_color_spaces,
+            preflight_cmds::check_overprint,
+            preflight_cmds::check_transparency,
+            preflight_cmds::check_hidden_content,
+            preflight_cmds::check_spot_colors,
+            preflight_cmds::check_ink_coverage,
+            preflight_cmds::list_icc_profiles,
+            preflight_cmds::convert_rgb_to_cmyk,
+            preflight_cmds::add_output_intent,
+            // Preflight profiles
+            preflight_cmds::save_preflight_run,
+            preflight_cmds::list_preflight_runs,
+            preflight_cmds::list_findings_for_run,
+            preflight_cmds::get_check_registry,
+            preflight_cmds::run_profile,
+            preflight_cmds::create_preflight_profile,
+            preflight_cmds::list_preflight_profiles,
+            preflight_cmds::get_preflight_profile,
+            preflight_cmds::delete_preflight_profile,
+            preflight_cmds::list_profile_checks,
+            preflight_cmds::update_profile_check,
+            preflight_cmds::list_profile_fixups,
+            preflight_cmds::update_profile_fixup,
+            // Action lists
+            preflight_cmds::create_action_list,
+            preflight_cmds::list_action_lists,
+            preflight_cmds::get_action_list,
+            preflight_cmds::delete_action_list,
+            preflight_cmds::add_action_list_step,
+            preflight_cmds::list_action_list_steps,
+            preflight_cmds::delete_action_list_step,
+            preflight_cmds::reorder_action_list_steps,
+            preflight_cmds::start_action_recording,
+            preflight_cmds::record_action_step,
+            preflight_cmds::stop_action_recording,
+            preflight_cmds::cancel_action_recording,
+            preflight_cmds::is_action_recording,
+            preflight_cmds::replay_action_list,
+            // Debug sessions
+            preflight_cmds::create_debug_session,
+            preflight_cmds::list_debug_sessions,
+            preflight_cmds::get_debug_session,
+            preflight_cmds::delete_debug_session,
+            preflight_cmds::step_forward_debug,
+            preflight_cmds::run_from_here_debug,
+            preflight_cmds::render_debug_thumbnail,
+            preflight_cmds::export_debug_report_pdf,
+            // Batch processing
+            preflight_cmds::create_batch_job,
+            preflight_cmds::list_batch_jobs,
+            preflight_cmds::get_batch_job,
+            preflight_cmds::run_batch,
+            preflight_cmds::list_batch_results,
+            // Hot folders
+            preflight_cmds::create_hot_folder,
+            preflight_cmds::list_hot_folders,
+            preflight_cmds::delete_hot_folder,
+            preflight_cmds::toggle_hot_folder,
+            preflight_cmds::start_hot_folder_watcher,
+            preflight_cmds::stop_hot_folder_watcher,
+            // Export
+            preflight_cmds::generate_approval_sheet,
+            preflight_cmds::export_preflight_report_json,
+            preflight_cmds::export_preflight_report_csv,
+            // PDF compression
+            preflight_cmds::compress_pdf,
+            // Redaction
+            preflight_cmds::redact_pdf,
+            preflight_cmds::get_redaction_audit_log,
+            preflight_cmds::verify_redaction_chain,
+            // Barcode
+            preflight_cmds::detect_barcodes,
+            // Analytics
+            analytics_cmds::get_analytics_summary,
+            analytics_cmds::get_analytics_dashboard,
+            // AI / OCR
+            ai_cmds::ai_visual_check,
+            // Communication
+            comm_cmds::save_email_settings,
+            comm_cmds::get_email_settings,
+            comm_cmds::send_email,
+            comm_cmds::save_ftp_settings,
+            comm_cmds::get_ftp_settings,
+            comm_cmds::ftp_upload,
+            comm_cmds::create_webhook,
+            comm_cmds::list_webhooks,
+            comm_cmds::delete_webhook,
+            // Job ticket
+            job_cmds::generate_job_ticket,
+            // Cloud backup
             commands::upload_event_batch_cmd,
             commands::upload_snapshot_cmd,
             commands::get_cloud_backup_status,
-            // #89 — Keychain
+            // Keychain
             commands::keychain_read,
             commands::keychain_write,
             commands::keychain_delete,
-            // #90 — DB operations
-            commands::get_schema_version,
-            commands::create_backup,
-            commands::list_backups,
-            // #99 — SQLCipher encryption
-            commands::export_plaintext_backup,
-            // #88 — Observability
+            // Observability
             commands::reveal_logs,
             commands::crash_report,
-            // Issue #256 — metrics snapshot for the PerfOverlay.
             commands::get_metrics_snapshot,
-            // Issue #241 / #275 — Preferences + PDF settings
-            commands::get_preference,
-            commands::set_preference,
-            commands::get_all_preferences,
-            // Issue #234 — Alt text editor
-            commands::get_alt_text,
-            commands::list_alt_text,
-            commands::set_alt_text,
-            // Issue #230 — PDF annotations
-            commands::pdf_annotation_add,
-            commands::pdf_annotations_list,
-            commands::pdf_annotation_update,
-            commands::pdf_annotation_delete,
-            commands::pdf_annotation_page_counts,
-            commands::pdf_annotation_reply_add,
-            commands::pdf_annotation_replies_list,
-            // Issue #289-#293 — server-streamed events and base64 page render.
+            // Preferences & alt text
+            settings_cmds::get_preference,
+            settings_cmds::set_preference,
+            settings_cmds::get_all_preferences,
+            settings_cmds::get_alt_text,
+            settings_cmds::list_alt_text,
+            settings_cmds::set_alt_text,
+            // PDF annotations
+            pdf_cmds::pdf_annotation_add,
+            pdf_cmds::pdf_annotations_list,
+            pdf_cmds::pdf_annotation_update,
+            pdf_cmds::pdf_annotation_delete,
+            pdf_cmds::pdf_annotation_page_counts,
+            pdf_cmds::pdf_annotation_reply_add,
+            pdf_cmds::pdf_annotation_replies_list,
+            // Events and rendering
             commands_extra::subscribe_events,
             commands_extra::render_page_b64,
-            // Issue #291 — batched read-only IPC.
-            commands::batch_commands,
+            // Batched IPC
+            batch_cmds::batch_commands,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

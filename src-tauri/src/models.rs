@@ -161,6 +161,7 @@ pub struct HotFolderInput {
 
 // ── Barcode detection (Phase 5.2) ────────────────────────────────────────
 
+#[allow(dead_code)] // Used by future barcode feature; struct exists for frontend type generation
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BarcodeResult {
     pub text: String,
@@ -201,6 +202,7 @@ pub struct AnalyticsDashboard {
 
 // ── Approval sheet & export (Phase 5.4) ──────────────────────────────────
 
+#[allow(dead_code)] // Future approval sheet customization feature
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ApprovalSheetConfig {
     pub title: String,

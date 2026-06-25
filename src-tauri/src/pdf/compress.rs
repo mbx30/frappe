@@ -54,6 +54,7 @@ struct StreamStats {
     streams_recompressed: u32,
     images_downsampled: u32,
     images_recompressed: u32,
+    #[allow(dead_code)] // Tracked for future metrics reporting
     fonts_subsetted: u32,
     bytes_saved: u64,
 }

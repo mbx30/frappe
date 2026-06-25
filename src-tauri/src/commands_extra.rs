@@ -1,5 +1,6 @@
 //! New Tauri commands added in the #289-#293 batch.
 
+use base64::Engine;
 use serde::Serialize;
 use tauri::ipc::Channel;
 
@@ -120,35 +121,5 @@ pub async fn render_page_b64(
     })
     .await
     .map_err(|e| format!("spawn_blocking join error: {e}"))??;
-    Ok(base64_encode(&png_bytes))
-}
-
-fn base64_encode(input: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity((input.len() + 2) / 3 * 4);
-    let mut i = 0;
-    while i + 3 <= input.len() {
-        let n = ((input[i] as u32) << 16) | ((input[i + 1] as u32) << 8) | (input[i + 2] as u32);
-        out.push(ALPHABET[((n >> 18) & 0x3F) as usize] as char);
-        out.push(ALPHABET[((n >> 12) & 0x3F) as usize] as char);
-        out.push(ALPHABET[((n >> 6) & 0x3F) as usize] as char);
-        out.push(ALPHABET[(n & 0x3F) as usize] as char);
-        i += 3;
-    }
-    let rem = input.len() - i;
-    if rem == 1 {
-        let n = (input[i] as u32) << 16;
-        out.push(ALPHABET[((n >> 18) & 0x3F) as usize] as char);
-        out.push(ALPHABET[((n >> 12) & 0x3F) as usize] as char);
-        out.push('=');
-        out.push('=');
-    } else if rem == 2 {
-        let n = ((input[i] as u32) << 16) | ((input[i + 1] as u32) << 8);
-        out.push(ALPHABET[((n >> 18) & 0x3F) as usize] as char);
-        out.push(ALPHABET[((n >> 12) & 0x3F) as usize] as char);
-        out.push(ALPHABET[((n >> 6) & 0x3F) as usize] as char);
-        out.push('=');
-    }
-    out
+    Ok(base64::engine::general_purpose::STANDARD.encode(&png_bytes))
 }

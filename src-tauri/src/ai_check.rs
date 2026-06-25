@@ -1,7 +1,6 @@
 use crate::keychain;
 use crate::models::AiCheckResult;
 use serde::{Deserialize, Serialize};
-use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -108,7 +107,7 @@ pub async fn ai_visual_check_batched(
     ensure_daily_quota()?;
 
     let api_key = read_api_key()?;
-    let endpoint = read_endpoint();
+    let endpoint = read_endpoint()?;
 
     let mut message = ChatMessage {
         role: "user".to_string(),
@@ -208,14 +207,16 @@ fn read_api_key() -> Result<String, String> {
     })
 }
 
-fn read_endpoint() -> String {
-    match keychain::read_secret(SERVICE_NAME, ENDPOINT_NAME) {
+fn read_endpoint() -> Result<String, String> {
+    let endpoint = match keychain::read_secret(SERVICE_NAME, ENDPOINT_NAME) {
         Ok(secret) => secret
             .value
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| "https://api.openai.com/v1/chat/completions".to_string()),
         Err(_) => "https://api.openai.com/v1/chat/completions".to_string(),
-    }
+    };
+    crate::comm_cmds::validate_command_url(&endpoint)?;
+    Ok(endpoint)
 }
 
 fn ensure_daily_quota() -> Result<(), String> {
@@ -236,6 +237,27 @@ fn ensure_daily_quota() -> Result<(), String> {
 
 fn increment_daily_usage() {
     DAILY_USAGE.fetch_add(1, Ordering::Relaxed);
+}
+
+/// Load a previously persisted daily quota into the static counters.
+/// Called at the start of a Tauri command that will call the AI API so the
+/// quota is tracked across app restarts via the `preferences` table.
+pub fn load_quota_from_prefs(day: u64, count: u64) {
+    // Only restore if the persisted day is still today; otherwise the
+    // existing day-rollover logic in `ensure_daily_quota` handles the reset.
+    let today = current_day();
+    if day == today {
+        DAILY_USAGE_DATE.store(day, Ordering::Relaxed);
+        DAILY_USAGE.store(count, Ordering::Relaxed);
+    }
+}
+
+/// Snapshot the current in-memory daily usage counters so callers can persist
+/// them to the DB after an AI API call.
+pub fn quota_snapshot() -> (u64, u64) {
+    let day = DAILY_USAGE_DATE.load(Ordering::Relaxed);
+    let count = DAILY_USAGE.load(Ordering::Relaxed);
+    (day, count)
 }
 
 fn current_day() -> u64 {

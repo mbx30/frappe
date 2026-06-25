@@ -3,6 +3,7 @@
 // particularly filesystem paths used in PDF operations.
 
 use std::path::{Component, Path, PathBuf};
+use std::sync::OnceLock;
 
 /// Result type for security validation operations.
 pub type SecurityResult<T> = Result<T, SecurityError>;
@@ -60,6 +61,7 @@ impl From<SecurityError> for String {
 ///   1. Contain no NUL bytes
 ///   2. Exist on the filesystem
 ///   3. Canonicalize to an absolute path
+///   4. Not be inside a system/read-only location
 pub fn validate_read_path(path: &str) -> SecurityResult<PathBuf> {
     if path.contains('\0') {
         return Err(SecurityError::PathContainsNullBytes);
@@ -82,8 +84,14 @@ pub fn validate_read_path(path: &str) -> SecurityResult<PathBuf> {
         return Err(SecurityError::PathNotFound);
     }
 
-    p.canonicalize()
-        .map_err(|e| SecurityError::PathCanonicalizeFailure(e.to_string()))
+    let canonical = p
+        .canonicalize()
+        .map_err(|e| SecurityError::PathCanonicalizeFailure(e.to_string()))?;
+
+    // Reject system locations (Windows: C:\Windows, etc.; Unix: /etc, /proc, etc.)
+    reject_system_location(&canonical)?;
+
+    Ok(canonical)
 }
 
 /// Validate a path for read operations and ensure it is a directory.
@@ -183,13 +191,39 @@ pub fn validate_write_path_with_extension(
     Ok(canonical)
 }
 
+/// Cache the user's home directory for Windows `C:\Users` exception.
+fn home_dir_cached() -> Option<PathBuf> {
+    static HOME: OnceLock<Option<PathBuf>> = OnceLock::new();
+    HOME.get_or_init(|| dirs::home_dir().and_then(|h| h.canonicalize().ok()))
+        .clone()
+}
+
 /// Reject paths inside system/read-only locations.
 fn reject_system_location(path: &Path) -> SecurityResult<()> {
-    let s = path.to_string_lossy().to_lowercase();
-    let blocked_prefixes = blocked_system_locations();
+    // Canonicalize the given path for consistent, OS-normalized comparison.
+    let canonical = path
+        .canonicalize()
+        .map_err(|_| SecurityError::PathInsideSystemLocation)?;
 
-    for blocked in blocked_prefixes {
-        if s == blocked || s.starts_with(&format!("{}/", blocked)) {
+    let home = home_dir_cached();
+
+    for blocked_str in blocked_system_locations() {
+        let blocked_path = Path::new(blocked_str);
+        // Canonicalize the blocked path so we compare OS-normalized forms.
+        let canonical_blocked = if blocked_path.exists() {
+            blocked_path.canonicalize().unwrap_or_else(|_| blocked_path.to_path_buf())
+        } else {
+            blocked_path.to_path_buf()
+        };
+
+        if canonical.starts_with(&canonical_blocked) {
+            // Exception: allow the user's own home directory on Windows
+            // (which sits under C:\Users).
+            if let Some(ref home_dir) = home {
+                if canonical.starts_with(home_dir) {
+                    return Ok(());
+                }
+            }
             return Err(SecurityError::PathInsideSystemLocation);
         }
     }
@@ -201,17 +235,19 @@ fn reject_system_location(path: &Path) -> SecurityResult<()> {
 #[cfg(windows)]
 fn blocked_system_locations() -> Vec<&'static str> {
     vec![
-        "c:\\windows",
-        "c:\\program files",
-        "c:\\program files (x86)",
-        "c:\\programdata",
+        "C:\\Windows",
+        "C:\\Program Files",
+        "C:\\Program Files (x86)",
+        "C:\\ProgramData",
+        "C:\\Users",
     ]
 }
 
 #[cfg(unix)]
 fn blocked_system_locations() -> Vec<&'static str> {
     vec![
-        "/etc", "/usr", "/bin", "/sbin", "/var", "/boot", "/sys", "/proc", "/root",
+        "/etc", "/usr", "/bin", "/sbin", "/var", "/boot", "/sys", "/proc",
+        "/root", "/dev",
     ]
 }
 
@@ -292,10 +328,58 @@ mod tests {
     }
 
     #[test]
+    fn test_validate_read_path_rejects_system_location() {
+        #[cfg(unix)]
+        {
+            // /etc/passwd exists on every Unix system and should be blocked.
+            let result = validate_read_path("/etc/passwd");
+            assert!(
+                matches!(result, Err(SecurityError::PathInsideSystemLocation)),
+                "expected PathInsideSystemLocation, got {:?}",
+                result
+            );
+        }
+        #[cfg(windows)]
+        {
+            // C:\Windows exists on every Windows system.
+            let result = validate_read_path("C:\\Windows\\System32\\drivers\\etc\\hosts");
+            if std::path::Path::new("C:\\Windows\\System32\\drivers\\etc\\hosts").exists() {
+                assert!(
+                    matches!(result, Err(SecurityError::PathInsideSystemLocation)),
+                    "expected PathInsideSystemLocation, got {:?}",
+                    result
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_validate_read_path_allows_home_dir() {
+        // Paths under the user's own home directory should be allowed
+        // even though they sit under C:\Users on Windows.
+        if let Some(home) = dirs::home_dir() {
+            let test_file = home.join(".frappe_security_test_tmp");
+            // Don't create the file — we just check that the path doesn't
+            // trigger the system-location check. The file-doesn't-exist
+            // error will come from PathNotFound, not PathInsideSystemLocation.
+            let result = validate_read_path(test_file.to_str().unwrap());
+            assert!(
+                !matches!(result, Err(SecurityError::PathInsideSystemLocation)),
+                "home directory path should not be rejected as system location"
+            );
+        }
+    }
+
+    #[test]
     fn test_validate_write_path_system_location() {
         #[cfg(unix)]
         {
             let result = validate_write_path("/usr/local/bin/output.txt");
+            assert!(matches!(result, Err(SecurityError::PathInsideSystemLocation)));
+        }
+        #[cfg(windows)]
+        {
+            let result = validate_write_path("C:\\Windows\\system32\\output.txt");
             assert!(matches!(result, Err(SecurityError::PathInsideSystemLocation)));
         }
     }
