@@ -50,10 +50,13 @@ opt-level = 3
 opt-level = 1
 
 # Bench profile for the regression-suite benchmarks in `benches/`.
+# Note: benches link against both rlib (panic=abort) and criterion (panic=unwind).
+# Set panic=unwind to avoid incompatibility errors during linking.
 [profile.bench]
 opt-level = 3
 lto = "thin"
 debug = true
+panic = "unwind"
 
 [build-dependencies]
 tauri-build = { version = "2.6.2", features = [] }
