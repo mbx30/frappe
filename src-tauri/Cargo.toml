@@ -172,6 +172,7 @@ libc = "0.2"
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
+lopdf = "0.41"
 
 [[bench]]
 name = "compression"
