@@ -13,6 +13,8 @@ jobs:
   bloat:
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    permissions:
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
 
