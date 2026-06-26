@@ -1,0 +1,145 @@
+/**
+ * Styling for AltTextContextMenu component.
+ *
+ * Fixed-position dialog that appears at mouse coordinates with a 16px offset
+ * to avoid covering the exact cursor position.
+ */
+
+.alt-text-context-menu {
+  z-index: 1200;
+  transform: translate(-8px, 8px);
+}
+
+.alt-text-menu-content {
+  background: var(--surface-1, #fff);
+  border-radius: 8px;
+  padding: 16px;
+  width: 320px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border: 1px solid var(--border-subtle, #e0e0e0);
+}
+
+.alt-text-menu-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.alt-text-menu-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #111);
+}
+
+.alt-text-menu-id {
+  font-size: 12px;
+  color: var(--text-secondary, #666);
+  background: var(--surface-2, #f5f5f5);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.alt-text-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.alt-text-input-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary, #666);
+}
+
+.alt-text-input {
+  font-family: inherit;
+  font-size: 13px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-default, #ccc);
+  border-radius: 6px;
+  background: var(--surface-1, #fff);
+  color: var(--text-primary, #111);
+  resize: vertical;
+  transition: border-color 80ms, box-shadow 80ms;
+}
+
+.alt-text-input:focus {
+  outline: none;
+  border-color: var(--brand, #863bff);
+  box-shadow: 0 0 0 3px rgba(134, 59, 255, 0.1);
+}
+
+.alt-text-input:disabled {
+  background: var(--surface-2, #f5f5f5);
+  color: var(--text-disabled, #999);
+  cursor: not-allowed;
+}
+
+.alt-text-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-primary, #111);
+  cursor: pointer;
+  user-select: none;
+}
+
+.alt-text-checkbox {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--brand, #863bff);
+}
+
+.alt-text-menu-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.alt-text-btn {
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 80ms;
+}
+
+.alt-text-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.alt-text-btn--cancel {
+  background: var(--surface-2, #f5f5f5);
+  color: var(--text-primary, #111);
+  border-color: var(--border-default, #ccc);
+}
+
+.alt-text-btn--cancel:hover:not(:disabled) {
+  background: var(--surface-hover, #eee);
+  border-color: var(--border-subtle, #d0d0d0);
+}
+
+.alt-text-btn--save {
+  background: var(--brand, #863bff);
+  color: var(--text-inverse, #fff);
+}
+
+.alt-text-btn--save:hover:not(:disabled) {
+  background: #7530d6;
+}
+
+.alt-text-btn--save:active:not(:disabled) {
+  background: #642cbd;
+}
