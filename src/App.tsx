@@ -4,6 +4,7 @@ import type { BusinessInfo } from './types'
 import Welcome from './components/Welcome'
 import BusinessOnboarding from './components/BusinessOnboarding'
 import ManagementView from './components/ManagementView'
+import { AltTextStoreProvider } from './store/altTextStore'
 import './App.css'
 
 function App() {
@@ -92,4 +93,12 @@ function App() {
   )
 }
 
-export default App
+function AppWithProviders() {
+  return (
+    <AltTextStoreProvider>
+      <App />
+    </AltTextStoreProvider>
+  )
+}
+
+export default AppWithProviders

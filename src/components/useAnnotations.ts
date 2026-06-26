@@ -13,6 +13,14 @@ export const MIN_FRACTION = 0.005
 
 export interface DraftRect { x0: number; y0: number; x1: number; y1: number }
 
+export interface AltTextContextMenuState {
+  x: number
+  y: number
+  objectId: number
+  initialAltText: string
+  initialIsDecorative: boolean
+}
+
 export interface AnnotationState {
   activeTool: AnnotationType | null
   setActiveTool: React.Dispatch<React.SetStateAction<AnnotationType | null>>
@@ -28,6 +36,8 @@ export interface AnnotationState {
   replies: PdfAnnotationReply[]
   editingAnnotation: PdfAnnotation | null
   setEditingAnnotation: React.Dispatch<React.SetStateAction<PdfAnnotation | null>>
+  pendingAltTextMenu: AltTextContextMenuState | null
+  setPendingAltTextMenu: React.Dispatch<React.SetStateAction<AltTextContextMenuState | null>>
   overlayRef: React.RefObject<HTMLDivElement | null>
   dragging: React.MutableRefObject<boolean>
   filePath: string
@@ -54,6 +64,7 @@ export function useAnnotations(filePath: string, pageIndex: number, pageWidthPts
   const [selectedAnnotation, setSelectedAnnotation] = useState<PdfAnnotation | null>(null)
   const [replies, setReplies] = useState<PdfAnnotationReply[]>([])
   const [editingAnnotation, setEditingAnnotation] = useState<PdfAnnotation | null>(null)
+  const [pendingAltTextMenu, setPendingAltTextMenu] = useState<AltTextContextMenuState | null>(null)
   const overlayRef = useRef<HTMLDivElement>(null)
   const dragging = useRef(false)
 
@@ -210,6 +221,7 @@ export function useAnnotations(filePath: string, pageIndex: number, pageWidthPts
     selectedAnnotation, setSelectedAnnotation,
     replies,
     editingAnnotation, setEditingAnnotation,
+    pendingAltTextMenu, setPendingAltTextMenu,
     overlayRef, dragging,
     filePath, pageIndex, pageWidthPts, pageHeightPts,
     fractionFromEvent,

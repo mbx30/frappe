@@ -1,6 +1,9 @@
 import { useState } from 'react'
+import { invoke } from '@tauri-apps/api/core'
 import type { PdfAnnotation, PdfAnnotationReply, AnnotationType } from '../types'
 import { type AnnotationState, COLORS } from './useAnnotations'
+import { AltTextContextMenu } from './AltTextContextMenu'
+import { useAltTextStore } from '../store/altTextStore'
 import './AnnotationLayer.css'
 
 function NoteDialog({ initial, onSave, onCancel }: { initial: string; onSave: (t: string) => void; onCancel: () => void }) {
@@ -129,9 +132,46 @@ export function AnnotationOverlay({ state }: { state: AnnotationState }) {
     pendingNoteRect, setPendingNoteRect,
     selectedAnnotation, setSelectedAnnotation,
     replies, editingAnnotation, setEditingAnnotation,
+    pendingAltTextMenu, setPendingAltTextMenu,
     overlayRef, handleMouseDown, handleMouseMove, commitDraft,
     saveNote, openAnnotation, deleteAnnotation, addReply, saveEdit,
+    filePath,
   } = state
+
+  const { updateAltText, markSaved } = useAltTextStore()
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault()
+    // Generate a simple object ID based on position (placeholder for real image detection)
+    // In a real implementation, this would map pixel coordinates to actual PDF image XObject IDs
+    const objectId = Math.floor(Math.random() * 10000)
+    setPendingAltTextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      objectId,
+      initialAltText: '',
+      initialIsDecorative: false,
+    })
+  }
+
+  const handleSaveAltText = async (altText: string, isDecorative: boolean) => {
+    if (!pendingAltTextMenu) return
+    try {
+      // Update session store immediately
+      updateAltText(filePath, pendingAltTextMenu.objectId, altText, isDecorative)
+      // Save to backend
+      await invoke('set_alt_text', {
+        filePath,
+        objectId: pendingAltTextMenu.objectId,
+        altText,
+        isDecorative,
+      })
+      markSaved(filePath, pendingAltTextMenu.objectId)
+    } catch (error) {
+      console.error('Failed to save alt-text:', error)
+    }
+    setPendingAltTextMenu(null)
+  }
 
   const draftStyle = draft
     ? {
@@ -153,6 +193,7 @@ export function AnnotationOverlay({ state }: { state: AnnotationState }) {
         onMouseMove={handleMouseMove}
         onMouseUp={commitDraft}
         onMouseLeave={commitDraft}
+        onContextMenu={handleContextMenu}
       >
         {pageAnnotations.map((ann) => {
           if (pageWidthPts === 0 || pageHeightPts === 0) return null
@@ -211,6 +252,17 @@ export function AnnotationOverlay({ state }: { state: AnnotationState }) {
           onClose={() => setSelectedAnnotation(null)}
           onDelete={() => deleteAnnotation(selectedAnnotation.id)}
           onEdit={() => setEditingAnnotation(selectedAnnotation)}
+        />
+      )}
+      {pendingAltTextMenu && (
+        <AltTextContextMenu
+          x={pendingAltTextMenu.x}
+          y={pendingAltTextMenu.y}
+          objectId={pendingAltTextMenu.objectId}
+          initialAltText={pendingAltTextMenu.initialAltText}
+          initialIsDecorative={pendingAltTextMenu.initialIsDecorative}
+          onSave={handleSaveAltText}
+          onCancel={() => setPendingAltTextMenu(null)}
         />
       )}
     </>

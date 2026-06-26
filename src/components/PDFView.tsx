@@ -10,6 +10,7 @@ import OCRPanel from './preflight/OCRPanel'
 import RedactionLayer from './RedactionLayer'
 import { useAnnotations } from './useAnnotations'
 import { AnnotationToolbar, AnnotationOverlay } from './AnnotationLayer'
+import { useAltTextStore } from '../store/altTextStore'
 import { makeKeyDownHandler, buildShortcuts, formatShortcut, type ShortcutHandlers } from './preflight/keyboardShortcuts'
 import { t } from '../i18n'
 import './PDFView.css'
@@ -344,6 +345,7 @@ export default function PDFView({ summary, jobs, onOpenFile, onSaveJob, onDelete
   const [findQuery, setFindQuery] = useState('')
   const [findResult, setFindResult] = useState<string | null>(null)
   const [showHelp, setShowHelp] = useState(false)
+  const { hasUnsavedChanges } = useAltTextStore()
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setCurrentPage(0); setShowViewer(false); setPreflightResult(null); setShowReport(false); setShowRedact(false); setRedactNotice(null) }, [summary?.file_path])
 
@@ -410,6 +412,19 @@ export default function PDFView({ summary, jobs, onOpenFile, onSaveJob, onDelete
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handleKeyDown])
+
+  useEffect(() => {
+    if (!summary) return
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges(summary.file_path)) {
+        e.preventDefault()
+        e.returnValue = 'You have unsaved alt-text changes. Are you sure you want to leave?'
+        return e.returnValue
+      }
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [summary, hasUnsavedChanges])
 
   useEffect(() => {
     if (!showFind) return

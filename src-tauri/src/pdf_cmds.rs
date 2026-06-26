@@ -441,6 +441,16 @@ pub fn get_pdf_catalog(path: String) -> Result<serde_json::Value, String> {
         serde_json::Value::Number(serde_json::Number::from(page_count as u64)),
     );
 
+    // Compute image count using existing image detection infrastructure
+    let image_count = match crate::pdf::images::check_image_resolution(&doc) {
+        Ok(findings) => findings.len(),
+        Err(_) => 0,
+    };
+    result.insert(
+        "ImageCount".to_string(),
+        serde_json::Value::Number(serde_json::Number::from(image_count as u64)),
+    );
+
     let pdf_version = {
         let path_buf = std::path::PathBuf::from(&path);
         let mut header = [0u8; 100];
