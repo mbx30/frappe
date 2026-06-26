@@ -1,5 +1,6 @@
 pub mod action_list;
 pub mod action_list_debugger;
+pub mod alt_text;
 pub mod annotations;
 pub mod approval_sheet;
 pub mod barcode;

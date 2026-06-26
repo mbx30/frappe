@@ -337,6 +337,7 @@ pub fn run() {
             settings_cmds::get_alt_text,
             settings_cmds::list_alt_text,
             settings_cmds::set_alt_text,
+            settings_cmds::apply_alt_text_to_pdf,
             // PDF annotations
             pdf_cmds::pdf_annotation_add,
             pdf_cmds::pdf_annotations_list,
