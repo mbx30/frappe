@@ -85,15 +85,14 @@ pub fn send_email_via_smtp(
     if settings.use_tls {
         let tls = lettre::transport::smtp::client::TlsParameters::new(settings.smtp_host.clone())
             .map_err(|e| format!("TLS parameters: {e}"))?;
-        transport_builder = transport_builder.tls(lettre::transport::smtp::client::Tls::Required(tls));
+        transport_builder =
+            transport_builder.tls(lettre::transport::smtp::client::Tls::Required(tls));
     } else {
         transport_builder = transport_builder.tls(lettre::transport::smtp::client::Tls::None);
     }
     if !settings.smtp_username.is_empty() {
-        transport_builder = transport_builder.credentials(Credentials::new(
-            settings.smtp_username.clone(),
-            password,
-        ));
+        transport_builder = transport_builder
+            .credentials(Credentials::new(settings.smtp_username.clone(), password));
     }
     let transport = transport_builder.build();
 

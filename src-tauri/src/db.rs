@@ -4126,23 +4126,22 @@ impl Database {
             Ok(s) => s,
             Err(_) => return Ok(Vec::new()),
         };
-        let rows = stmt
-            .query_map([], |row| {
-                let runs: i64 = row.get(1)?;
-                let errors: i64 = row.get(2)?;
-                let pass_rate = if runs > 0 {
-                    (runs - errors) as f64 / runs as f64
-                } else {
-                    0.0
-                };
-                Ok(ClientPassRate {
-                    client_name: row.get(0)?,
-                    runs,
-                    errors,
-                    warnings: row.get(3)?,
-                    pass_rate,
-                })
-            })?;
+        let rows = stmt.query_map([], |row| {
+            let runs: i64 = row.get(1)?;
+            let errors: i64 = row.get(2)?;
+            let pass_rate = if runs > 0 {
+                (runs - errors) as f64 / runs as f64
+            } else {
+                0.0
+            };
+            Ok(ClientPassRate {
+                client_name: row.get(0)?,
+                runs,
+                errors,
+                warnings: row.get(3)?,
+                pass_rate,
+            })
+        })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.into())
     }
 
@@ -4187,10 +4186,9 @@ impl Database {
             Ok(s) => s,
             Err(_) => return Ok(Vec::new()),
         };
-        let rows = stmt
-            .query_map([], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
-            })?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.into())
     }
 
@@ -4519,11 +4517,7 @@ impl Database {
 
     // ── Alt text (#234) ─────────────────────────────────────────────
 
-    pub fn get_alt_text(
-        &self,
-        file_path: &str,
-        object_id: i64,
-    ) -> Result<Option<(String, bool)>> {
+    pub fn get_alt_text(&self, file_path: &str, object_id: i64) -> Result<Option<(String, bool)>> {
         let conn = self
             .conn
             .lock()
@@ -4745,10 +4739,7 @@ impl Database {
         )
     }
 
-    pub fn list_annotation_replies(
-        &self,
-        annotation_id: i64,
-    ) -> Result<Vec<PdfAnnotationReply>> {
+    pub fn list_annotation_replies(&self, annotation_id: i64) -> Result<Vec<PdfAnnotationReply>> {
         let conn = self
             .conn
             .lock()

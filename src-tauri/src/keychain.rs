@@ -153,7 +153,9 @@ fn write_fallback(service: &str, key: &str, value: &str) -> Result<(), String> {
                         "secrets.json (plaintext fallback) is corrupt ({}); \
                          refusing to overwrite. Aborting write of {}/{} to \
                          avoid wiping existing secrets.",
-                        e, service, key
+                        e,
+                        service,
+                        key
                     );
                     return Err(format!(
                         "secrets.json is corrupt, refusing to overwrite: {}",
@@ -186,7 +188,9 @@ fn delete_fallback(service: &str, key: &str) -> Result<(), String> {
                 "secrets.json (plaintext fallback) is corrupt ({}); \
                  refusing to wipe. Aborting delete of {}/{} to avoid \
                  wiping existing secrets.",
-                e, service, key
+                e,
+                service,
+                key
             );
             format!("secrets.json is corrupt, refusing to wipe: {}", e)
         })?;

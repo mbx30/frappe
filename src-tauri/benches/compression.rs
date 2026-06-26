@@ -19,8 +19,8 @@ fn bench_compress_pdf(c: &mut Criterion) {
     group.throughput(Throughput::Bytes(size));
     group.bench_function("five_mb_default", |b| {
         b.iter(|| {
-            let opts = crate::pdf::compress::CompressionOptions::default();
-            let res = crate::pdf::compress::compress_pdf(
+            let opts = app_lib::pdf::compress::CompressionOptions::default();
+            let res = app_lib::pdf::compress::compress_pdf(
                 input.to_str().unwrap(),
                 Some(output.to_str().unwrap()),
                 &opts,

@@ -31,7 +31,13 @@ pub fn get_alt_text(
     object_id: i64,
 ) -> Result<Option<AltTextEntry>, String> {
     db.get_alt_text(&file_path, object_id)
-        .map(|opt| opt.map(|(alt_text, is_decorative)| AltTextEntry { object_id, alt_text, is_decorative }))
+        .map(|opt| {
+            opt.map(|(alt_text, is_decorative)| AltTextEntry {
+                object_id,
+                alt_text,
+                is_decorative,
+            })
+        })
         .map_err(|e| e.to_string())
 }
 
@@ -41,11 +47,15 @@ pub fn list_alt_text(
     file_path: String,
 ) -> Result<Vec<AltTextEntry>, String> {
     db.get_alt_text_for_file(&file_path)
-        .map(|rows| rows.into_iter().map(|(object_id, alt_text, is_decorative)| AltTextEntry {
-            object_id,
-            alt_text,
-            is_decorative,
-        }).collect())
+        .map(|rows| {
+            rows.into_iter()
+                .map(|(object_id, alt_text, is_decorative)| AltTextEntry {
+                    object_id,
+                    alt_text,
+                    is_decorative,
+                })
+                .collect()
+        })
         .map_err(|e| e.to_string())
 }
 

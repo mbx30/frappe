@@ -53,9 +53,7 @@ pub fn record_error(error_message: &str, stack_trace: Option<&str>) {
 
     let report = CrashReport {
         error_message: redact_secrets(error_message),
-        stack_trace: stack_trace
-            .map(redact_secrets)
-            .unwrap_or_default(),
+        stack_trace: stack_trace.map(redact_secrets).unwrap_or_default(),
         context: "tauri_command".to_string(),
         timestamp: current_unix_ts(),
     };

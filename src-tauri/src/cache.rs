@@ -48,9 +48,7 @@ impl<T: Clone> QueryCache<T> {
     /// Recovering rather than panicking keeps the app running; stale entries
     /// are discarded on next `get` via TTL expiry.
     fn lock_cache(&self) -> std::sync::MutexGuard<'_, LruCache<String, (T, Instant)>> {
-        self.cache
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
+        self.cache.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     pub fn get(&self, key: &str) -> Option<T> {

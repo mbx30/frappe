@@ -50,10 +50,13 @@ opt-level = 3
 opt-level = 1
 
 # Bench profile for the regression-suite benchmarks in `benches/`.
+# Note: benches link against both rlib (panic=abort) and criterion (panic=unwind).
+# Set panic=unwind to avoid incompatibility errors during linking.
 [profile.bench]
 opt-level = 3
 lto = "thin"
 debug = true
+panic = "unwind"
 
 [build-dependencies]
 tauri-build = { version = "2.6.2", features = [] }
@@ -169,3 +172,15 @@ palette = "0.7"
 # pulling in `mach2`.
 once_cell = "1"
 libc = "0.2"
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+lopdf = "0.41"
+
+[[bench]]
+name = "compression"
+harness = false
+
+[[bench]]
+name = "preflight"
+harness = false

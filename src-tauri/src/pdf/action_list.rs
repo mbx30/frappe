@@ -63,9 +63,7 @@ impl RecordingSession {
         RecordingSession {
             name: name.into(),
             steps: Vec::new(),
-            started_at: chrono::Utc::now()
-                .format("%Y-%m-%d %H:%M:%S")
-                .to_string(),
+            started_at: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
         }
     }
 }
@@ -99,7 +97,9 @@ pub fn record_step(step: ActionStep) -> Result<(), String> {
 /// `Database::create_action_list` + `Database::add_action_list_step`.
 pub fn stop_recording() -> Result<ActionList, String> {
     let mut slot = RECORDING.lock().map_err(|e| format!("lock: {e}"))?;
-    let session = slot.take().ok_or_else(|| "No active recording session".to_string())?;
+    let session = slot
+        .take()
+        .ok_or_else(|| "No active recording session".to_string())?;
     Ok(ActionList {
         name: session.name,
         steps: session.steps,
@@ -198,10 +198,7 @@ pub struct SetLayerVisibilityParams {
     pub visible: bool,
 }
 
-fn run_step(
-    step: &ActionStep,
-    working_pdf: &mut std::path::PathBuf,
-) -> Result<StepResult, String> {
+fn run_step(step: &ActionStep, working_pdf: &mut std::path::PathBuf) -> Result<StepResult, String> {
     let started = std::time::Instant::now();
     let res = dispatch_step(step, working_pdf);
     let duration_ms = started.elapsed().as_millis() as u64;
@@ -307,13 +304,7 @@ fn dispatch_step(
             let p: InsertBlankPageParams = serde_json::from_value(step.params.clone())
                 .map_err(|e| format!("insert_blank_page params: {e}"))?;
             let next = derive_step_output(working_pdf, "with_blank");
-            insert_blank_page_in_place(
-                working_pdf,
-                p.after_index,
-                p.width_mm,
-                p.height_mm,
-                &next,
-            )?;
+            insert_blank_page_in_place(working_pdf, p.after_index, p.width_mm, p.height_mm, &next)?;
             *working_pdf = next.clone();
             Ok(Some(next))
         }
@@ -387,9 +378,19 @@ fn add_bleed_in_place(input: &Path, amount_mm: f64, out: &Path) -> Result<(), St
             .map_err(|e| format!("page dict: {e}"))?;
         let bleed_vals = get_array_vals(page_dict, b"BleedBox");
         let new_bleed = if let Some(bb) = bleed_vals {
-            vec![bb[0] - amount_pts, bb[1] - amount_pts, bb[2] + amount_pts, bb[3] + amount_pts]
+            vec![
+                bb[0] - amount_pts,
+                bb[1] - amount_pts,
+                bb[2] + amount_pts,
+                bb[3] + amount_pts,
+            ]
         } else if let Some(trim) = get_array_vals(page_dict, b"TrimBox") {
-            vec![trim[0] - amount_pts, trim[1] - amount_pts, trim[2] + amount_pts, trim[3] + amount_pts]
+            vec![
+                trim[0] - amount_pts,
+                trim[1] - amount_pts,
+                trim[2] + amount_pts,
+                trim[3] + amount_pts,
+            ]
         } else {
             continue;
         };
@@ -571,7 +572,9 @@ fn insert_blank_page_in_place(
         .ok()
         .and_then(|o| o.as_reference().ok())
         .ok_or_else(|| "no Root".to_string())?;
-    let catalog = doc.get_dictionary(root_ref).map_err(|e| format!("catalog: {e}"))?;
+    let catalog = doc
+        .get_dictionary(root_ref)
+        .map_err(|e| format!("catalog: {e}"))?;
     let pages_ref = catalog
         .get(b"Pages")
         .ok()

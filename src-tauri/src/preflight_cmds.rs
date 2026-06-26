@@ -57,18 +57,13 @@ pub fn check_bleed(path: String, min_bleed_mm: Option<f64>) -> Result<Vec<BleedF
 }
 
 #[tauri::command]
-pub fn add_bleed(
-    path: String,
-    amount_mm: f64,
-    output_path: String,
-) -> Result<(), String> {
+pub fn add_bleed(path: String, amount_mm: f64, output_path: String) -> Result<(), String> {
     let path = security::validate_read_path(&path)?;
     let output_path = security::validate_write_path(&output_path)?;
     if amount_mm < 0.0 {
         return Err("amount_mm must be non-negative".to_string());
     }
-    let mut doc = lopdf::Document::load(&path)
-        .map_err(|e| format!("Failed to open PDF: {}", e))?;
+    let mut doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
     let page_ids: Vec<(u32, u16)> = doc.get_pages().values().copied().collect();
     let amount_pts = amount_mm / 0.3528;
 
@@ -164,9 +159,7 @@ pub fn add_bleed(
         pages_with_bleed += 1;
     }
     if pages_with_bleed == 0 {
-        return Err(
-            "No pages had a BleedBox or TrimBox to expand; nothing written".to_string(),
-        );
+        return Err("No pages had a BleedBox or TrimBox to expand; nothing written".to_string());
     }
     doc.save(&output_path)
         .map_err(|e| format!("Failed to save PDF: {}", e))?;
@@ -418,31 +411,33 @@ pub async fn run_profile(
         .get_preflight_profile(profile_id)
         .map_err(|e| e.to_string())?;
     let path = security::validate_read_path(&path)?;
-    tauri::async_runtime::spawn_blocking(move || -> Result<crate::pdf::registry::RunProfileResult, String> {
-        let doc =
-            lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
-        let mut findings: Vec<String> = Vec::new();
+    tauri::async_runtime::spawn_blocking(
+        move || -> Result<crate::pdf::registry::RunProfileResult, String> {
+            let doc =
+                lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {}", e))?;
+            let mut findings: Vec<String> = Vec::new();
 
-        let name_lower = profile.name.to_lowercase();
-        if name_lower.contains("pdf/x-1a") {
-            let f = crate::pdf::pdfx::check_pdfx(&doc, "PDF/X-1a:2003");
-            findings.extend(f.iter().map(|x| x.message.clone()));
-        } else if name_lower.contains("pdf/x-4") {
-            let f = crate::pdf::pdfx::check_pdfx(&doc, "PDF/X-4");
-            findings.extend(f.iter().map(|x| x.message.clone()));
-        }
-        let cs = crate::pdf::color::check_color_spaces(&doc, "Coated FOGRA39");
-        findings.extend(cs.iter().map(|x| x.message.clone()));
-        let sp = crate::pdf::color::check_spot_colors(&doc);
-        findings.extend(sp.iter().map(|x| x.message.clone()));
-        let ic = crate::pdf::color::check_ink_coverage(&doc);
-        findings.extend(ic.iter().map(|x| x.message.clone()));
+            let name_lower = profile.name.to_lowercase();
+            if name_lower.contains("pdf/x-1a") {
+                let f = crate::pdf::pdfx::check_pdfx(&doc, "PDF/X-1a:2003");
+                findings.extend(f.iter().map(|x| x.message.clone()));
+            } else if name_lower.contains("pdf/x-4") {
+                let f = crate::pdf::pdfx::check_pdfx(&doc, "PDF/X-4");
+                findings.extend(f.iter().map(|x| x.message.clone()));
+            }
+            let cs = crate::pdf::color::check_color_spaces(&doc, "Coated FOGRA39");
+            findings.extend(cs.iter().map(|x| x.message.clone()));
+            let sp = crate::pdf::color::check_spot_colors(&doc);
+            findings.extend(sp.iter().map(|x| x.message.clone()));
+            let ic = crate::pdf::color::check_ink_coverage(&doc);
+            findings.extend(ic.iter().map(|x| x.message.clone()));
 
-        Ok(crate::pdf::registry::RunProfileResult {
-            profile_name: profile.name,
-            findings_count: findings.len(),
-        })
-    })
+            Ok(crate::pdf::registry::RunProfileResult {
+                profile_name: profile.name,
+                findings_count: findings.len(),
+            })
+        },
+    )
     .await
     .map_err(|e| format!("spawn_blocking join error: {e}"))?
 }
@@ -557,8 +552,14 @@ pub fn export_preflight_report_csv(db: State<'_, Database>, run_id: i64) -> Resu
             .map_err(|e| e.to_string())?;
         for f in findings {
             let page_num = f.page_num.map(|n| n.to_string()).unwrap_or_default();
-            wtr.write_record([&f.check_name, &f.severity, &page_num, &f.message, &f.fix_hint])
-                .map_err(|e| e.to_string())?;
+            wtr.write_record([
+                &f.check_name,
+                &f.severity,
+                &page_num,
+                &f.message,
+                &f.fix_hint,
+            ])
+            .map_err(|e| e.to_string())?;
         }
         wtr.flush().map_err(|e| e.to_string())?;
     }
@@ -638,9 +639,7 @@ pub fn start_action_recording(name: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn record_action_step(
-    step: crate::pdf::action_list::ActionStep,
-) -> Result<(), String> {
+pub fn record_action_step(step: crate::pdf::action_list::ActionStep) -> Result<(), String> {
     crate::pdf::action_list::record_step(step)
 }
 
@@ -715,11 +714,7 @@ pub fn step_forward_debug(
     working_dir: String,
 ) -> Result<crate::pdf::action_list_debugger::DebugSession, String> {
     let working_dir = security::validate_write_path(&working_dir)?;
-    crate::pdf::action_list_debugger::step_forward(
-        &db,
-        id,
-        std::path::Path::new(&working_dir),
-    )
+    crate::pdf::action_list_debugger::step_forward(&db, id, std::path::Path::new(&working_dir))
 }
 
 #[tauri::command]
@@ -827,7 +822,9 @@ pub fn redact_pdf(
     let output_path = security::validate_write_path(&output_path)?;
 
     let input = std::fs::read(&path).map_err(|e| format!("Failed to read PDF: {e}"))?;
-    let output_path_str = output_path.to_str().ok_or("output path is not valid UTF-8")?;
+    let output_path_str = output_path
+        .to_str()
+        .ok_or("output path is not valid UTF-8")?;
     let result = crate::pdf::redact::redact_pdf_content(&input, &redactions, output_path_str)?;
 
     let regions_json = serde_json::to_string(&redactions).unwrap_or_else(|_| "[]".to_string());

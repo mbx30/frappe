@@ -91,35 +91,36 @@ pub async fn render_page_b64(
     let ph = bitmap.height() as u32;
     let bytes: Vec<u8> = bitmap.as_raw_bytes().to_vec();
     drop(bitmap);
-    let png_bytes: Vec<u8> = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<u8>, String> {
-        use image::ImageEncoder;
-        if bytes.len() < (pw as usize) * (ph as usize) * 4 {
-            return Err("Rendered bitmap is shorter than expected".to_string());
-        }
-        let mut img = image::RgbaImage::new(pw, ph);
-        for y in 0..ph {
-            for x in 0..pw {
-                let i = ((y * pw + x) * 4) as usize;
-                img.put_pixel(
-                    x,
-                    y,
-                    image::Rgba([bytes[i + 2], bytes[i + 1], bytes[i], bytes[i + 3]]),
-                );
+    let png_bytes: Vec<u8> =
+        tauri::async_runtime::spawn_blocking(move || -> Result<Vec<u8>, String> {
+            use image::ImageEncoder;
+            if bytes.len() < (pw as usize) * (ph as usize) * 4 {
+                return Err("Rendered bitmap is shorter than expected".to_string());
             }
-        }
-        let mut png: Vec<u8> = Vec::new();
-        let encoder = image::codecs::png::PngEncoder::new(&mut png);
-        encoder
-            .write_image(
-                img.as_raw(),
-                img.width(),
-                img.height(),
-                image::ColorType::Rgba8.into(),
-            )
-            .map_err(|e| format!("PNG encode error: {e}"))?;
-        Ok(png)
-    })
-    .await
-    .map_err(|e| format!("spawn_blocking join error: {e}"))??;
+            let mut img = image::RgbaImage::new(pw, ph);
+            for y in 0..ph {
+                for x in 0..pw {
+                    let i = ((y * pw + x) * 4) as usize;
+                    img.put_pixel(
+                        x,
+                        y,
+                        image::Rgba([bytes[i + 2], bytes[i + 1], bytes[i], bytes[i + 3]]),
+                    );
+                }
+            }
+            let mut png: Vec<u8> = Vec::new();
+            let encoder = image::codecs::png::PngEncoder::new(&mut png);
+            encoder
+                .write_image(
+                    img.as_raw(),
+                    img.width(),
+                    img.height(),
+                    image::ColorType::Rgba8.into(),
+                )
+                .map_err(|e| format!("PNG encode error: {e}"))?;
+            Ok(png)
+        })
+        .await
+        .map_err(|e| format!("spawn_blocking join error: {e}"))??;
     Ok(base64::engine::general_purpose::STANDARD.encode(&png_bytes))
 }

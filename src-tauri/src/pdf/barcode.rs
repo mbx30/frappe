@@ -102,21 +102,19 @@ pub fn detect_barcodes_in_image(
     // The high-level helpers::detect_multiple_in_image_with_hints takes a
     // DynamicImage by value, so we clone.
     let dyn_img_for_multi = dyn_img.clone();
-    let results: Vec<RXingResult> = match rxing::helpers::detect_multiple_in_image_with_hints(
-        dyn_img_for_multi,
-        &mut hints,
-    ) {
-        Ok(v) => v,
-        Err(_) => {
-            // Fall back to single-barcode detection in case the multi
-            // reader reports "NotFoundException" for a single isolated code.
-            let mut single_hints = hints.clone();
-            match rxing::helpers::detect_in_image_with_hints(dyn_img, None, &mut single_hints) {
-                Ok(r) => vec![r],
-                Err(_) => Vec::new(),
+    let results: Vec<RXingResult> =
+        match rxing::helpers::detect_multiple_in_image_with_hints(dyn_img_for_multi, &mut hints) {
+            Ok(v) => v,
+            Err(_) => {
+                // Fall back to single-barcode detection in case the multi
+                // reader reports "NotFoundException" for a single isolated code.
+                let mut single_hints = hints.clone();
+                match rxing::helpers::detect_in_image_with_hints(dyn_img, None, &mut single_hints) {
+                    Ok(r) => vec![r],
+                    Err(_) => Vec::new(),
+                }
             }
-        }
-    };
+        };
 
     let mut out = Vec::with_capacity(results.len());
     let page_w_pts = input.page_width_pts;

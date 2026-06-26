@@ -153,7 +153,12 @@ fn collect_bbox_for_match(
     for c in text_page.chars().iter() {
         let s = c.unicode_string().unwrap_or_default().to_lowercase();
         let b = match c.loose_bounds() {
-            Ok(r) => (r.left().value, r.bottom().value, r.right().value, r.top().value),
+            Ok(r) => (
+                r.left().value,
+                r.bottom().value,
+                r.right().value,
+                r.top().value,
+            ),
             Err(_) => (0.0, 0.0, 0.0, 0.0),
         };
         chars.push((s, b.0, b.1, b.2, b.3));
@@ -167,9 +172,7 @@ fn collect_bbox_for_match(
         return None;
     }
     let query_len = lower_query.chars().count();
-    let start_char = lower_text[..abs_pos.min(lower_text.len())]
-        .chars()
-        .count();
+    let start_char = lower_text[..abs_pos.min(lower_text.len())].chars().count();
     let end_char = start_char + query_len;
     if end_char > chars.len() {
         return None;
@@ -192,7 +195,12 @@ fn collect_bbox_for_match(
     if !any {
         return None;
     }
-    Some([min_left as f64, min_bottom as f64, max_right as f64, max_top as f64])
+    Some([
+        min_left as f64,
+        min_bottom as f64,
+        max_right as f64,
+        max_top as f64,
+    ])
 }
 
 #[tauri::command]
@@ -314,8 +322,7 @@ fn process_page_text_replacement(
             let decoded = crate::pdf::content_stream::decode_stream(&s).unwrap_or(data);
             (decoded, filters)
         };
-        let (new_bytes, replacements) =
-            replace_text_in_decoded(&decoded, find, replace);
+        let (new_bytes, replacements) = replace_text_in_decoded(&decoded, find, replace);
         *counter += replacements;
         if replacements == 0 {
             continue;
@@ -331,9 +338,7 @@ fn process_page_text_replacement(
             encoder
                 .write_all(&new_bytes)
                 .map_err(|e| format!("zlib write: {e}"))?;
-            encoder
-                .finish()
-                .map_err(|e| format!("zlib finish: {e}"))?
+            encoder.finish().map_err(|e| format!("zlib finish: {e}"))?
         } else {
             new_bytes
         };
@@ -392,9 +397,7 @@ fn process_form_xobject_text_replacement(
         encoder
             .write_all(&new_bytes)
             .map_err(|e| format!("zlib write: {e}"))?;
-        encoder
-            .finish()
-            .map_err(|e| format!("zlib finish: {e}"))?
+        encoder.finish().map_err(|e| format!("zlib finish: {e}"))?
     } else {
         new_bytes
     };
@@ -404,10 +407,7 @@ fn process_form_xobject_text_replacement(
             stream_obj.dict.remove(b"Length");
         }
     }
-    let form_dict = doc
-        .get_dictionary(form_id)
-        .ok()
-        .cloned();
+    let form_dict = doc.get_dictionary(form_id).ok().cloned();
     if let Some(form_dict) = form_dict {
         if let Ok(resources) = form_dict.get(b"Resources") {
             let resources_dict = match resources {
@@ -425,20 +425,20 @@ fn process_form_xobject_text_replacement(
                     if let Some(xd) = xo_dict {
                         for (_name, v) in xd.iter() {
                             if let lopdf::Object::Reference(r) = v {
-                            if let Ok(stream) = doc.get_object(*r).and_then(|o| o.as_stream()) {
-                                let is_form = stream
-                                    .dict
-                                    .get(b"Subtype")
-                                    .ok()
-                                    .and_then(|o| o.as_name().ok())
-                                    .map(|n| n == b"Form")
-                                    .unwrap_or(false);
-                                if is_form {
-                                    process_form_xobject_text_replacement(
-                                        doc, *r, find, replace, counter,
-                                    )?;
+                                if let Ok(stream) = doc.get_object(*r).and_then(|o| o.as_stream()) {
+                                    let is_form = stream
+                                        .dict
+                                        .get(b"Subtype")
+                                        .ok()
+                                        .and_then(|o| o.as_name().ok())
+                                        .map(|n| n == b"Form")
+                                        .unwrap_or(false);
+                                    if is_form {
+                                        process_form_xobject_text_replacement(
+                                            doc, *r, find, replace, counter,
+                                        )?;
+                                    }
                                 }
-                            }
                             }
                         }
                     }
@@ -456,15 +456,15 @@ fn replace_text_in_decoded(input: &[u8], find: &str, replace: &str) -> (Vec<u8>,
     let mut replacements = 0usize;
     let mut i = 0;
     while i < tokens.len() {
-        if matches!(tokens[i], ContentToken::Operator(ref s) if s == "Tj")
-            && i > 0
-        {
+        if matches!(tokens[i], ContentToken::Operator(ref s) if s == "Tj") && i > 0 {
             if let ContentToken::Operand(s) = &tokens[i - 1] {
                 let decoded = decode_pdfdoc_string(s);
                 let mut new = decoded.clone();
                 if new.contains(find) {
                     new = new.replace(find, replace);
-                    replacements += new.matches(replace).count()
+                    replacements += new
+                        .matches(replace)
+                        .count()
                         .saturating_sub(decoded.matches(replace).count());
                 }
                 out.extend_from_slice(&encode_pdfdoc_string(&new));
@@ -474,9 +474,7 @@ fn replace_text_in_decoded(input: &[u8], find: &str, replace: &str) -> (Vec<u8>,
                 continue;
             }
         }
-        if matches!(tokens[i], ContentToken::Operator(ref s) if s == "TJ")
-            && i >= 1
-        {
+        if matches!(tokens[i], ContentToken::Operator(ref s) if s == "TJ") && i >= 1 {
             if let ContentToken::Operand(s) = &tokens[i - 1] {
                 if s.starts_with('[') && s.ends_with(']') {
                     let inner = &s[1..s.len() - 1];
@@ -494,7 +492,10 @@ fn replace_text_in_decoded(input: &[u8], find: &str, replace: &str) -> (Vec<u8>,
                                     .saturating_sub(literal.matches(replace).count());
                             }
                             new_inner.push('(');
-                            new_inner.push_str(std::str::from_utf8(&encode_pdfdoc_string(&new_literal)).unwrap_or(&new_literal));
+                            new_inner.push_str(
+                                std::str::from_utf8(&encode_pdfdoc_string(&new_literal))
+                                    .unwrap_or(&new_literal),
+                            );
                             new_inner.push(')');
                         } else {
                             new_inner.push_str(&piece);

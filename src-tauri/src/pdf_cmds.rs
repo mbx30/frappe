@@ -619,7 +619,11 @@ pub fn list_layers(path: String) -> Result<Vec<LayerInfo>, String> {
                     Some(lopdf::Object::Name(n)) => String::from_utf8_lossy(n).to_string(),
                     _ => String::new(),
                 };
-                let visible = dict.get(b"OC").ok().map(|o| !matches!(o, lopdf::Object::Name(n) if n == b"OFF")).unwrap_or(true);
+                let visible = dict
+                    .get(b"OC")
+                    .ok()
+                    .map(|o| !matches!(o, lopdf::Object::Name(n) if n == b"OFF"))
+                    .unwrap_or(true);
                 layers.push(LayerInfo {
                     name,
                     visible,
@@ -794,10 +798,10 @@ pub fn replace_image(
     use lopdf::Object;
     use std::io::Cursor;
 
-    let replacement_bytes = std::fs::read(&new_image_path)
-        .map_err(|e| format!("read replacement image: {e}"))?;
-    let format = image::guess_format(&replacement_bytes)
-        .map_err(|e| format!("detect image format: {e}"))?;
+    let replacement_bytes =
+        std::fs::read(&new_image_path).map_err(|e| format!("read replacement image: {e}"))?;
+    let format =
+        image::guess_format(&replacement_bytes).map_err(|e| format!("detect image format: {e}"))?;
     let dyn_img = image::load_from_memory(&replacement_bytes)
         .map_err(|e| format!("decode replacement image: {e}"))?;
     let width = dyn_img.width();
@@ -830,8 +834,7 @@ pub fn replace_image(
         (out, b"DCTDecode".to_vec(), b"DeviceRGB".to_vec())
     };
 
-    let mut doc = lopdf::Document::load(&path)
-        .map_err(|e| format!("Failed to open PDF: {e}"))?;
+    let mut doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {e}"))?;
     let name_bytes = xobject_name.as_bytes().to_vec();
 
     let page_id = {
@@ -933,8 +936,7 @@ pub fn optimize_image(
     let max_h = settings.max_height.unwrap_or(0);
     let force_jpeg = settings.convert_to_jpeg.unwrap_or(true);
 
-    let mut doc = lopdf::Document::load(&path)
-        .map_err(|e| format!("Failed to open PDF: {e}"))?;
+    let mut doc = lopdf::Document::load(&path).map_err(|e| format!("Failed to open PDF: {e}"))?;
     let page_id = {
         let pages = doc.get_pages();
         if pages.is_empty() {
@@ -1046,9 +1048,7 @@ pub fn optimize_image(
         .dict
         .get(b"Filter")
         .ok()
-        .map(|o| {
-            matches!(o, Object::Name(n) if n == b"FlateDecode" || n == b"Fl")
-        })
+        .map(|o| matches!(o, Object::Name(n) if n == b"FlateDecode" || n == b"Fl"))
         .unwrap_or(false)
     {
         let mut d = ZlibDecoder::new(raw.as_slice());
@@ -1140,8 +1140,7 @@ pub fn optimize_image(
     } else {
         let gray = final_img.to_luma8();
         let mut out = Vec::new();
-        let encoder =
-            image::codecs::png::PngEncoder::new(&mut out);
+        let encoder = image::codecs::png::PngEncoder::new(&mut out);
         use image::ImageEncoder;
         encoder
             .write_image(
@@ -1158,9 +1157,15 @@ pub fn optimize_image(
         if let Ok(stream_obj) = obj.as_stream_mut() {
             stream_obj.content = new_bytes;
             stream_obj.dict.set("Filter", Object::Name(filter.to_vec()));
-            stream_obj.dict.set("ColorSpace", Object::Name(cs_name.to_vec()));
-            stream_obj.dict.set("Width", Object::Integer(target_w as i64));
-            stream_obj.dict.set("Height", Object::Integer(target_h as i64));
+            stream_obj
+                .dict
+                .set("ColorSpace", Object::Name(cs_name.to_vec()));
+            stream_obj
+                .dict
+                .set("Width", Object::Integer(target_w as i64));
+            stream_obj
+                .dict
+                .set("Height", Object::Integer(target_h as i64));
             stream_obj.dict.set("BitsPerComponent", Object::Integer(8));
             stream_obj.dict.remove(b"Length");
             stream_obj.dict.remove(b"DecodeParms");
@@ -1191,8 +1196,18 @@ pub fn pdf_annotation_add(
     if !crate::pdf::annotations::is_valid_rect(width, height) {
         return Err("annotation must have positive width and height".into());
     }
-    db.add_annotation(&file_path, page, &annotation_type, x, y, width, height, &color, &content)
-        .map_err(|e| e.to_string())
+    db.add_annotation(
+        &file_path,
+        page,
+        &annotation_type,
+        x,
+        y,
+        width,
+        height,
+        &color,
+        &content,
+    )
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1215,10 +1230,7 @@ pub fn pdf_annotation_update(
 }
 
 #[tauri::command]
-pub fn pdf_annotation_delete(
-    db: State<'_, Database>,
-    id: i64,
-) -> Result<(), String> {
+pub fn pdf_annotation_delete(db: State<'_, Database>, id: i64) -> Result<(), String> {
     db.delete_annotation(id).map_err(|e| e.to_string())
 }
 
@@ -1227,7 +1239,8 @@ pub fn pdf_annotation_page_counts(
     db: State<'_, Database>,
     file_path: String,
 ) -> Result<std::collections::HashMap<i64, i64>, String> {
-    db.annotation_page_counts(&file_path).map_err(|e| e.to_string())
+    db.annotation_page_counts(&file_path)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

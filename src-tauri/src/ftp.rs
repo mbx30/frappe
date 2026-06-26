@@ -91,9 +91,7 @@ fn ensure_remote_dir(conn: &mut FtpStream, dir: &str) -> Result<(), String> {
         current.push_str(part);
         if let Err(e) = conn.mkdir(&current) {
             let msg = e.to_string();
-            if !msg.to_lowercase().contains("exist")
-                && !msg.to_lowercase().contains("already")
-            {
+            if !msg.to_lowercase().contains("exist") && !msg.to_lowercase().contains("already") {
                 tracing::debug!("FTP mkdir {current} returned: {e}");
             }
         }

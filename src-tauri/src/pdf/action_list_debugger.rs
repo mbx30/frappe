@@ -13,7 +13,9 @@
 use crate::db::Database;
 use crate::pdf::action_list::{ActionStep, ReplayResult, StepResult};
 use lopdf::Document;
-use printpdf::{BuiltinFont, IndirectFontRef, Mm, PdfDocument, PdfDocumentReference, PdfLayerReference, Rgb};
+use printpdf::{
+    BuiltinFont, IndirectFontRef, Mm, PdfDocument, PdfDocumentReference, PdfLayerReference, Rgb,
+};
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -87,10 +89,7 @@ pub fn create_debug_session(
     })
 }
 
-pub fn update_debug_session(
-    db: &Database,
-    session: &DebugSession,
-) -> Result<(), String> {
+pub fn update_debug_session(db: &Database, session: &DebugSession) -> Result<(), String> {
     let id = session.id.ok_or_else(|| "session has no id".to_string())?;
     let conn = db
         .conn
@@ -135,7 +134,8 @@ pub fn list_debug_sessions(db: &Database) -> Result<Vec<DebugSession>, String> {
             })
         })
         .map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 pub fn get_debug_session(db: &Database, id: i64) -> Result<DebugSession, String> {
@@ -272,12 +272,8 @@ pub fn render_first_page_thumbnail(
         _ => return Err("PDF engine not available for thumbnail".to_string()),
     };
     let doc = engine.open_document(&pdf_path.to_string_lossy())?;
-    let page = doc
-        .pages()
-        .get(0)
-        .map_err(|e| format!("page 0: {e}"))?;
-    let config = pdfium_render::prelude::PdfRenderConfig::new()
-        .set_target_width(width_px as i32);
+    let page = doc.pages().get(0).map_err(|e| format!("page 0: {e}"))?;
+    let config = pdfium_render::prelude::PdfRenderConfig::new().set_target_width(width_px as i32);
     let bitmap = page
         .render_with_config(&config)
         .map_err(|e| format!("render: {e}"))?;
@@ -294,12 +290,7 @@ pub fn render_first_page_thumbnail(
             img.put_pixel(
                 x,
                 y,
-                image::Rgba([
-                    bytes[i + 2],
-                    bytes[i + 1],
-                    bytes[i],
-                    bytes[i + 3],
-                ]),
+                image::Rgba([bytes[i + 2], bytes[i + 1], bytes[i], bytes[i + 3]]),
             );
         }
     }
@@ -311,12 +302,8 @@ pub fn render_first_page_thumbnail(
 /// report includes a header (name + paths), a per-step table (kind,
 /// params, result, duration, marker), and the original / final byte
 /// size delta.
-pub fn export_debug_report(
-    session: &DebugSession,
-    output_path: &Path,
-) -> Result<(), String> {
-    let (doc, page1, layer1) =
-        PdfDocument::new(&session.name, Mm(210.0), Mm(297.0), "header");
+pub fn export_debug_report(session: &DebugSession, output_path: &Path) -> Result<(), String> {
+    let (doc, page1, layer1) = PdfDocument::new(&session.name, Mm(210.0), Mm(297.0), "header");
     let font: IndirectFontRef = doc
         .add_builtin_font(BuiltinFont::Helvetica)
         .map_err(|e| format!("font: {e}"))?;
@@ -334,16 +321,38 @@ pub fn export_debug_report(
     let _red = Rgb::new(0.7, 0.0, 0.0, None);
     let _green = Rgb::new(0.0, 0.5, 0.0, None);
 
-    write_line(&current_layer, &bold, 18.0, left, y,
-        &format!("Action List Debug Report - {}", session.name));
+    write_line(
+        &current_layer,
+        &bold,
+        18.0,
+        left,
+        y,
+        &format!("Action List Debug Report - {}", session.name),
+    );
     y -= line_h * 1.5;
-    write_line(&current_layer, &font, 10.0, left, y,
-        &format!("PDF: {}", truncate(&session.pdf_path, 80)));
+    write_line(
+        &current_layer,
+        &font,
+        10.0,
+        left,
+        y,
+        &format!("PDF: {}", truncate(&session.pdf_path, 80)),
+    );
     y -= line_h;
-    write_line(&current_layer, &font, 10.0, left, y,
-        &format!("Created: {}  Updated: {}  Step {}/{}",
-            session.created_at, session.updated_at,
-            session.step_index, session.steps.len()));
+    write_line(
+        &current_layer,
+        &font,
+        10.0,
+        left,
+        y,
+        &format!(
+            "Created: {}  Updated: {}  Step {}/{}",
+            session.created_at,
+            session.updated_at,
+            session.step_index,
+            session.steps.len()
+        ),
+    );
     y -= line_h * 1.5;
 
     let original_size = std::fs::metadata(&session.pdf_path)
@@ -355,10 +364,19 @@ pub fn export_debug_report(
         .and_then(|p| std::fs::metadata(p).ok())
         .map(|m| m.len())
         .unwrap_or(0);
-    write_line(&current_layer, &font, 11.0, left, y,
-        &format!("Original size: {} bytes  Final size: {} bytes  Delta: {:+} bytes",
-            original_size, final_size,
-            final_size as i64 - original_size as i64));
+    write_line(
+        &current_layer,
+        &font,
+        11.0,
+        left,
+        y,
+        &format!(
+            "Original size: {} bytes  Final size: {} bytes  Delta: {:+} bytes",
+            original_size,
+            final_size,
+            final_size as i64 - original_size as i64
+        ),
+    );
     y -= line_h * 1.5;
 
     write_line(&current_layer, &bold, 12.0, left, y, "Steps");
@@ -378,9 +396,11 @@ pub fn export_debug_report(
             .get(i)
             .map(|r| {
                 if r.success {
-                    format!("OK ({} ms) -> {}",
+                    format!(
+                        "OK ({} ms) -> {}",
                         r.duration_ms,
-                        r.output_path.as_deref().unwrap_or("-"))
+                        r.output_path.as_deref().unwrap_or("-")
+                    )
                 } else {
                     format!("FAIL - {}", r.message)
                 }
@@ -393,15 +413,39 @@ pub fn export_debug_report(
         } else {
             "[todo]"
         };
-        write_line(&current_layer, &bold, 10.5, left, y,
-            &format!("{} [{}/{}] {} - {}",
-                marker, i + 1, session.steps.len(), label, step.kind));
+        write_line(
+            &current_layer,
+            &bold,
+            10.5,
+            left,
+            y,
+            &format!(
+                "{} [{}/{}] {} - {}",
+                marker,
+                i + 1,
+                session.steps.len(),
+                label,
+                step.kind
+            ),
+        );
         y -= line_h;
-        write_line(&current_layer, &font, 9.0, left + Mm(5.0), y,
-            &format!("    params: {}", truncate(&params_str, 90)));
+        write_line(
+            &current_layer,
+            &font,
+            9.0,
+            left + Mm(5.0),
+            y,
+            &format!("    params: {}", truncate(&params_str, 90)),
+        );
         y -= line_h;
-        write_line(&current_layer, &font, 9.0, left + Mm(5.0), y,
-            &format!("    result: {}", truncate(&result_str, 90)));
+        write_line(
+            &current_layer,
+            &font,
+            9.0,
+            left + Mm(5.0),
+            y,
+            &format!("    result: {}", truncate(&result_str, 90)),
+        );
         y -= line_h * 1.1;
     }
 
@@ -445,7 +489,9 @@ pub fn pdf_size(p: &Path) -> u64 {
 }
 
 pub fn is_valid_pdf(p: &Path) -> bool {
-    Document::load(p).map(|d| !d.get_pages().is_empty()).unwrap_or(false)
+    Document::load(p)
+        .map(|d| !d.get_pages().is_empty())
+        .unwrap_or(false)
 }
 
 #[allow(dead_code)]
